@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 — restore waiting-room detection after rebuild
+
+- Restore the wiped scrim channel mapping and reuse the existing dashboard message; verify the owner's current waiting-room attendance appears live.
+- Supply verified game UIDs from the new member/profile store instead of the deleted legacy account-claims table.
+- Add safe channel-recovery tooling and regression coverage with the actual rebuilt database schema.
+
 ## 2026-10-03 — show stats for Quick Play-only applicants
 
 - Reproduced empty Competitive fields on the pending account: its available history contains Quick Play and Custom games.

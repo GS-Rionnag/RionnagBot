@@ -21,6 +21,7 @@ class Scrims(commands.Cog):
             self.authorize,
             tuple(f["name"] for f in service.forms.values()),
             discord.Color(config.COLOR),
+            account_uid=service.store.saved_uid,
         )
         self.restored = False
 

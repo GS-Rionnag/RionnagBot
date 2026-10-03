@@ -125,6 +125,15 @@ class Store:
                 ),
             )
 
+    def saved_uid(self, guild_id, member_id, game):
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT m.answers FROM members m JOIN player_profiles p ON p.member_id=m.member_id "
+                "WHERE p.guild_id=? AND p.member_id=? AND p.game=? AND m.status='accepted'",
+                (guild_id, member_id, game),
+            ).fetchone()
+        return json.loads(row[0]).get("player_uid") if row else None
+
     def remove_profile(self, guild_id, member_id):
         with self.connection() as db:
             db.execute("DELETE FROM player_profiles WHERE guild_id=? AND member_id=?", (guild_id, member_id))

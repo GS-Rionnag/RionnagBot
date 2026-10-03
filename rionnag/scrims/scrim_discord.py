@@ -174,9 +174,10 @@ class LineupConfirmation(discord.ui.View):
 
 
 class ScrimController:
-    def __init__(self, bot, connection, profile, authorize, games, color):
+    def __init__(self, bot, connection, profile, authorize, games, color, account_uid=None):
         self.bot, self.profile, self.authorize = bot, profile, authorize
         self.games, self.color = games, color
+        self.account_uid = account_uid
         self.store = ScrimStore(connection)
         self.locks, self.queue_tasks, self.views = {}, {}, {}
         self.monitor = ScrimMonitor(self)
@@ -395,13 +396,17 @@ class ScrimController:
             if not roles and not data.get("test_mode"):
                 excluded.append(mid)
                 continue
-            with self.store.connection() as db:
-                # Retain verified account identities without making any API request.
-                rows = db.execute(
-                    "SELECT substr(identity,5) FROM account_claims WHERE guild_id=? "
-                    "AND member_id=? AND game=? AND identity LIKE 'uid:%'",
-                    (guild.id, mid, data["game"].casefold()),
-                ).fetchall()
+            if self.account_uid:
+                uid = self.account_uid(guild.id, mid, data["game"])
+                rows = [(uid,)] if uid else []
+            else:
+                with self.store.connection() as db:
+                    # Retain verified account identities without making any API request.
+                    rows = db.execute(
+                        "SELECT substr(identity,5) FROM account_claims WHERE guild_id=? "
+                        "AND member_id=? AND game=? AND identity LIKE 'uid:%'",
+                        (guild.id, mid, data["game"].casefold()),
+                    ).fetchall()
             old = data.get("players", {}).get(mid, {})
             username = saved[0] if saved else people[mid].display_name
             player = Player(

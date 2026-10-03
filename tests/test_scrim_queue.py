@@ -15,9 +15,32 @@ import discord
 from rionnag.scrims import scrim_rivals
 from rionnag.scrims.scrim_discord import LineupEditor, ScrimController, ScrimPanel
 from rionnag.scrims.scrims import Player, ScrimStore, random_team, substitute_one
+from rionnag.storage import Store
 
 
 class QueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_new_profile_store_supplies_uid_without_legacy_claims_table(self):
+        profiles = Store(Path(self.temp.name) / "new-profiles.sqlite3")
+        answers = dict(
+            username="Verified",
+            player_uid="123456",
+            time_zone="Eastern Time (ET)",
+            preferred_role_1="Tank",
+            preferred_role_2="Support",
+        )
+        profiles.update(1, status="accepted", game="marvel-rivals", answers=answers)
+        profiles.save_profile(10, 1, {"name": "Marvel Rivals"}, answers)
+        self.controller.store = ScrimStore(profiles.connection)
+        self.controller.profile = profiles.saved_profile
+        self.controller.account_uid = profiles.saved_uid
+        self.waiting.members = [self.members[1]]
+        data = dict(game="Marvel Rivals", waiting_id=101, stage_id=102, players={})
+        players, excluded = self.controller.eligible(self.guild, data)
+        self.assertEqual(excluded, [])
+        self.assertEqual(players[0].uid, "123456")
+        profiles.update(1, status="reset")
+        self.assertIsNone(profiles.saved_uid(10, 1, "Marvel Rivals"))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         path = Path(self.temp.name) / "rionnag.scrims.scrims.sqlite3"
@@ -106,6 +129,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.controller.authorize = lambda interaction, _: interaction.user.id in (1, 999)
         profiles = {p.member_id: (p.username, "Eastern", p.roles[0], None) for p in self.pool}
         self.controller.profile = lambda _, mid, __: profiles.get(mid)
+        self.controller.account_uid = None
         self.controller.bot = SimpleNamespace(add_view=MagicMock(), get_guild=lambda _: self.guild)
         self.controller.monitor = SimpleNamespace(start=MagicMock())
         self.controller.queue(self.guild, self.lobby)
