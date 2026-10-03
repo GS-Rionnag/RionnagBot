@@ -165,6 +165,22 @@ class Applications:
                 FormPage(self, interaction.user.id, row["game"], 0, row["answers"], editing=True)
             )
 
+    async def edit_saved_form(self, interaction):
+        from rionnag.ui.forms import FormPage
+
+        if interaction.guild_id != config.GUILD_ID:
+            raise ValueError("Use this command in Rionnag.")
+        async with self.lock(interaction.user.id):
+            row = self.store.member(interaction.user.id)
+            form = self.form_for(row)
+            if not form or row["status"] not in {"accepted", "pending", "visitor", "rejected"}:
+                raise ValueError("You have no saved game form to edit. Finish your onboarding first.")
+            if row["version"] != form["version"] or row["restore_roles"] is not None:
+                raise ValueError("Complete the updated form in your private onboarding channel first.")
+            await interaction.response.send_modal(
+                FormPage(self, interaction.user.id, row["game"], 0, row["answers"], editing=row["status"])
+            )
+
     async def submit(self, interaction, member_id, game, answers, version, editing=False):
         if interaction.user.id != member_id or interaction.guild_id != config.GUILD_ID:
             raise ValueError("This form belongs to another member.")
@@ -174,12 +190,17 @@ class Applications:
             form = self.forms[game]
             if version != form["version"] or row["game"] != game:
                 raise ValueError("The form changed while you were filling it out. Open it again.")
-            allowed = {"pending"} if editing else {"new", "reset", "visitor", "rejected"}
+            edit_status = editing if isinstance(editing, str) else "pending"
+            allowed = {edit_status} if editing else {"new", "reset", "visitor", "rejected"}
             if row["status"] not in allowed:
                 raise ValueError("This application has already been submitted.")
-            if editing and row["channel_id"] != interaction.channel_id:
+            if editing is True and row["channel_id"] != interaction.channel_id:
                 raise ValueError("Edit your application in its own channel.")
-            if row["status"] in {"visitor", "rejected"} and not visitor_eligible(member, self.forms):
+            if (
+                not editing
+                and row["status"] in {"visitor", "rejected"}
+                and not visitor_eligible(member, self.forms)
+            ):
                 raise ValueError("Only visitors can submit new tryout applications.")
             self.validate(form, answers)
             # Prevent two Discord members from claiming the same public game account.
@@ -198,8 +219,11 @@ class Applications:
                 answers = dict(answers, player_uid=identity["uid"], username=identity["name"])
                 self.store.update(member_id, answers=answers)
             if editing:
-                channel = await self.ticket(member)
-                await self.publish(member, channel)
+                if row["status"] == "pending":
+                    channel = await self.ticket(member)
+                    await self.publish(member, channel)
+                elif row["status"] == "accepted":
+                    self.store.save_profile(member.guild.id, member.id, form, answers)
                 return
             channel = await self.ticket(member)
             if row["message_id"]:

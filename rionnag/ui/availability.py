@@ -110,7 +110,8 @@ class AvailabilityView(SafeView):
         m = self.modal
         async with m.service.lock(m.owner_id):
             row = m.service.store.member(m.owner_id)
-            allowed = {"pending"} if m.editing else {"new", "reset", "visitor", "rejected"}
+            edit_status = m.editing if isinstance(m.editing, str) else "pending"
+            allowed = {edit_status} if m.editing else {"new", "reset", "visitor", "rejected"}
             if (
                 m.version != m.service.forms[m.game]["version"]
                 or row["game"] != m.game
@@ -139,11 +140,15 @@ class AvailabilityView(SafeView):
         await interaction.response.defer(ephemeral=True)
         m = self.modal
         if m.editing:
-            await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version, editing=True)
+            await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version, editing=m.editing)
         else:
             await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version)
         await interaction.edit_original_response(
-            content="Application submitted. Your result will be sent by DM.", embed=None, view=None
+            content="Your form data has been updated."
+            if m.editing
+            else "Application submitted. Your result will be sent by DM.",
+            embed=None,
+            view=None,
         )
         self.stop()
 

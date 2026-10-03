@@ -358,6 +358,51 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "already been submitted"):
             await self.app.submit(interaction, 42, "marvel-rivals", updated, 1, editing=True)
 
+    async def test_saved_form_command_opens_prefilled_accepted_form_anywhere(self):
+        self.store.update(42, status="accepted", game="marvel-rivals", version=1, answers=self.answers)
+        interaction = SimpleNamespace(
+            user=self.member, guild_id=config.GUILD_ID, response=SimpleNamespace(send_modal=AsyncMock())
+        )
+        await self.app.edit_saved_form(interaction)
+        modal = interaction.response.send_modal.call_args.args[0]
+        self.assertEqual(modal.editing, "accepted")
+        self.assertEqual(modal.fields["username"].default, "Player")
+        self.store.update(42, status="reset", restore_roles=[self.form["team_role"]])
+        with self.assertRaises(ValueError):
+            await self.app.edit_saved_form(interaction)
+
+    async def test_completed_form_edit_updates_profile_without_ticket_or_roles(self):
+        self.guild.fetch_member = AsyncMock(return_value=self.member)
+        for status in ("accepted", "rejected", "visitor"):
+            self.store.update(
+                42,
+                status=status,
+                game="marvel-rivals",
+                version=1,
+                answers=self.answers,
+                membership_roles=[self.form["manager_role"]],
+            )
+            interaction = SimpleNamespace(
+                user=self.member, guild_id=config.GUILD_ID, guild=self.guild, channel_id=999
+            )
+            updated = dict(self.answers, preferred_role_1="Support")
+            with (
+                patch(
+                    "rionnag.integrations.accounts.verify_account",
+                    AsyncMock(return_value=dict(uid="123", name="Player")),
+                ),
+                patch.object(self.app, "ticket", AsyncMock()) as ticket,
+            ):
+                await self.app.submit(interaction, 42, "marvel-rivals", updated, 1, editing=status)
+            ticket.assert_not_awaited()
+            row = self.store.member(42)
+            self.assertEqual(row["status"], status)
+            self.assertEqual(row["membership_roles"], [self.form["manager_role"]])
+            self.assertEqual(row["answers"]["preferred_role_1"], "Support")
+        self.member.add_roles.assert_not_awaited()
+        self.member.remove_roles.assert_not_awaited()
+        self.assertEqual(self.store.saved_profile(config.GUILD_ID, 42)[2], "Support")
+
     async def test_new_fields_paginate_and_old_answers_prefill(self):
         self.form["questions"].append(dict(key="extra", label="New question", required=True))
         page = FormPage(self.app, 42, "marvel-rivals", 0, self.answers)

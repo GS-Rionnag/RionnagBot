@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 - self-service form editing
+
+- Add `/edit_form` for everyone to edit their own current saved game form with prefilled answers.
+- Save validated completed-profile edits without tickets, manager review, or role changes; pending applications update in place.
+- Preserve reset completion requirements and invalidate edits when application status changes.
+
 ## 2026-10-03 - current-season Rivals stats
 
 - Upgrade rivals-api to 4.1 and explicitly request season="current" for overall, hero, and class win rates.

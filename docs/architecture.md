@@ -12,7 +12,9 @@ States: new → visitor, or new/visitor/rejected → pending → deciding → ac
 
 All entrypoints use Applications.submit. Onboarding already has a private channel; visitors get one at submission. There is no user close/cancel action. The review panel has Accept, Reject, and an applicant-only Edit button. Managers cannot review themselves; the server owner has an explicit review override for any game.
 
-Pending applicants can reopen prefilled forms through Edit. Editing drafts stay in the ephemeral form session; the stored application remains unchanged until validated resubmission updates its original message. Accepted/rejected applications cannot be edited, and a decision during editing invalidates the draft. Edits preserve pending status, manager access, and roles.
+Pending applicants can reopen prefilled forms through the review panel's Edit button. Editing drafts stay in the ephemeral form session; the stored application remains unchanged until validated resubmission updates its original message. This button only edits pending applications, and a decision during editing invalidates the draft. Edits preserve pending status, manager access, and roles.
+
+Anyone can use `/edit_form` to edit their own saved current-version game data from any server channel. Accepted members update their saved profile without a ticket, review, or role changes; pending members update the existing application. Rejected/visitor records retain their status and do not gain acceptance. Drafts stay ephemeral until complete validation and account verification. A status change while editing invalidates the draft. Members undergoing a reset must finish the onboarding form first.
 
 Reset returners with saved acceptance are automatically restored without posting a review panel. The owner also receives automatic acceptance on fresh form completion after the initial wipe; they are not asked to approve themselves.
 

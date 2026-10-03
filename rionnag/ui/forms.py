@@ -68,7 +68,8 @@ class FormPage(discord.ui.Modal):
             )
         async with self.service.lock(self.owner_id):
             row = self.service.store.member(self.owner_id)
-            allowed = {"pending"} if self.editing else {"new", "reset", "visitor", "rejected"}
+            edit_status = self.editing if isinstance(self.editing, str) else "pending"
+            allowed = {edit_status} if self.editing else {"new", "reset", "visitor", "rejected"}
             if row["status"] not in allowed or row["game"] != self.game:
                 raise ValueError("This form is no longer active.")
             if not self.editing:

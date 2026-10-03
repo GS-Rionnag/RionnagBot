@@ -19,6 +19,11 @@ class Profiles(commands.Cog):
     def __init__(self, service):
         self.service = service
 
+    @app_commands.command(name="edit_form", description="Edit your own saved game form data")
+    @app_commands.guild_only()
+    async def edit_form(self, interaction: discord.Interaction):
+        await self.service.edit_saved_form(interaction)
+
     @app_commands.command(name="profile", description="View a saved member’s Marvel Rivals profile")
     async def profile(self, interaction: discord.Interaction, member: discord.Member | None = None):
         member = member or interaction.user
