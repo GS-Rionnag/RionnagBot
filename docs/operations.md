@@ -2,6 +2,8 @@
 
 Start `.venv\Scripts\python.exe -m rionnag` from the workspace. bot.py is a compatibility launcher. Run one process; the second fails explicitly. Generated state is in data/ and logs/ and never belongs in public Git.
 
+Rivals stats require rivals-api 4. Browser fallback remains optional (`rivals-api[browser]` plus `python -m camoufox fetch`); it did not resolve Tracker's current-season network block during the migration check. When current-season metadata is unavailable, the overall field uses the documented all-seasons selector with an explicit label. Canonical hero attribution can require one detail read per tracked match, so application lookup allows up to five minutes while Discord interactions remain deferred. Scrim monitoring retains its existing browser-disabled request pacing.
+
 ## Form changes
 
 1. Edit config/forms.json, preserving stable existing question keys and adding unique keys for new questions.

@@ -35,7 +35,7 @@ class Profiles(commands.Cog):
         for label, key in (
             ("Current rank", "current_rank"),
             ("Peak rank", "peak_rank"),
-            ("Current season win rate", "overall_win_rate"),
+            (fields["overall_win_rates_name"], "overall_win_rate"),
         ):
             embed.add_field(name=label, value=fields[key])
         add_hero_fields(embed, fields)

@@ -2,78 +2,84 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+from rivals_api import RivalsAPIError
+
 from rionnag.integrations.rivals import fetch_player_overview, profile_overview
 
 
 class OverviewTests(unittest.TestCase):
-    def fetch(self, cached_rate=None, direct_rate=57, quickplay_only=False):
-        matches = Mock()
-        calls = []
+    def fetch(self, rate=57, partial=False, blocked_season=False):
+        metadata = {"provider_errors": ["offline"] if partial else [], "unresolved": []}
 
-        def overall(**kwargs):
-            calls.append(("overall", kwargs))
-            return {"win_rate_pct": cached_rate}
+        def response(data):
+            value = Mock()
+            value.to_dict.return_value = data
+            return value
 
-        def categorized(kind):
-            def fetch(**kwargs):
-                calls.append((kind, kwargs))
-                result = Mock()
-                data = {
-                    "data": [{"hero_id": "1016", "hero_name": "Loki", "matches": 12, "win_rate_pct": 58}]
-                    if kind == "heroes"
-                    else []
-                }
-                if quickplay_only and kwargs["mode"] == "competitive":
-                    data = {"data": []}
-                elif quickplay_only and kind == "classes":
-                    data = {"data": [{"player_class": "support", "win_rate_pct": 58}]}
-                result.to_dict.return_value = data
-                result.get.side_effect = data.get
-                return result
-
-            return fetch
-
-        matches.fetch_win_rate.side_effect = overall
-        matches.fetch_hero_win_rates.side_effect = categorized("heroes")
-        matches.fetch_class_win_rates.side_effect = categorized("classes")
+        stats = SimpleNamespace(
+            win_rate=Mock(return_value=response({"win_rate_pct": rate, "metadata": metadata})),
+            hero_win_rates=Mock(
+                return_value=response(
+                    {
+                        "data": [
+                            {"hero_id": "1016", "hero_name": "Loki", "games": 12, "win_rate_pct": 58},
+                            {"hero_id": "1015", "hero_name": "Iron Man", "games": 2, "win_rate_pct": 50},
+                        ],
+                        "metadata": metadata,
+                    }
+                )
+            ),
+            class_win_rates=Mock(
+                return_value=response(
+                    {
+                        "data": [{"player_class": "support", "games": 12, "win_rate_pct": 58}],
+                        "metadata": metadata,
+                    }
+                )
+            ),
+            summary_heroes=Mock(return_value=[SimpleNamespace(hero_id=1016, rank=324)]),
+        )
         player = SimpleNamespace(
             uid=123,
             name="Test",
-            win_rate=direct_rate,
-            matches=matches,
+            stats=stats,
             rank_game_season={"100120": SimpleNamespace(rank_game_id=20, rank_score=3600)},
-            stats=SimpleNamespace(heroes=Mock(return_value=[SimpleNamespace(hero_id=1016, rank=324)])),
         )
+        if blocked_season:
+            stats.win_rate.side_effect = [RivalsAPIError("season blocked"), response({"win_rate_pct": 61})]
         with patch("rionnag.integrations.rivals.RivalsClient") as client:
             client.return_value.__enter__.return_value.get_player.return_value = player
             result = fetch_player_overview("123")
-        return result, calls
+        return result, stats
 
-    def test_exact_first_then_all_rates_cached_and_season_fallback(self):
-        result, calls = self.fetch()
-        self.assertEqual(calls[0], ("overall", {"method": "exact"}))
-        self.assertEqual([kwargs["method"] for _, kwargs in calls[1:]], ["cached"] * 3)
-        self.assertEqual(calls[1][1]["season"], 20)
-        self.assertEqual(result["win_rate"], 57)
-        overview, _ = profile_overview(result)
-        self.assertIn("58% WR `#324`", overview["competitive_heroes"])
-
-    def test_valid_zero_cached_rate_is_preserved(self):
-        result, _ = self.fetch(cached_rate=0)
-        self.assertEqual(result["win_rate"], 0)
-
-    def test_quickplay_only_account_uses_cached_fallback_and_truthful_labels(self):
-        result, calls = self.fetch(quickplay_only=True)
-        self.assertEqual(calls[0][1]["method"], "exact")
-        self.assertTrue(all(kwargs["method"] == "cached" for _, kwargs in calls[1:]))
-        self.assertEqual(result["stats_mode"], "quickplay")
+    def test_canonical_calls_use_default_modes_and_retain_all_season_hero_scope(self):
+        result, stats = self.fetch()
+        stats.win_rate.assert_called_once_with()
+        stats.hero_win_rates.assert_called_once_with(season="all")
+        stats.class_win_rates.assert_called_once_with(season="all")
+        self.assertEqual(result["stats_mode"], "all")
         fields, _ = profile_overview(result)
-        self.assertIn("Quick Play", fields["hero_win_rates_name"])
-        self.assertIn("Quick Play", fields["role_win_rates_name"])
+        self.assertEqual(fields["hero_win_rates_name"], "Top 6 Characters (All Seasons)")
         self.assertIn("58% WR `#324`", fields["competitive_heroes"])
+        self.assertTrue(fields["competitive_heroes"].startswith("**Loki"))
         self.assertIn("Strategist", fields["role_win_rates"])
+        stats.summary_heroes.assert_any_call(mode="competitive", season="all")
+        stats.summary_heroes.assert_any_call(mode="quickplay", season="all")
 
-    def test_missing_profile_and_history_rate_remains_unavailable(self):
-        result, _ = self.fetch(direct_rate=None)
-        overview, _ = profile_overview(result)
-        self.assertEqual(overview["overall_win_rate"], "Unavailable")
+    def test_zero_rate_is_preserved_and_missing_rate_not_replaced_with_competitive_snapshot(self):
+        for rate, expected in [(0, "0%"), (None, "Unavailable")]:
+            result, _ = self.fetch(rate=rate)
+            fields, _ = profile_overview(result)
+            self.assertEqual(fields["overall_win_rate"], expected)
+
+    def test_partial_provider_coverage_is_visible(self):
+        result, _ = self.fetch(partial=True)
+        self.assertIn("coverage is partial", result["win_rate_note"])
+
+    def test_blocked_current_season_uses_explicit_all_season_label(self):
+        with self.assertLogs("rionnag.integrations.rivals", level="ERROR"):
+            result, stats = self.fetch(blocked_season=True)
+        stats.win_rate.assert_any_call(season="all")
+        fields, _ = profile_overview(result)
+        self.assertEqual(fields["overall_win_rate"], "61%")
+        self.assertIn("All Seasons", fields["overall_win_rates_name"])

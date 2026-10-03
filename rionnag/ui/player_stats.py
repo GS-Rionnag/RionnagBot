@@ -9,7 +9,7 @@ from rionnag import config
 from rionnag.integrations.rivals import fetch_player_overview, profile_overview, queued_lookup
 
 log = logging.getLogger(__name__)
-STATS_VERSION = 3
+STATS_VERSION = 5
 
 
 async def player_stats_embed(answers):
@@ -23,14 +23,19 @@ async def player_stats_embed(answers):
         return discord.Embed.from_dict(cached)
     embed = discord.Embed(title="Marvel Rivals player data", color=config.COLOR)
     try:
-        player = await asyncio.wait_for(asyncio.to_thread(queued_lookup, fetch_player_overview, identity), 90)
+        player = await asyncio.wait_for(
+            asyncio.to_thread(queued_lookup, fetch_player_overview, identity), 300
+        )
         fields, icon = profile_overview(player)
         embed.add_field(name="Player", value=discord.utils.escape_markdown(player["player_name"])[:100])
         embed.add_field(name="Account UID", value=player["player_uid"])
         for label, key in (
             ("Current Season Rank", "current_rank"),
             ("Peak Rank", "peak_rank"),
-            ("Current Season Win Rate", "overall_win_rate"),
+            (
+                fields.get("overall_win_rates_name", "Current Season Win Rate"),
+                "overall_win_rate",
+            ),
         ):
             embed.add_field(name=label, value=fields[key][:256])
         embed.add_field(

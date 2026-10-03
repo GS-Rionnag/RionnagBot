@@ -1,5 +1,13 @@
 # Change timeline
 
+## 2026-10-03 — migrate to rivals-api 4 default win rates
+
+- Upgrade to canonical stats calls with automatic caching and default Competitive plus Quick Play scope.
+- Keep current-season overall rates and all-available-season hero/class rates; preserve leaderboard placements through the renamed summary endpoint.
+- Show partial/unresolved coverage and refresh older embeds; if current-season metadata is blocked, show a clearly labeled all-seasons overall rate.
+- Add hero and class fields to /profile and keep scrim monitoring behavior unchanged.
+- Keep displayed labels concise without mode names; refresh old labels in pending applications.
+
 ## 2026-10-03 — restore starter-only test behavior
 
 - Remove the test-host requirement from rerolls at the owner's request; substitutes do not trigger game detection.
