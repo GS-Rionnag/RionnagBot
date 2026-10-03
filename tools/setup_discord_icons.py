@@ -51,7 +51,7 @@ class IconSetup(discord.Client):
                 )
                 print(f"Added icon to role {name}")
         else:
-            print("This server does not have the ROLE_ICONS feature; buttons can use the emoji, roles cannot show role icons.")
+            print("This server does not have ROLE_ICONS; buttons can use emoji, but roles cannot show icons.")
 
         await self.close()
 

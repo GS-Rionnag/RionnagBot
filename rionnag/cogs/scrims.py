@@ -1,0 +1,58 @@
+"""Adapt the existing scrim subsystem to the new application/profile store."""
+
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+from rionnag import config
+from rionnag.scrims.scrim_discord import ScrimController
+from rionnag.scrims.scrim_feed import FeedStore
+from rionnag.scrims.scrim_feed_view import OfferPreview
+from rionnag.services.permissions import has_role
+
+
+class Scrims(commands.Cog):
+    def __init__(self, bot, service):
+        self.bot, self.service = bot, service
+        self.controller = ScrimController(
+            bot,
+            service.store.connection,
+            service.store.saved_profile,
+            self.authorize,
+            tuple(f["name"] for f in service.forms.values()),
+            discord.Color(config.COLOR),
+        )
+        self.restored = False
+
+    def authorize(self, interaction, game):
+        form = next((f for f in self.service.forms.values() if f["name"] == game), None)
+        return bool(
+            form
+            and interaction.guild_id == config.GUILD_ID
+            and has_role(interaction.user, form["manager_role"])
+        )
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        if not self.restored:
+            await self.controller.restore()
+            self.restored = True
+
+    @app_commands.command(
+        name="scrim_opportunities", description="Game managers: preview collected scrim offers"
+    )
+    async def opportunities(self, interaction: discord.Interaction):
+        if not self.authorize(interaction, "Marvel Rivals"):
+            await interaction.response.send_message(
+                "Only Marvel Rivals Managers can view scrim offers.", ephemeral=True
+            )
+            return
+        feed = FeedStore(config.ROOT / "data" / "scrim_feed.sqlite3")
+        offers = feed.offers()
+        if not offers:
+            await interaction.response.send_message(
+                "No collected scrim offers are available.", ephemeral=True
+            )
+            return
+        view = OfferPreview(offers, interaction.user.id)
+        await interaction.response.send_message(embed=view.embed(), view=view, ephemeral=True)

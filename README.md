@@ -1,65 +1,41 @@
 # RionnagBot
 
-RionnagBot is a Discord onboarding bot for private member tickets, visitor self-selection, and game tryout applications. It stores ticket state in SQLite and restores active tickets after a restart.
+A private Discord organization bot for **Rionnag**. The source is public; credentials, member answers, and runtime data are private. It serves exactly one server.
 
-## Requirements
+New members receive one private onboarding channel. They choose Visitor or complete a game application. Visitors can use Main → tryout to enter the same application flow. After submission, only the selected game's manager gains ticket access and Accept/Reject buttons. Acceptance grants the game tryout role; rejection grants Visitor. The bot sends the outcome by DM and deletes the completed ticket.
 
-- Python 3.11 or newer
-- A Discord application and bot token
-- A Discord server where the bot can manage channels and roles
+When a game form version increases, outdated members return to step one and lose assignable roles except Rionnag. Cached answers remain prefilled and editable; new required questions must be answered. Previously accepted players and managers regain their original roles automatically after completion. Pending/rejected applications still require review. The initial October 3, 2026 rebuild deliberately erased previous stored data and creates fresh onboarding for everyone, including the owner. Existing membership roles are captured from live Discord as fresh reset metadata; old stored answers are not retained.
 
-## Local setup
+Read [architecture](docs/architecture.md), [permissions](docs/permissions.md), [operations](docs/operations.md), and [agent instructions](AGENTS.md).
 
-1. Create and activate a virtual environment:
+## Run and verify
 
-   ```powershell
-   py -3.11 -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   python -m pip install -e .[dev]
-   ```
-
-2. Copy `.env.example` to `.env` and fill in the required values.
-3. Enable **Server Members Intent** in the Discord Developer Portal. Grant the bot Manage Channels, Manage Roles, View Channels, Send Messages, and Read Message History. Keep the bot's role above onboarding roles.
-4. Create `Recruitment Manager`, `Visitor`, and for each configured game, `<Game> Manager` and `<Game> Tryout` roles. The server owner and Recruitment Managers can manage every ticket; a game's managers can review that game's applications.
-5. Start the bot:
-
-   ```powershell
-   python bot.py
-   ```
-
-The bot syncs `/ping` and `/onboard` to `GUILD_ID` for quick updates. Without `GUILD_ID`, commands are synced globally. New members receive a private application channel. Managers are notified only after a member submits a game application. Approval assigns a tryout role; it never assigns team membership.
-
-## Configuration
-
-| Variable | Required | Default | Purpose |
-| --- | --- | --- | --- |
-| `DISCORD_TOKEN` | Yes | — | Bot token; keep it secret |
-| `GUILD_ID` | No | `0` | Development server for guild-scoped commands |
-| `ONBOARDING_DB_PATH` | No | `onboarding.sqlite3` | SQLite ticket registry path |
-| `MANAGER_ROLE_NAME` | No | `Recruitment Manager` | Role allowed to manage all tickets |
-| `VISITOR_ROLE_NAME` | No | `Visitor` | Self-selected visitor role |
-| `GAMES` | No | `Marvel Rivals` | Comma-separated game names |
-| `MARVEL_EMOJI_ID` | No | `0` | Optional custom emoji ID for buttons |
-| `MARVEL_EMOJI_NAME` | No | `MR` | Name used with the custom emoji ID |
-
-For each name in `GAMES`, create matching `<Game> Manager` and `<Game> Tryout` roles. Discord buttons support up to 20 configured games.
-
-## Project layout
-
-```text
-.
-├── bot.py                 # Runtime entry point
-├── setup_discord_icons.py # Optional one-time role/emoji setup utility
-├── onboarding.sqlite3     # Local runtime state (created automatically)
-├── .env.example           # Configuration template; copy to .env
-├── pyproject.toml         # Package metadata and developer tool settings
-└── requirements.txt       # Compatibility install requirements
+```powershell
+rtk proxy python -m venv .venv
+rtk proxy .venv\Scripts\python.exe -m pip install -e ".[dev]"
+# Copy .env.example to .env and privately set DISCORD_TOKEN.
+rtk proxy .venv\Scripts\python.exe -m rionnag
+rtk proxy .venv\Scripts\python.exe -m unittest discover -s tests -q
+rtk proxy .venv\Scripts\ruff.exe check .
 ```
 
-`bot.py` currently owns Discord interactions, onboarding workflows, and SQLite persistence. Keep user-facing flows in Discord views/commands, persistence behind small database functions, and configuration in environment-backed settings as the codebase is split into modules. Avoid changing ticket status, role assignment, permissions, or recovery behavior without updating the corresponding documentation and adding focused coverage.
+Enable Server Members Intent. Keep the bot role above membership roles and below Rionnag. An OS lock prevents duplicate bot instances.
 
-## State and deployment
+## Workspace
 
-The SQLite file contains member-to-channel links and application status. Keep it on durable storage and back it up before moving or redeploying the bot. The bot reconciles stored channels on startup and creates tickets for members who joined while it was offline. Do not commit `.env`, database files, virtual environments, or logs.
+| Path | Purpose |
+| --- | --- |
+| config/forms.json | Games, stable question keys, form versions |
+| rionnag/app.py | Composition and startup |
+| rionnag/cogs/ | Feature commands and events |
+| rionnag/services/ | Applications, resets, permission policy |
+| rionnag/ui/ | Persistent buttons and paginated forms |
+| rionnag/storage.py | Workflow/profile persistence |
+| rionnag/integrations/ | Marvel Rivals provider and public stats |
+| rionnag/scrims/ | Existing scrim subsystem |
+| scrim_collector/ | Optional collector with separate environment |
+| tools/ | Icon utilities |
+| tests/, docs/ | Regression coverage and operating contract |
+| data/, logs/ | Private generated state; ignored by Git |
 
-`setup_discord_icons.py` is optional. It expects `assets/marvel_rivals_logo.png` and a configured `GUILD_ID`; the normal bot does not require that asset.
+Every future agent must commit each coherent minor or major change with a clear message. Never commit credentials, databases, backups, application transcripts, or logs.

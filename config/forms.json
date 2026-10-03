@@ -1,0 +1,16 @@
+{
+  "marvel-rivals": {
+    "name": "Marvel Rivals",
+    "version": 1,
+    "team_role": 1554272432309797015,
+    "tryout_role": 1554275227901632512,
+    "manager_role": 1554281222023421992,
+    "questions": [
+      {"key": "username", "label": "Username or numeric account UID", "required": true, "max_length": 100},
+      {"key": "time_zone", "label": "Time zone", "required": true, "options": ["Eastern Time (ET)", "Central Time (CT)", "Mountain Time (MT)", "Pacific Time (PT)"]},
+      {"key": "preferred_role_1", "label": "Best role", "required": true, "options": ["Tank", "DPS", "Support"]},
+      {"key": "preferred_role_2", "label": "Second-best role", "required": true, "options": ["Tank", "DPS", "Support"]},
+      {"key": "availability", "label": "Weekly scrim availability in your time zone", "required": true, "max_length": 1000, "paragraph": true}
+    ]
+  }
+}

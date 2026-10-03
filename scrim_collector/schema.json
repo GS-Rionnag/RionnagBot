@@ -1,0 +1,103 @@
+{
+  "type": "object",
+  "properties": {
+    "scrims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rank_minimum": {
+            "type": "string",
+            "enum": [
+              "Bronze",
+              "Silver",
+              "Gold",
+              "Platinum",
+              "Diamond",
+              "Grandmaster",
+              "Celestial",
+              "Eternity",
+              "One Above All",
+              "Bronze I",
+              "Bronze II",
+              "Bronze III",
+              "Silver I",
+              "Silver II",
+              "Silver III",
+              "Gold I",
+              "Gold II",
+              "Gold III",
+              "Platinum I",
+              "Platinum II",
+              "Platinum III",
+              "Diamond I",
+              "Diamond II",
+              "Diamond III",
+              "Grandmaster I",
+              "Grandmaster II",
+              "Grandmaster III",
+              "Celestial I",
+              "Celestial II",
+              "Celestial III"
+            ]
+          },
+          "rank_maximum": {
+            "type": "string",
+            "enum": [
+              "Bronze",
+              "Silver",
+              "Gold",
+              "Platinum",
+              "Diamond",
+              "Grandmaster",
+              "Celestial",
+              "Eternity",
+              "One Above All",
+              "Bronze I",
+              "Bronze II",
+              "Bronze III",
+              "Silver I",
+              "Silver II",
+              "Silver III",
+              "Gold I",
+              "Gold II",
+              "Gold III",
+              "Platinum I",
+              "Platinum II",
+              "Platinum III",
+              "Diamond I",
+              "Diamond II",
+              "Diamond III",
+              "Grandmaster I",
+              "Grandmaster II",
+              "Grandmaster III",
+              "Celestial I",
+              "Celestial II",
+              "Celestial III"
+            ]
+          },
+          "Start_Time_timestamp": {
+            "type": "string"
+          },
+          "End_Time_timestamp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "rank_minimum",
+          "rank_maximum",
+          "Start_Time_timestamp",
+          "End_Time_timestamp"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "scrims"
+  ],
+  "additionalProperties": false
+}
