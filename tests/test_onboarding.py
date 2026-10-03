@@ -204,6 +204,65 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
             await self.app.decide(interaction, True)
         self.assertEqual(self.store.member(42)["status"], "accepted")
 
+    async def test_owner_form_auto_accepts_without_review(self):
+        self.guild.owner_id = self.member.id
+        self.guild.fetch_member = AsyncMock(return_value=self.member)
+        self.store.update(42, game="marvel-rivals")
+        interaction = SimpleNamespace(user=self.member, guild_id=config.GUILD_ID, guild=self.guild)
+        identity = dict(uid="12345", name="Player")
+        with (
+            patch("rionnag.integrations.accounts.verify_account", AsyncMock(return_value=identity)),
+            patch.object(self.app, "ticket", AsyncMock(return_value=Mock(id=100))),
+            patch.object(self.app, "close_ticket", AsyncMock()),
+            patch.object(self.app, "publish", AsyncMock()) as review,
+        ):
+            await self.app.submit(interaction, 42, "marvel-rivals", self.answers, 1)
+        review.assert_not_awaited()
+        self.assertEqual(self.store.member(42)["status"], "accepted")
+        self.assertIn("automatically", self.member.send.call_args.args[0])
+
+    async def test_reset_submission_restores_roles_without_review(self):
+        self.guild.owner_id = 99
+        self.guild.fetch_member = AsyncMock(return_value=self.member)
+        self.store.update(
+            42,
+            status="reset",
+            game="marvel-rivals",
+            restore_roles=[self.form["manager_role"]],
+            restore_status="accepted",
+        )
+        interaction = SimpleNamespace(user=self.member, guild_id=config.GUILD_ID, guild=self.guild)
+        identity = dict(uid="12345", name="Player")
+        with (
+            patch("rionnag.integrations.accounts.verify_account", AsyncMock(return_value=identity)),
+            patch.object(self.app, "ticket", AsyncMock(return_value=Mock(id=100))),
+            patch.object(self.app, "close_ticket", AsyncMock()),
+            patch.object(self.app, "publish", AsyncMock()) as review,
+        ):
+            await self.app.submit(interaction, 42, "marvel-rivals", self.answers, 1)
+        review.assert_not_awaited()
+        self.assertIn(self.roles[self.form["manager_role"]], self.member.add_roles.call_args.args)
+
+    async def test_new_member_and_visitor_use_same_submission(self):
+        self.guild.owner_id = 99
+        self.guild.fetch_member = AsyncMock(return_value=self.member)
+        interaction = SimpleNamespace(user=self.member, guild_id=config.GUILD_ID, guild=self.guild)
+        identity = dict(uid="12345", name="Player")
+        for status in ("new", "visitor"):
+            self.store.update(42, status=status, game="marvel-rivals", message_id=None)
+            self.member.roles = [self.guild.default_role] + (
+                [self.roles[config.VISITOR_ROLE_ID]] if status == "visitor" else []
+            )
+            with (
+                patch("rionnag.integrations.accounts.verify_account", AsyncMock(return_value=identity)),
+                patch.object(self.app, "ticket", AsyncMock(return_value=Mock(id=100))) as ticket,
+                patch.object(self.app, "publish", AsyncMock()) as review,
+            ):
+                await self.app.submit(interaction, 42, "marvel-rivals", self.answers, 1)
+            ticket.assert_awaited_once_with(self.member)
+            review.assert_awaited_once()
+            self.assertEqual(self.store.member(42)["status"], "pending")
+
     async def test_rejoin_restores_manager_not_only_tryout(self):
         self.store.update(
             42,

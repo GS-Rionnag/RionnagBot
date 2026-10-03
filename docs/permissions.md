@@ -10,7 +10,7 @@ Guild: 1554260744327929987. Protected Rionnag role: 1555657055287648326. Visitor
 | Main tryout entry | No | Yes | No | No | No when on a team |
 | Accept/reject | No | No | No | Another member only | No |
 
-Tickets explicitly deny other roles and allow applicant/bot members. Only the selected manager role is allowed after submission. Category permissions never grant managers access to every unsubmitted ticket. Discord owners and Administrator holders bypass overwrites; absolute owner/admin invisibility is impossible. The server owner can accept or reject any application, including their own, without a manager role. Other managers may review only another applicant for their selected game; Administrator alone does not grant review authorization.
+Tickets explicitly deny other roles and allow applicant/bot members. Only the selected manager role is allowed after submission. Category permissions never grant managers access to every unsubmitted ticket. Discord owners and Administrator holders bypass overwrites; absolute owner/admin invisibility is impossible. The server owner can accept or reject any game application without a manager role. Other managers may review only another applicant for their selected game; Administrator alone does not grant review authorization.
 
 The owner's completed form is automatically accepted even after the initial wipe, so they never need to review their own onboarding application. Accepted returners, including managers, also bypass review after completing reset forms and regain their exact saved roles.
 

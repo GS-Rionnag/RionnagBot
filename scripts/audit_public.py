@@ -47,7 +47,7 @@ def main():
     if failures:
         raise RuntimeError("Private material found in: " + ", ".join(sorted(failures)))
     print(
-        "Public-source audit passed: no known credentials, tokens, databases, logs, or backups in index/history."
+        "Public-source audit passed: no known credentials or private runtime files in index/history."
     )
 
 
