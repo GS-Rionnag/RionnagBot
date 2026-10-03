@@ -50,6 +50,17 @@ def fetch_player_overview(username: str) -> dict:
     """Use v4 canonical default-mode rates and its shared automatic calculation cache."""
     with RivalsClient(**client_options()) as client:
         player = client.get_player(username)
+        hero_ranks = {}
+        rank_errors = False
+        # Fetch the separate leaderboard metadata before detail-heavy canonical stats.
+        for mode in ("competitive", "quickplay"):
+            try:
+                for hero in player.stats.summary_heroes(mode=mode, season="all"):
+                    if hero.rank is not None:
+                        hero_ranks.setdefault(str(hero.hero_id), hero.rank)
+            except RivalsAPIError:
+                rank_errors = True
+                logger.warning("Hero leaderboard lookup unavailable for %s mode", mode)
         rates = {"overall": None, "heroes": None, "classes": None}
         errors = []
         overall_scope = "Current Season"
@@ -81,16 +92,8 @@ def fetch_player_overview(username: str) -> dict:
                 )
             except (RivalsAPIError, ValueError):
                 logger.exception("Couldn't fetch all-season overall rate")
-        hero_ranks = {}
-        try:
-            # Canonical attributed rows deliberately have no leaderboard ranks.
-            # The documented provider-summary endpoint preserves that separate metadata.
-            for mode in ("competitive", "quickplay"):
-                for hero in player.stats.summary_heroes(mode=mode, season="all"):
-                    if hero.rank is not None:
-                        hero_ranks.setdefault(str(hero.hero_id), hero.rank)
-        except RivalsAPIError:
-            logger.exception("Couldn't fetch hero leaderboard positions")
+        if rank_errors:
+            errors.append("Some hero leaderboard placements are temporarily unavailable.")
         return {
             "player_uid": str(player.uid),
             "player_name": player.name or str(player.uid),
@@ -287,6 +290,7 @@ def add_hero_fields(embed: discord.Embed, overview: dict[str, str]) -> None:
             name=overview["hero_win_rates_name"], value=overview["competitive_heroes"], inline=False
         )
         embed.add_field(name=overview["role_win_rates_name"], value=overview["role_win_rates"], inline=False)
+        return
     for mode, label in (("competitive", "Competitive"),):
         key = f"{mode}_heroes"
         if key in overview:

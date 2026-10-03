@@ -9,7 +9,7 @@ from rionnag import config
 from rionnag.integrations.rivals import fetch_player_overview, profile_overview, queued_lookup
 
 log = logging.getLogger(__name__)
-STATS_VERSION = 5
+STATS_VERSION = 6
 
 
 async def player_stats_embed(answers):
@@ -42,7 +42,7 @@ async def player_stats_embed(answers):
             name=fields["role_win_rates_name"], value=fields["role_win_rates"][:700], inline=False
         )
         embed.add_field(
-            name=fields.get("hero_win_rates_name", "Top 6 Competitive Characters (All Seasons)"),
+            name=fields.get("hero_win_rates_name", "Top 6 Characters (All Seasons)"),
             value=fields.get("competitive_heroes", fields["top_characters"])[:1024],
             inline=False,
         )

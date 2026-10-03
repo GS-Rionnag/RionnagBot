@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 — repair duplicate hero fields and rank lookup
+
+- Remove the duplicate Competitive hero field from /profile; display one combined Top 6 Characters field.
+- Fetch hero leaderboard placements before detail-heavy stats and try both summary modes independently.
+- Keep rank failures retryable rather than caching rankless embeds as complete results.
+
 ## 2026-10-03 — migrate to rivals-api 4 default win rates
 
 - Upgrade to canonical stats calls with automatic caching and default Competitive plus Quick Play scope.

@@ -2,13 +2,14 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import discord
 from rivals_api import RivalsAPIError
 
-from rionnag.integrations.rivals import fetch_player_overview, profile_overview
+from rionnag.integrations.rivals import add_hero_fields, fetch_player_overview, profile_overview
 
 
 class OverviewTests(unittest.TestCase):
-    def fetch(self, rate=57, partial=False, blocked_season=False):
+    def fetch(self, rate=57, partial=False, blocked_season=False, blocked_rank=False):
         metadata = {"provider_errors": ["offline"] if partial else [], "unresolved": []}
 
         def response(data):
@@ -45,6 +46,18 @@ class OverviewTests(unittest.TestCase):
             stats=stats,
             rank_game_season={"100120": SimpleNamespace(rank_game_id=20, rank_score=3600)},
         )
+        if blocked_rank:
+            stats.summary_heroes.side_effect = [
+                RivalsAPIError("summary blocked"),
+                [SimpleNamespace(hero_id=1016, rank=324)],
+            ]
+        if not blocked_season:
+
+            def rate_after_ranks():
+                self.assertEqual(stats.summary_heroes.call_count, 2)
+                return response({"win_rate_pct": rate, "metadata": metadata})
+
+            stats.win_rate.side_effect = rate_after_ranks
         if blocked_season:
             stats.win_rate.side_effect = [RivalsAPIError("season blocked"), response({"win_rate_pct": 61})]
         with patch("rionnag.integrations.rivals.RivalsClient") as client:
@@ -75,6 +88,23 @@ class OverviewTests(unittest.TestCase):
     def test_partial_provider_coverage_is_visible(self):
         result, _ = self.fetch(partial=True)
         self.assertIn("coverage is partial", result["win_rate_note"])
+
+    def test_profile_adds_one_combined_hero_field_with_rank(self):
+        result, _ = self.fetch()
+        fields, _ = profile_overview(result)
+        embed = discord.Embed()
+        add_hero_fields(embed, fields)
+        hero_fields = [field for field in embed.fields if "Characters" in field.name]
+        self.assertEqual(len(hero_fields), 1)
+        self.assertEqual(hero_fields[0].name, "Top 6 Characters (All Seasons)")
+        self.assertIn("58% WR `#324`", hero_fields[0].value)
+
+    def test_failed_rank_mode_does_not_skip_other_mode(self):
+        with self.assertLogs("rionnag.integrations.rivals", level="WARNING"):
+            result, _ = self.fetch(blocked_rank=True)
+        fields, _ = profile_overview(result)
+        self.assertIn("58% WR `#324`", fields["competitive_heroes"])
+        self.assertIn("leaderboard placements", result["win_rate_note"])
 
     def test_blocked_current_season_uses_explicit_all_season_label(self):
         with self.assertLogs("rionnag.integrations.rivals", level="ERROR"):
