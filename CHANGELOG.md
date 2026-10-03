@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 - current-season Rivals stats
+
+- Upgrade rivals-api to 4.1 and explicitly request season="current" for overall, hero, and class win rates.
+- Label all three fields Current Season and remove the overall all-season fallback.
+- Refresh cached application stats without resetting forms or roles; preserve hero leaderboard placements.
+
 ## 2026-10-03 — repair duplicate hero fields and rank lookup
 
 - Remove the duplicate Competitive hero field from /profile; display one combined Top 6 Characters field.

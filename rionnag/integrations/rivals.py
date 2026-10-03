@@ -65,9 +65,9 @@ def fetch_player_overview(username: str) -> dict:
         errors = []
         overall_scope = "Current Season"
         for name, fetch in (
-            ("overall", lambda: player.stats.win_rate()),
-            ("heroes", lambda: player.stats.hero_win_rates(season="all")),
-            ("classes", lambda: player.stats.class_win_rates(season="all")),
+            ("overall", lambda: player.stats.win_rate(season="current")),
+            ("heroes", lambda: player.stats.hero_win_rates(season="current")),
+            ("classes", lambda: player.stats.class_win_rates(season="current")),
         ):
             try:
                 rates[name] = fetch().to_dict()
@@ -83,15 +83,6 @@ def fetch_player_overview(username: str) -> dict:
             except (RivalsAPIError, ValueError):
                 logger.exception("Couldn't fetch canonical %s rates", name)
                 errors.append(f"{name.capitalize()} win rates are temporarily unavailable.")
-        if rates["overall"] is None:
-            try:
-                rates["overall"] = player.stats.win_rate(season="all").to_dict()
-                overall_scope = "All Seasons"
-                errors.append(
-                    "Current season could not be verified; overall rate covers all available seasons."
-                )
-            except (RivalsAPIError, ValueError):
-                logger.exception("Couldn't fetch all-season overall rate")
         if rank_errors:
             errors.append("Some hero leaderboard placements are temporarily unavailable.")
         return {
@@ -105,6 +96,7 @@ def fetch_player_overview(username: str) -> dict:
             "hero_ranks": hero_ranks,
             "stats_mode": "all",
             "overall_scope": overall_scope,
+            "hero_scope": "Current Season",
             "win_rate_note": " ".join(errors),
         }
 
@@ -221,14 +213,14 @@ def profile_overview(profile: dict) -> tuple[dict[str, str], str | None]:
         "peak_rank": peak_rank,
         "top_characters": characters,
         "role_win_rates_name": (
-            "Class Win Rates (All Seasons)"
+            f"Class Win Rates ({profile.get('hero_scope', 'All Seasons')})"
             if profile.get("stats_mode") == "all"
             else "Quick Play Class Win Rates (All Seasons)"
             if profile.get("stats_mode") == "quickplay"
             else "Competitive Class Win Rates (All Seasons)"
         ),
         "hero_win_rates_name": (
-            "Top 6 Characters (All Seasons)"
+            f"Top 6 Characters ({profile.get('hero_scope', 'All Seasons')})"
             if profile.get("stats_mode") == "all"
             else "Top 6 Quick Play Characters (All Seasons)"
             if profile.get("stats_mode") == "quickplay"

@@ -53,7 +53,7 @@ class OverviewTests(unittest.TestCase):
             ]
         if not blocked_season:
 
-            def rate_after_ranks():
+            def rate_after_ranks(**kwargs):
                 self.assertEqual(stats.summary_heroes.call_count, 2)
                 return response({"win_rate_pct": rate, "metadata": metadata})
 
@@ -65,14 +65,14 @@ class OverviewTests(unittest.TestCase):
             result = fetch_player_overview("123")
         return result, stats
 
-    def test_canonical_calls_use_default_modes_and_retain_all_season_hero_scope(self):
+    def test_canonical_calls_use_default_modes_and_current_season(self):
         result, stats = self.fetch()
-        stats.win_rate.assert_called_once_with()
-        stats.hero_win_rates.assert_called_once_with(season="all")
-        stats.class_win_rates.assert_called_once_with(season="all")
+        stats.win_rate.assert_called_once_with(season="current")
+        stats.hero_win_rates.assert_called_once_with(season="current")
+        stats.class_win_rates.assert_called_once_with(season="current")
         self.assertEqual(result["stats_mode"], "all")
         fields, _ = profile_overview(result)
-        self.assertEqual(fields["hero_win_rates_name"], "Top 6 Characters (All Seasons)")
+        self.assertEqual(fields["hero_win_rates_name"], "Top 6 Characters (Current Season)")
         self.assertIn("58% WR `#324`", fields["competitive_heroes"])
         self.assertTrue(fields["competitive_heroes"].startswith("**Loki"))
         self.assertIn("Strategist", fields["role_win_rates"])
@@ -96,7 +96,7 @@ class OverviewTests(unittest.TestCase):
         add_hero_fields(embed, fields)
         hero_fields = [field for field in embed.fields if "Characters" in field.name]
         self.assertEqual(len(hero_fields), 1)
-        self.assertEqual(hero_fields[0].name, "Top 6 Characters (All Seasons)")
+        self.assertEqual(hero_fields[0].name, "Top 6 Characters (Current Season)")
         self.assertIn("58% WR `#324`", hero_fields[0].value)
 
     def test_failed_rank_mode_does_not_skip_other_mode(self):
@@ -106,10 +106,10 @@ class OverviewTests(unittest.TestCase):
         self.assertIn("58% WR `#324`", fields["competitive_heroes"])
         self.assertIn("leaderboard placements", result["win_rate_note"])
 
-    def test_blocked_current_season_uses_explicit_all_season_label(self):
+    def test_blocked_current_season_never_falls_back_to_all_seasons(self):
         with self.assertLogs("rionnag.integrations.rivals", level="ERROR"):
             result, stats = self.fetch(blocked_season=True)
-        stats.win_rate.assert_any_call(season="all")
+        stats.win_rate.assert_called_once_with(season="current")
         fields, _ = profile_overview(result)
-        self.assertEqual(fields["overall_win_rate"], "61%")
-        self.assertIn("All Seasons", fields["overall_win_rates_name"])
+        self.assertEqual(fields["overall_win_rate"], "Unavailable")
+        self.assertEqual(fields["overall_win_rates_name"], "Current Season Win Rate")
