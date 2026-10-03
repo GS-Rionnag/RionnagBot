@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 — show stats for Quick Play-only applicants
+
+- Reproduced empty Competitive fields on the pending account: its available history contains Quick Play and Custom games.
+- Fall back to explicitly labeled cached Quick Play hero/class rates when Competitive hero history is empty; preserve hero placements.
+- Refresh old stats embeds and avoid permanently caching empty/partial results.
+
 ## 2026-10-03 — applicant editing
 
 - Add a persistent applicant-only Edit button beside Accept/Reject.

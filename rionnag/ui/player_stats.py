@@ -9,7 +9,7 @@ from rionnag import config
 from rionnag.integrations.rivals import fetch_player_overview, profile_overview, queued_lookup
 
 log = logging.getLogger(__name__)
-STATS_VERSION = 2
+STATS_VERSION = 3
 
 
 async def player_stats_embed(answers):
@@ -37,7 +37,7 @@ async def player_stats_embed(answers):
             name=fields["role_win_rates_name"], value=fields["role_win_rates"][:700], inline=False
         )
         embed.add_field(
-            name="Top 6 Competitive Characters (All Seasons)",
+            name=fields.get("hero_win_rates_name", "Top 6 Competitive Characters (All Seasons)"),
             value=fields.get("competitive_heroes", fields["top_characters"])[:1024],
             inline=False,
         )
@@ -51,7 +51,8 @@ async def player_stats_embed(answers):
             "Player data is temporarily unavailable. Your application has still been submitted."
         )
         return embed
-    answers["rivals_stats_embed"] = embed.to_dict()
-    answers["rivals_stats_uid"] = identity
-    answers["rivals_stats_version"] = STATS_VERSION
+    if player.get("match_hero_rates") and player.get("match_class_rates") and not player.get("win_rate_note"):
+        answers["rivals_stats_embed"] = embed.to_dict()
+        answers["rivals_stats_uid"] = identity
+        answers["rivals_stats_version"] = STATS_VERSION
     return embed

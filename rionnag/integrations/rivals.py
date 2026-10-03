@@ -60,6 +60,7 @@ def fetch_player_overview(username: str) -> dict:
         ]
         season = max(seasons, default=None)
         rates = {"overall": None, "heroes": None, "classes": None}
+        stats_mode = "competitive"
         errors = []
         try:
             # An unfiltered exact call seeds a cache usable for every displayed scope.
@@ -95,12 +96,25 @@ def fetch_player_overview(username: str) -> dict:
                     logger.exception("Couldn't calculate cached %s win rates for player %s", name, player.uid)
                     errors.append(f"{name.capitalize()} match-history win rates are temporarily unavailable.")
 
+        # An account can have Quick Play history without any Competitive games.
+        # Reuse the same exact-history seed, never relabel those games as Competitive.
+        if rates["heroes"] is not None and not rates["heroes"].get("data"):
+            try:
+                quick_heroes = matches.fetch_hero_win_rates(method="cached", season=None, mode="quickplay")
+                if quick_heroes.get("data"):
+                    rates["heroes"] = quick_heroes
+                    rates["classes"] = matches.fetch_class_win_rates(
+                        method="cached", season=None, mode="quickplay"
+                    )
+                    stats_mode = "quickplay"
+            except (RivalsAPIError, ValueError):
+                errors.append("Quick Play match-history win rates are temporarily unavailable.")
         hero_ranks = {}
         if rates["heroes"] is not None:
             try:
                 hero_ranks = {
                     str(hero.hero_id): hero.rank
-                    for hero in player.stats.heroes(mode="competitive", season="all")
+                    for hero in player.stats.heroes(mode=stats_mode, season="all")
                 }
             except RivalsAPIError:
                 logger.exception("Couldn't fetch hero leaderboard positions for player %s", player.uid)
@@ -114,6 +128,7 @@ def fetch_player_overview(username: str) -> dict:
             "match_hero_rates": rates["heroes"].to_dict()["data"] if rates["heroes"] is not None else None,
             "match_class_rates": rates["classes"].to_dict()["data"] if rates["classes"] is not None else None,
             "hero_ranks": hero_ranks,
+            "stats_mode": stats_mode,
             "win_rate_note": " ".join(errors),
         }
 
@@ -228,7 +243,16 @@ def profile_overview(profile: dict) -> tuple[dict[str, str], str | None]:
         "current_rank": current_rank,
         "peak_rank": peak_rank,
         "top_characters": characters,
-        "role_win_rates_name": "Competitive Class Win Rates (All Seasons)",
+        "role_win_rates_name": (
+            "Quick Play Class Win Rates (All Seasons)"
+            if profile.get("stats_mode") == "quickplay"
+            else "Competitive Class Win Rates (All Seasons)"
+        ),
+        "hero_win_rates_name": (
+            "Top 6 Quick Play Characters (All Seasons)"
+            if profile.get("stats_mode") == "quickplay"
+            else "Top 6 Competitive Characters (All Seasons)"
+        ),
         "role_win_rates": classes,
         "win_rate_note": profile.get("win_rate_note", ""),
     }
@@ -252,7 +276,7 @@ def profile_overview(profile: dict) -> tuple[dict[str, str], str | None]:
         overview["competitive_heroes"] = value or (
             "Stats temporarily unavailable."
             if profile["match_hero_rates"] is None
-            else "No public competitive match history."
+            else "No public match history for this mode."
         )
     for mode, heroes in profile.get("heroes_by_mode", {}).items():
         lines = []

@@ -38,7 +38,12 @@ class RenderingTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch(
                 "rionnag.ui.player_stats.queued_lookup",
-                return_value={"player_name": "Test", "player_uid": "123"},
+                return_value={
+                    "player_name": "Test",
+                    "player_uid": "123",
+                    "match_hero_rates": [1],
+                    "match_class_rates": [1],
+                },
             ) as lookup,
             patch("rionnag.ui.player_stats.profile_overview", return_value=(fields, None)),
         ):
