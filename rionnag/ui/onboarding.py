@@ -7,6 +7,15 @@ from rionnag import config
 log = logging.getLogger(__name__)
 
 
+def entry_embed():
+    return discord.Embed(
+        title="Apply for a game tryout",
+        description="Choose your game below, complete the form, and select your available days. "
+        "Your game manager will review your private application.",
+        color=config.COLOR,
+    )
+
+
 async def report(interaction, error):
     if not isinstance(error, ValueError):
         log.error("Interaction failed", exc_info=(type(error), error, error.__traceback__))
@@ -39,6 +48,7 @@ class GameButton(discord.ui.Button):
             label=service.forms[key]["name"],
             style=discord.ButtonStyle.primary,
             custom_id=f"rionnag:game:{key}",
+            emoji=discord.PartialEmoji(name="MR", id=1554291577701146634) if key == "marvel-rivals" else None,
         )
 
     async def callback(self, interaction):

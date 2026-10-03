@@ -51,6 +51,23 @@ async def main():
             print("Onboarding statuses:", dict(Counter(store.member(mid)["status"] for mid in store.ids())))
             row = store.member(guild.owner_id)
             print("Owner ticket:", row["channel_id"], "saved role IDs:", row["restore_roles"])
+            for channel in channels:
+                if channel.id not in {config.ENTRY_CHANNEL_ID, row["channel_id"]}:
+                    continue
+                async for message in channel.history(limit=1):
+                    print(
+                        "Panel:",
+                        channel.name,
+                        "embed titles:",
+                        [embed.title for embed in message.embeds],
+                        "buttons:",
+                        [
+                            (button.label, str(button.emoji))
+                            for component in message.components
+                            for button in component.children
+                            if isinstance(button, discord.Button)
+                        ],
+                    )
 
 
 if __name__ == "__main__":

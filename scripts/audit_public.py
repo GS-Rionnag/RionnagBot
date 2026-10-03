@@ -46,9 +46,7 @@ def main():
             failures.add(name)
     if failures:
         raise RuntimeError("Private material found in: " + ", ".join(sorted(failures)))
-    print(
-        "Public-source audit passed: no known credentials or private runtime files in index/history."
-    )
+    print("Public-source audit passed: no known credentials or private runtime files in index/history.")
 
 
 if __name__ == "__main__":

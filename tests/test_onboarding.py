@@ -49,6 +49,7 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.guild.get_role.side_effect = self.roles.get
         self.member = Mock(spec=discord.Member)
         self.member.id, self.member.guild, self.member.bot = 42, self.guild, False
+        self.member.name = "test-user"
         self.member.roles = [self.guild.default_role]
         self.member.add_roles = AsyncMock()
         self.member.remove_roles = AsyncMock()
@@ -59,6 +60,7 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
             preferred_role_1="Tank",
             preferred_role_2="DPS",
             availability="Monday 6 PM–10 PM",
+            availability_days={"Monday": {"start": 18, "end": 22}},
         )
 
     def test_missing_new_question_blocks_submit(self):

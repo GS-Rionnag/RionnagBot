@@ -5,7 +5,11 @@ import discord
 from rionnag import config
 from rionnag.ui.onboarding import SafeView, report
 
-PAGE_SIZE = 5
+PAGE_SIZE = 4
+
+
+def modal_questions(form):
+    return [q for q in form["questions"] if q["key"] != "availability"]
 
 
 class FormPage(discord.ui.Modal):
@@ -16,7 +20,15 @@ class FormPage(discord.ui.Modal):
         self.version = form["version"]
         self.answers = dict(answers)
         self.fields = {}
-        for q in form["questions"][page * PAGE_SIZE : (page + 1) * PAGE_SIZE]:
+        if page == 0 and game == "marvel-rivals":
+            self.add_item(
+                discord.ui.TextDisplay(
+                    "If your username has special characters, type the normal characters to search for it. "
+                    "This is a search, so you do not need the exact username. "
+                    "You can also enter your numeric UID."
+                )
+            )
+        for q in modal_questions(form)[page * PAGE_SIZE : (page + 1) * PAGE_SIZE]:
             saved = answers.get(q["key"], "")
             if q.get("options"):
                 field = discord.ui.Select(
@@ -58,16 +70,14 @@ class FormPage(discord.ui.Modal):
             if row["status"] not in {"new", "reset", "visitor", "rejected"} or row["game"] != self.game:
                 raise ValueError("This form is no longer active.")
             self.service.store.update(self.owner_id, answers=self.answers)
-        if (self.page + 1) * PAGE_SIZE < len(form["questions"]):
+        if (self.page + 1) * PAGE_SIZE < len(modal_questions(form)):
             await interaction.response.send_message(
                 "Page saved. Continue to the next questions.", view=ContinueView(self), ephemeral=True
             )
         else:
-            await interaction.response.defer(ephemeral=True, thinking=True)
-            await self.service.submit(interaction, self.owner_id, self.game, self.answers, self.version)
-            await interaction.followup.send(
-                "Application submitted. Your result will be sent by DM.", ephemeral=True
-            )
+            from rionnag.ui.accounts import continue_to_availability
+
+            await continue_to_availability(interaction, self)
 
 
 class ContinueView(SafeView):

@@ -8,7 +8,7 @@ from discord.ext import commands, tasks
 from rionnag import config
 from rionnag.services.permissions import apply_server_policy
 from rionnag.services.resets import Resets
-from rionnag.ui.onboarding import EntryView, ReviewView, WelcomeView, report
+from rionnag.ui.onboarding import EntryView, ReviewView, WelcomeView, entry_embed, report
 
 log = logging.getLogger(__name__)
 
@@ -45,15 +45,13 @@ class Onboarding(commands.Cog):
             async for message in entry.history(limit=100):
                 if message.author == self.bot.user and message.components:
                     await message.edit(
-                        content="Visitors: choose a game to apply for a tryout.",
-                        embed=None,
+                        content=None,
+                        embed=entry_embed(),
                         view=EntryView(self.service),
                     )
                     break
             else:
-                await entry.send(
-                    "Visitors: choose a game to apply for a tryout.", view=EntryView(self.service)
-                )
+                await entry.send(embed=entry_embed(), view=EntryView(self.service))
             self.ready = True
             log.info("Onboarding reconciliation complete")
 

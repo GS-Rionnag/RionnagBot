@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
+import unicodedata
 
 import discord
 
@@ -11,6 +13,12 @@ from rionnag.services.permissions import has_role, ticket_overwrites, visitor_el
 
 log = logging.getLogger(__name__)
 COMPLETE = {"visitor", "accepted", "rejected"}
+
+
+def ticket_name(member):
+    username = unicodedata.normalize("NFKC", member.name).casefold()
+    username = re.sub(r"[^\w-]+", "-", username).strip("-_") or "member"
+    return f"{username[:75]}-{str(member.id)[-4:]}"
 
 
 class Applications:
@@ -36,6 +44,9 @@ class Applications:
                 raise ValueError(f"Choose a valid option for {q['label']}.")
         if answers.get("preferred_role_1") == answers.get("preferred_role_2"):
             raise ValueError("Choose two different preferred roles.")
+        from rionnag.ui.availability import validate_days
+
+        validate_days(answers.get("availability_days"))
 
     async def ticket(self, member):
         """Caller holds member lock. Never create a second ticket for a member."""
@@ -49,7 +60,7 @@ class Applications:
             if category is None:
                 raise ValueError("Applications category is missing.")
             channel = await member.guild.create_text_channel(
-                f"application-{member.id}",
+                ticket_name(member),
                 category=category,
                 topic=f"rionnag:member:{member.id}",
                 overwrites=ticket_overwrites(member),
@@ -57,7 +68,7 @@ class Applications:
             )
         self.store.update(member.id, channel_id=channel.id)
         form = self.form_for(row) if row["status"] == "pending" else None
-        await channel.edit(overwrites=ticket_overwrites(member, form))
+        await channel.edit(name=ticket_name(member), overwrites=ticket_overwrites(member, form))
         return channel
 
     async def welcome(self, member):
@@ -68,11 +79,21 @@ class Applications:
         if row["message_id"]:
             try:
                 message = await channel.fetch_message(row["message_id"])
-                await message.edit(content=self.welcome_text(row), embed=None, view=WelcomeView(self))
+                await message.edit(
+                    content=member.mention,
+                    embed=self.welcome_embed(member, row),
+                    view=WelcomeView(self),
+                    allowed_mentions=discord.AllowedMentions(users=[member], roles=False, everyone=False),
+                )
                 return
             except discord.NotFound:
                 pass
-        message = await channel.send(self.welcome_text(row), view=WelcomeView(self))
+        message = await channel.send(
+            content=member.mention,
+            embed=self.welcome_embed(member, row),
+            view=WelcomeView(self),
+            allowed_mentions=discord.AllowedMentions(users=[member], roles=False, everyone=False),
+        )
         self.store.update(member.id, message_id=message.id)
 
     def welcome_text(self, row):
@@ -85,6 +106,21 @@ class Applications:
                 "Complete every new question to restore your previous roles automatically."
             )
         return text
+
+    def welcome_embed(self, member, row):
+        embed = discord.Embed(
+            title="Welcome to Rionnag", description=self.welcome_text(row), color=config.COLOR
+        )
+        embed.add_field(
+            name="Visitor", value="Join the community and apply for a game tryout later.", inline=False
+        )
+        embed.add_field(
+            name="Game tryout",
+            value="Complete your game form, then select your available days and times.",
+            inline=False,
+        )
+        embed.set_footer(text=f"Private onboarding for {member.name}")
+        return embed
 
     async def start(self, interaction, game):
         from rionnag.ui.forms import FormPage
@@ -135,7 +171,7 @@ class Applications:
             from rionnag.integrations.accounts import verify_account
 
             async with self.account_lock:
-                identity = await verify_account(game, answers["username"])
+                identity = await verify_account(game, answers.get("player_uid") or answers["username"])
                 for other_id in self.store.ids():
                     if other_id == member_id:
                         continue
@@ -200,7 +236,7 @@ class Applications:
             content=f"{manager.mention} Application from {member.mention}",
             embed=embed,
             view=ReviewView(self),
-            allowed_mentions=discord.AllowedMentions(roles=[manager], users=False),
+            allowed_mentions=discord.AllowedMentions(roles=[manager], users=[member], everyone=False),
             file=discord.File(io.BytesIO("\n".join(transcript).encode("utf-8")), filename="application.txt"),
         )
         self.store.update(member.id, message_id=message.id)

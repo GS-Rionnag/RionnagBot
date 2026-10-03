@@ -1,5 +1,13 @@
 # Change timeline
 
+## 2026-10-03 — restore onboarding presentation and availability controls
+
+- Restored the MR emoji and embedded welcome/tryout panels, and username-based ticket names with a short ID suffix.
+- Replaced the availability text box with a repeatable day → start/end time → more days → finish flow, with cached schedules and overnight windows.
+- Added the normal-character username search note and a paginated game-account results picker; selected accounts are verified by UID.
+- Updated existing tickets/panels through reconciliation, without wiping data or triggering a form-version reset.
+- Added applicant mentions in message content, with explicit mention permissions for new welcome/application messages.
+
 ## 2026-10-03 — organization workflow rebuild
 
 - Deleted previous onboarding/scrim databases, backups, caches, logs, and obsolete docs without retaining member data.
