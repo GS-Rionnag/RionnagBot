@@ -49,6 +49,33 @@ class RenderingTests(unittest.IsolatedAsyncioTestCase):
             await player_stats_embed(answers)
             self.assertEqual(lookup.call_count, 2)
 
+    async def test_old_embed_cache_is_refreshed_without_resetting_form_answers(self):
+        answers = {
+            "player_uid": "123",
+            "username": "Test",
+            "rivals_stats_uid": "123",
+            "rivals_stats_embed": discord.Embed(title="Old stats").to_dict(),
+        }
+        fields = dict(
+            current_rank="Gold",
+            peak_rank="Diamond",
+            overall_win_rate="57%",
+            role_win_rates_name="Roles",
+            role_win_rates="Tank: 50%",
+            top_characters="Thor",
+        )
+        with (
+            patch(
+                "rionnag.ui.player_stats.queued_lookup",
+                return_value={"player_name": "Test", "player_uid": "123"},
+            ) as lookup,
+            patch("rionnag.ui.player_stats.profile_overview", return_value=(fields, None)),
+        ):
+            embed = await player_stats_embed(answers)
+        lookup.assert_called_once()
+        self.assertEqual(answers["username"], "Test")
+        self.assertEqual(embed.fields[4].value, "57%")
+
     async def test_existing_application_has_two_embeds_and_attachment_removed(self):
         row = {
             "game": "marvel-rivals",

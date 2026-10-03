@@ -9,12 +9,17 @@ from rionnag import config
 from rionnag.integrations.rivals import fetch_player_overview, profile_overview, queued_lookup
 
 log = logging.getLogger(__name__)
+STATS_VERSION = 2
 
 
 async def player_stats_embed(answers):
     identity = str(answers.get("player_uid") or answers["username"])
     cached = answers.get("rivals_stats_embed")
-    if cached and answers.get("rivals_stats_uid") == identity:
+    if (
+        cached
+        and answers.get("rivals_stats_uid") == identity
+        and answers.get("rivals_stats_version") == STATS_VERSION
+    ):
         return discord.Embed.from_dict(cached)
     embed = discord.Embed(title="Marvel Rivals player data", color=config.COLOR)
     try:
@@ -48,4 +53,5 @@ async def player_stats_embed(answers):
         return embed
     answers["rivals_stats_embed"] = embed.to_dict()
     answers["rivals_stats_uid"] = identity
+    answers["rivals_stats_version"] = STATS_VERSION
     return embed

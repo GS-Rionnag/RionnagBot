@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 — repair season win-rate fallback
+
+- Keep exact-first history lookup followed by cached season/hero/class calculations.
+- Use the documented profile season win rate when cached history has no usable season result; preserve valid zero rates.
+- Refresh older cached application stats embeds in place and retain hero leaderboard placements after win rates.
+
 ## 2026-10-03 — restore player data in applications
 
 - Remove application.txt attachments, including from existing application messages when repaired.

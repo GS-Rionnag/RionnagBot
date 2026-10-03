@@ -47,9 +47,10 @@ def search_player_accounts(username: str) -> list[dict]:
 
 
 def fetch_player_overview(username: str) -> dict:
-    """On demand, seed exact history once and calculate displayed rates from that cache."""
+    """Seed exact history once, use cached rates, and preserve the profile season fallback."""
     with RivalsClient(**client_options()) as client:
         player = client.get_player(username)
+        season_win_rate = player.win_rate
         matches = player.matches
         ranks = player.rank_game_season or {}
         seasons = [
@@ -103,10 +104,11 @@ def fetch_player_overview(username: str) -> dict:
                 }
             except RivalsAPIError:
                 logger.exception("Couldn't fetch hero leaderboard positions for player %s", player.uid)
+        cached_season_rate = rates["overall"].get("win_rate_pct") if rates["overall"] is not None else None
         return {
             "player_uid": str(player.uid),
             "player_name": player.name or str(player.uid),
-            "win_rate": rates["overall"].get("win_rate_pct") if rates["overall"] is not None else None,
+            "win_rate": cached_season_rate if cached_season_rate is not None else season_win_rate,
             "top_heroes": [],
             "rank_game_season": ranks,
             "match_hero_rates": rates["heroes"].to_dict()["data"] if rates["heroes"] is not None else None,
