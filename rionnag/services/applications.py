@@ -152,7 +152,20 @@ class Applications:
             self.store.update(member.id, status="visitor", answers={"membership": "visitor"})
             await self.close_ticket(member)
 
-    async def submit(self, interaction, member_id, game, answers, version):
+    async def edit_application(self, interaction):
+        from rionnag.ui.forms import FormPage
+
+        async with self.lock(interaction.user.id):
+            row = self.store.member(interaction.user.id)
+            if row["status"] != "pending" or row["channel_id"] != interaction.channel_id:
+                raise ValueError("Only the applicant can edit their pending application.")
+            if interaction.guild_id != config.GUILD_ID:
+                raise ValueError("This application belongs to another server.")
+            await interaction.response.send_modal(
+                FormPage(self, interaction.user.id, row["game"], 0, row["answers"], editing=True)
+            )
+
+    async def submit(self, interaction, member_id, game, answers, version, editing=False):
         if interaction.user.id != member_id or interaction.guild_id != config.GUILD_ID:
             raise ValueError("This form belongs to another member.")
         async with self.lock(member_id):
@@ -161,8 +174,11 @@ class Applications:
             form = self.forms[game]
             if version != form["version"] or row["game"] != game:
                 raise ValueError("The form changed while you were filling it out. Open it again.")
-            if row["status"] not in {"new", "reset", "visitor", "rejected"}:
+            allowed = {"pending"} if editing else {"new", "reset", "visitor", "rejected"}
+            if row["status"] not in allowed:
                 raise ValueError("This application has already been submitted.")
+            if editing and row["channel_id"] != interaction.channel_id:
+                raise ValueError("Edit your application in its own channel.")
             if row["status"] in {"visitor", "rejected"} and not visitor_eligible(member, self.forms):
                 raise ValueError("Only visitors can submit new tryout applications.")
             self.validate(form, answers)
@@ -181,6 +197,10 @@ class Applications:
                         )
                 answers = dict(answers, player_uid=identity["uid"], username=identity["name"])
                 self.store.update(member_id, answers=answers)
+            if editing:
+                channel = await self.ticket(member)
+                await self.publish(member, channel)
+                return
             channel = await self.ticket(member)
             if row["message_id"]:
                 try:

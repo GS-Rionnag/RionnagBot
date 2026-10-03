@@ -54,6 +54,19 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([o.value for o in window.start.options if o.default], ["18"])
         self.assertEqual([o.value for o in window.end.options if o.default], ["22"])
 
+    async def test_pending_edit_draft_does_not_replace_reviewed_answers_until_finish(self):
+        self.store.update(
+            42,
+            status="pending",
+            answers=dict(self.modal.answers, availability_days={"Sunday": {"start": 9, "end": 12}}),
+        )
+        self.modal.editing = True
+        view = AvailabilityView(self.modal)
+        view.days = {"Monday": {"start": 18, "end": 22}}
+        await view.save()
+        self.assertIn("Sunday", self.store.member(42)["answers"]["availability_days"])
+        self.assertIn("Monday", self.modal.answers["availability_days"])
+
     async def test_empty_schedule_cannot_finish_and_equal_times_rejected(self):
         view = AvailabilityView(self.modal)
         self.assertTrue(view.children[-1].disabled)

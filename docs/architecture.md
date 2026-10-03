@@ -6,7 +6,9 @@ The member registry is authoritative: roles alone do not prove completion. Membe
 
 States: new → visitor, or new/visitor/rejected → pending → deciding → accepted/rejected. Changed forms move outdated entries to reset. Accepted members cache assignable roles and return to their former completed status after filling the current form. Draft/rejected answers never authorize automatic approval.
 
-All entrypoints use Applications.submit. Onboarding already has a private channel; visitors get one at submission. There is no user close/cancel action. The review panel has exactly Accept and Reject. Managers cannot review themselves; the server owner has an explicit review override for any game.
+All entrypoints use Applications.submit. Onboarding already has a private channel; visitors get one at submission. There is no user close/cancel action. The review panel has Accept, Reject, and an applicant-only Edit button. Managers cannot review themselves; the server owner has an explicit review override for any game.
+
+Pending applicants can reopen prefilled forms through Edit. Editing drafts stay in the ephemeral form session; the stored application remains unchanged until validated resubmission updates its original message. Accepted/rejected applications cannot be edited, and a decision during editing invalidates the draft. Edits preserve pending status, manager access, and roles.
 
 Reset returners with saved acceptance are automatically restored without posting a review panel. The owner also receives automatic acceptance on fresh form completion after the initial wipe; they are not asked to approve themselves.
 

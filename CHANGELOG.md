@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 — applicant editing
+
+- Add a persistent applicant-only Edit button beside Accept/Reject.
+- Prefill the current form and schedule; validated resubmission updates the same pending application message.
+- Keep reviewed answers unchanged while an edit is unfinished and reject edits after a manager decision.
+
 ## 2026-10-03 — repair season win-rate fallback
 
 - Keep exact-first history lookup followed by cached season/hero/class calculations.

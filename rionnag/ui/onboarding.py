@@ -98,3 +98,12 @@ class ReviewView(SafeView):
 
             button.callback = callback
             self.add_item(button)
+
+        edit = discord.ui.Button(
+            label="Edit", style=discord.ButtonStyle.secondary, custom_id="rionnag:application:edit"
+        )
+        edit.callback = self.edit
+        self.add_item(edit)
+
+    async def edit(self, interaction):
+        await self.service.edit_application(interaction)

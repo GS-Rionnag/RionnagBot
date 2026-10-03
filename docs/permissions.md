@@ -10,6 +10,7 @@ Guild: 1554260744327929987. Protected Rionnag role: 1555657055287648326. Visitor
 | Main tryout entry | No | Yes | No | No | No when on a team |
 | Marvel Rivals channels | No | Read only; no voice joining | Per membership | Per membership | Per membership |
 | Accept/reject | No | No | No | Another member only | No |
+| Edit pending application | Own only | Own only | No | No | No |
 
 Tickets explicitly deny other roles and allow applicant/bot members. Only the selected manager role is allowed after submission. Category permissions never grant managers access to every unsubmitted ticket. Discord owners and Administrator holders bypass overwrites; absolute owner/admin invisibility is impossible. The server owner can accept or reject any game application without a manager role. Other managers may review only another applicant for their selected game; Administrator alone does not grant review authorization.
 

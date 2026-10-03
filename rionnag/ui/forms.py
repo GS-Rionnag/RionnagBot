@@ -13,11 +13,12 @@ def modal_questions(form):
 
 
 class FormPage(discord.ui.Modal):
-    def __init__(self, service, owner_id, game, page, answers):
+    def __init__(self, service, owner_id, game, page, answers, editing=False):
         form = service.forms[game]
         super().__init__(title=f"{form['name']} · page {page + 1}"[:45], timeout=600)
         self.service, self.owner_id, self.game, self.page = service, owner_id, game, page
         self.version = form["version"]
+        self.editing = editing
         self.answers = dict(answers)
         self.fields = {}
         if page == 0 and game == "marvel-rivals":
@@ -67,9 +68,11 @@ class FormPage(discord.ui.Modal):
             )
         async with self.service.lock(self.owner_id):
             row = self.service.store.member(self.owner_id)
-            if row["status"] not in {"new", "reset", "visitor", "rejected"} or row["game"] != self.game:
+            allowed = {"pending"} if self.editing else {"new", "reset", "visitor", "rejected"}
+            if row["status"] not in allowed or row["game"] != self.game:
                 raise ValueError("This form is no longer active.")
-            self.service.store.update(self.owner_id, answers=self.answers)
+            if not self.editing:
+                self.service.store.update(self.owner_id, answers=self.answers)
         if (self.page + 1) * PAGE_SIZE < len(modal_questions(form)):
             await interaction.response.send_message(
                 "Page saved. Continue to the next questions.", view=ContinueView(self), ephemeral=True
@@ -92,4 +95,6 @@ class ContinueView(SafeView):
         m = self.modal
         if interaction.user.id != m.owner_id:
             raise ValueError("This form belongs to another member.")
-        await interaction.response.send_modal(FormPage(m.service, m.owner_id, m.game, m.page + 1, m.answers))
+        await interaction.response.send_modal(
+            FormPage(m.service, m.owner_id, m.game, m.page + 1, m.answers, editing=m.editing)
+        )

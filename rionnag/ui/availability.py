@@ -110,15 +110,17 @@ class AvailabilityView(SafeView):
         m = self.modal
         async with m.service.lock(m.owner_id):
             row = m.service.store.member(m.owner_id)
+            allowed = {"pending"} if m.editing else {"new", "reset", "visitor", "rejected"}
             if (
                 m.version != m.service.forms[m.game]["version"]
                 or row["game"] != m.game
-                or row["status"] not in {"new", "reset", "visitor", "rejected"}
+                or row["status"] not in allowed
             ):
                 raise ValueError("This form is no longer active. Open it again in your ticket.")
             m.answers["availability_days"] = self.days
             m.answers["availability"] = schedule_text(self.days, m.answers.get("time_zone"))
-            m.service.store.update(m.owner_id, answers=m.answers)
+            if not m.editing:
+                m.service.store.update(m.owner_id, answers=m.answers)
 
     async def choose_day(self, interaction):
         view = TimeWindow(self, self.children[0].values[0])
@@ -136,7 +138,10 @@ class AvailabilityView(SafeView):
         await self.save()
         await interaction.response.defer(ephemeral=True)
         m = self.modal
-        await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version)
+        if m.editing:
+            await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version, editing=True)
+        else:
+            await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version)
         await interaction.edit_original_response(
             content="Application submitted. Your result will be sent by DM.", embed=None, view=None
         )

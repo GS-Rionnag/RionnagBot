@@ -303,10 +303,60 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
             self.roles[self.form["manager_role"]], reason="Restore completed membership on rejoin"
         )
 
-    async def test_review_has_exactly_accept_reject(self):
+    async def test_review_has_accept_reject_and_applicant_edit(self):
         view = ReviewView(self.app)
-        self.assertEqual([button.label for button in view.children], ["Accept", "Reject"])
+        self.assertEqual([button.label for button in view.children], ["Accept", "Reject", "Edit"])
         self.assertTrue(view.is_persistent())
+
+    async def test_only_applicant_can_open_pending_edit(self):
+        self.store.update(42, status="pending", game="marvel-rivals", channel_id=100, answers=self.answers)
+        interaction = SimpleNamespace(
+            user=self.member,
+            guild_id=config.GUILD_ID,
+            channel_id=100,
+            response=SimpleNamespace(send_modal=AsyncMock()),
+        )
+        await self.app.edit_application(interaction)
+        modal = interaction.response.send_modal.call_args.args[0]
+        self.assertTrue(modal.editing)
+        self.assertEqual(modal.fields["username"].default, "Player")
+        interaction.user = SimpleNamespace(id=99)
+        with self.assertRaisesRegex(ValueError, "Only the applicant"):
+            await self.app.edit_application(interaction)
+
+    async def test_pending_edit_updates_same_message_without_role_changes(self):
+        self.guild.fetch_member = AsyncMock(return_value=self.member)
+        self.store.update(
+            42,
+            status="pending",
+            game="marvel-rivals",
+            channel_id=100,
+            message_id=200,
+            answers=self.answers,
+            version=1,
+        )
+        interaction = SimpleNamespace(
+            user=self.member, guild_id=config.GUILD_ID, guild=self.guild, channel_id=100
+        )
+        updated = dict(self.answers, preferred_role_1="Support")
+        with (
+            patch(
+                "rionnag.integrations.accounts.verify_account",
+                AsyncMock(return_value=dict(uid="123", name="Player")),
+            ),
+            patch.object(self.app, "ticket", AsyncMock(return_value=Mock(id=100))),
+            patch.object(self.app, "publish", AsyncMock()) as publish,
+        ):
+            await self.app.submit(interaction, 42, "marvel-rivals", updated, 1, editing=True)
+        publish.assert_awaited_once()
+        row = self.store.member(42)
+        self.assertEqual((row["status"], row["message_id"]), ("pending", 200))
+        self.assertEqual(row["answers"]["preferred_role_1"], "Support")
+        self.member.add_roles.assert_not_awaited()
+        self.member.remove_roles.assert_not_awaited()
+        self.store.update(42, status="accepted")
+        with self.assertRaisesRegex(ValueError, "already been submitted"):
+            await self.app.submit(interaction, 42, "marvel-rivals", updated, 1, editing=True)
 
     async def test_new_fields_paginate_and_old_answers_prefill(self):
         self.form["questions"].append(dict(key="extra", label="New question", required=True))
