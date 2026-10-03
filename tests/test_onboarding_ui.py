@@ -40,7 +40,7 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
             await window.save_day(self.interaction)
         days = self.store.member(42)["answers"]["availability_days"]
         self.assertEqual(days["Friday"], dict(start=22, end=24))
-        self.assertIn("12:00 AM", schedule_text(days))
+        self.assertIn("<t:", schedule_text(days))
         view = AvailabilityView(self.modal)
         self.assertEqual(len(view.days), 2)
         with patch.object(self.app, "submit", new_callable=AsyncMock) as submit:

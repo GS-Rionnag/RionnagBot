@@ -85,9 +85,18 @@ async def apply_server_policy(guild, forms, store):
                 overwrite.send_messages = False
                 overwrite.read_message_history = True
             elif role.id == config.VISITOR_ROLE_ID:
+                marvel = channel.category_id == 1555382746992353290 or channel.id == 1555382746992353290
                 overwrite.view_channel = (
                     channel.category_id == 1555732719583895622 or channel.id == 1555732719583895622
-                )
+                ) or marvel
+                if marvel:
+                    overwrite.read_message_history = True
+                    overwrite.send_messages = False
+                    overwrite.send_messages_in_threads = False
+                    overwrite.create_public_threads = False
+                    overwrite.create_private_threads = False
+                    overwrite.connect = False
+                    overwrite.speak = False
             elif any(
                 role.id in (f["team_role"], f["tryout_role"], f["manager_role"]) for f in forms.values()
             ):

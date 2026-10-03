@@ -1,5 +1,15 @@
 # Change timeline
 
+## 2026-10-03 — restore player data in applications
+
+- Remove application.txt attachments, including from existing application messages when repaired.
+- Visitors can view every Marvel Rivals channel and its history, but cannot send messages, create/post in threads, or join voice.
+
+- Added a second Marvel Rivals player-data embed to the same message as the tryout application.
+- Includes current/peak rank, current-season win rate, class win rates, and top competitive characters from the existing public player lookup.
+- Cache successful stats for restart/repair; provider failures show an unavailable-data embed without losing the application.
+- Render weekly availability as Discord timestamps in both the editor and final application, using the applicant's saved time zone.
+
 ## 2026-10-03 — availability timing and duplicate-prompt repair
 
 - Do not treat unfinished version-zero drafts as outdated completed applications during periodic reconciliation.

@@ -9,7 +9,7 @@ import discord
 
 from rionnag import config
 from rionnag.services.applications import Applications
-from rionnag.services.permissions import ticket_overwrites, visitor_eligible
+from rionnag.services.permissions import apply_server_policy, ticket_overwrites, visitor_eligible
 from rionnag.services.resets import Resets
 from rionnag.storage import Store
 from rionnag.ui.forms import FormPage
@@ -94,6 +94,30 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(visitor_eligible(self.member, self.forms))
         self.member.roles.append(self.roles[self.form["team_role"]])
         self.assertFalse(visitor_eligible(self.member, self.forms))
+
+    async def test_visitors_read_marvel_category_text_and_voice_without_posting_or_joining(self):
+        category_id = 1555382746992353290
+        channels = [
+            SimpleNamespace(id=category_id, category_id=None, overwrites={}, edit=AsyncMock()),
+            SimpleNamespace(id=10, category_id=category_id, overwrites={}, edit=AsyncMock()),
+            SimpleNamespace(id=11, category_id=category_id, overwrites={}, edit=AsyncMock()),
+        ]
+        self.guild.channels = channels
+        self.guild.get_channel.return_value = None
+        await apply_server_policy(self.guild, self.forms, self.store)
+        for channel in channels:
+            overwrite = channel.edit.call_args.kwargs["overwrites"][self.roles[config.VISITOR_ROLE_ID]]
+            self.assertTrue(overwrite.view_channel)
+            self.assertTrue(overwrite.read_message_history)
+            for permission in (
+                "send_messages",
+                "send_messages_in_threads",
+                "create_public_threads",
+                "create_private_threads",
+                "connect",
+                "speak",
+            ):
+                self.assertFalse(getattr(overwrite, permission))
 
     async def test_owner_reset_removes_manager_but_preserves_rionnag(self):
         self.member.roles += [

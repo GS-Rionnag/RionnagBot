@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import logging
 import re
 import unicodedata
@@ -210,34 +209,35 @@ class Applications:
         await channel.edit(overwrites=ticket_overwrites(member, form))
         embed = discord.Embed(title=f"{form['name']} tryout application", color=config.COLOR)
         embed.description = f"Applicant: {member.mention}"
-        transcript = []
         for q in form["questions"]:
             value = row["answers"].get(q["key"]) or "Not provided"
-            transcript.append(f"{q['label']}\n{value}\n")
+            if q["key"] == "availability" and row["answers"].get("availability_days"):
+                from rionnag.ui.availability import schedule_text
+
+                value = schedule_text(row["answers"]["availability_days"], row["answers"].get("time_zone"))
             escaped = discord.utils.escape_markdown(value)[:1024]
-            if len(embed.fields) < 24 and len(embed) + len(q["label"]) + len(escaped) < 5500:
+            if len(embed.fields) < 24 and len(embed) + len(q["label"]) + len(escaped) < 3000:
                 embed.add_field(name=q["label"], value=escaped, inline=False)
-        if len(embed.fields) < len(form["questions"]):
-            embed.add_field(
-                name="Full application",
-                value="Every answer is included in the attached application.txt.",
-                inline=False,
-            )
         manager = member.guild.get_role(form["manager_role"])
+        embeds = [embed]
+        if row["game"] == "marvel-rivals":
+            from rionnag.ui.player_stats import player_stats_embed
+
+            embeds.append(await player_stats_embed(row["answers"]))
+            self.store.update(member.id, answers=row["answers"])
         if row["message_id"]:
             try:
                 await (await channel.fetch_message(row["message_id"])).edit(
-                    embed=embed, view=ReviewView(self)
+                    embeds=embeds, attachments=[], view=ReviewView(self)
                 )
                 return
             except discord.NotFound:
                 pass
         message = await channel.send(
             content=f"{manager.mention} Application from {member.mention}",
-            embed=embed,
+            embeds=embeds,
             view=ReviewView(self),
             allowed_mentions=discord.AllowedMentions(roles=[manager], users=[member], everyone=False),
-            file=discord.File(io.BytesIO("\n".join(transcript).encode("utf-8")), filename="application.txt"),
         )
         self.store.update(member.id, message_id=message.id)
 

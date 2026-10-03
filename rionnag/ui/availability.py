@@ -1,5 +1,8 @@
 """Choose a day, select its time window, repeat, then finish the application."""
 
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
+
 import discord
 
 from rionnag import config
@@ -26,13 +29,26 @@ def validate_days(days):
             raise ValueError("Start and end times must be different.")
 
 
-def schedule_text(days):
-    return "\n".join(
-        f"{day}: {hour_label(days[day]['start'])} – {hour_label(days[day]['end'])}"
-        + (" (next day)" if days[day]["end"] < days[day]["start"] else "")
-        for day in DAYS
-        if day in days
-    )
+def schedule_text(days, time_zone="Eastern Time (ET)", now=None):
+    zones = {
+        "Eastern Time (ET)": "America/New_York",
+        "Central Time (CT)": "America/Chicago",
+        "Mountain Time (MT)": "America/Denver",
+        "Pacific Time (PT)": "America/Los_Angeles",
+    }
+    zone = ZoneInfo(zones.get(time_zone, "America/New_York"))
+    today = (now or datetime.now(UTC)).astimezone(zone).date()
+    lines = []
+    for index, day in enumerate(DAYS):
+        if day not in days:
+            continue
+        date = today + timedelta(days=((index - 1) % 7 - today.weekday()) % 7)
+        midnight = datetime(date.year, date.month, date.day, tzinfo=zone)
+        start_hour, end_hour = days[day]["start"], days[day]["end"]
+        start = midnight + timedelta(hours=start_hour)
+        end = midnight + timedelta(hours=end_hour + (24 if end_hour <= start_hour else 0))
+        lines.append(f"{day}: <t:{int(start.timestamp())}:t> – <t:{int(end.timestamp())}:t>")
+    return "\n".join(lines)
 
 
 class AvailabilityView(SafeView):
@@ -80,7 +96,9 @@ class AvailabilityView(SafeView):
             name="Time zone", value=self.modal.answers.get("time_zone", "Your selected time zone")
         )
         embed.add_field(
-            name="Saved days", value=schedule_text(self.days) or "No days selected yet.", inline=False
+            name="Saved days",
+            value=schedule_text(self.days, self.modal.answers.get("time_zone")) or "No days selected yet.",
+            inline=False,
         )
         if not self.days and self.modal.answers.get("availability"):
             embed.add_field(
@@ -99,7 +117,7 @@ class AvailabilityView(SafeView):
             ):
                 raise ValueError("This form is no longer active. Open it again in your ticket.")
             m.answers["availability_days"] = self.days
-            m.answers["availability"] = schedule_text(self.days)
+            m.answers["availability"] = schedule_text(self.days, m.answers.get("time_zone"))
             m.service.store.update(m.owner_id, answers=m.answers)
 
     async def choose_day(self, interaction):
