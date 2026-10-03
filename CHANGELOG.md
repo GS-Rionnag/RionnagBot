@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-03 — restore starter-only test behavior
+
+- Remove the test-host requirement from rerolls at the owner's request; substitutes do not trigger game detection.
+- Keep restored waiting-room configuration and current-profile account lookup fixes.
+
 ## 2026-10-03 — preserve live detection through test rerolls
 
 - Require the real test host in rerolled example lineups so the monitor never loses its live account.
