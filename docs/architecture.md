@@ -4,6 +4,8 @@ RionnagBot composes Store, Applications, and feature cogs. Onboarding handles jo
 
 The scrim cog passes `Store.saved_uid` to the controller so accepted account identities come from the current member/profile registry, without querying the removed legacy account-claims table. Saved scrim channel mappings and lobby message IDs reconnect voice events to the existing dashboard; startup queues members already in waiting and edits that dashboard in place.
 
+Test-mode rerolls require the real test host in the starting six. The monitor probes real starters and skips simulated accounts; allowing an all-simulated reroll would leave the session waiting even when its host enters a Custom game. Ordinary scrim rerolls retain their existing selection policy.
+
 The member registry is authoritative: roles alone do not prove completion. Members without completed data receive tickets during startup, joins, or repair, including the owner. Reconciliation retries every five minutes. Per-member locks serialize transitions; an OS lock prevents duplicate processes.
 
 States: new → visitor, or new/visitor/rejected → pending → deciding → accepted/rejected. Changed forms move outdated entries to reset. Accepted members cache assignable roles and return to their former completed status after filling the current form. Draft/rejected answers never authorize automatic approval.

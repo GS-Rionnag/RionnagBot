@@ -801,7 +801,11 @@ class ScrimController:
                         if data["status"] != "prepared":
                             raise ValueError("End the current game before rerolling teams.")
                         players, _ = self.eligible(interaction.guild, data)
-                        roster = reroll_team(players, prefer_real=bool(data.get("test_mode")))
+                        roster = reroll_team(
+                            players,
+                            prefer_real=bool(data.get("test_mode")),
+                            required_ids={data["test_host"]} if data.get("test_mode") else (),
+                        )
                         data["protected_in"] = []
                         data["note"] = (
                             "Full lineup rerolled from all available players, including substitutes."

@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 — preserve live detection through test rerolls
+
+- Require the real test host in rerolled example lineups so the monitor never loses its live account.
+- Repair the active test lineup without replacing the other five starters; verify its existing Discord panel changes to In game from live Custom-game evidence.
+- Cover required-host rerolls against simulated players with stronger main-role combinations.
+
 ## 2026-10-03 — restore waiting-room detection after rebuild
 
 - Restore the wiped scrim channel mapping and reuse the existing dashboard message; verify the owner's current waiting-room attendance appears live.

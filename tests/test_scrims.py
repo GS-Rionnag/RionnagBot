@@ -37,6 +37,18 @@ def players(per_role=3):
 
 
 class RotationTests(unittest.TestCase):
+    def test_test_rerolls_keep_required_real_host_among_simulated_main_roles(self):
+        from rionnag.scrims.scrims import reroll_team
+
+        host = Player(99, "host", ("Tank", "Support"), joined=100)
+        pool = [*players(3), host]
+        for player in pool[:-1]:
+            player.simulated = True
+        for _ in range(20):
+            roster = reroll_team(pool, prefer_real=True, required_ids={host.member_id})
+            self.assertIn(host.member_id, roster)
+            self.assertEqual(Counter(roster.values()), {"Tank": 2, "DPS": 2, "Support": 2})
+
     def test_main_roles_beat_lower_completion_counts_and_rerolls_keep_preferences(self):
         pool = players(2)
         for p in pool:
