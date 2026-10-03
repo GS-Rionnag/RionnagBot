@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-03 — availability timing and duplicate-prompt repair
+
+- Do not treat unfinished version-zero drafts as outdated completed applications during periodic reconciliation.
+- Reuse the saved welcome message through a real form reset instead of creating a second prompt.
+- Updated availability instructions to the owner's requested wording.
+- Start-time selection now immediately filters end times to at least one hour later, through midnight; invalid earlier selections are cleared.
+
 ## 2026-10-03 — restore onboarding presentation and availability controls
 
 - Restored the MR emoji and embedded welcome/tryout panels, and username-based ticket names with a short ID suffix.

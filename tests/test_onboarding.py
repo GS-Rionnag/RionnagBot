@@ -309,6 +309,25 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIs(await self.app.ticket(self.member), channel)
         self.guild.create_text_channel.assert_not_called()
 
+    async def test_partial_draft_is_not_reset_by_periodic_reconciliation(self):
+        self.store.update(
+            42, status="new", game="marvel-rivals", version=0, answers=self.answers, message_id=100
+        )
+
+        async def members():
+            yield self.member
+
+        self.guild.fetch_members = Mock(side_effect=lambda **kwargs: members())
+        self.guild.get_channel.return_value = None
+        resets = Resets(self.app)
+        with (
+            patch.object(resets, "reset_member", AsyncMock()) as reset,
+            patch.object(resets, "reconcile_member", AsyncMock()),
+        ):
+            await resets.reconcile(self.guild)
+        reset.assert_not_awaited()
+        self.assertEqual(self.store.member(42)["message_id"], 100)
+
 
 if __name__ == "__main__":
     unittest.main()

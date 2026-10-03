@@ -31,7 +31,6 @@ class Resets:
                     reset_target=target,
                     restore_roles=[role.id for role in roles] if approved else None,
                     restore_status=row["status"] if approved and row["status"] in COMPLETE else "accepted",
-                    message_id=None,
                 )
             else:
                 self.store.update(member.id, reset_target=target)
@@ -114,7 +113,7 @@ class Resets:
             try:
                 row = self.store.member(member.id)
                 form = self.app.form_for(row)
-                if form and (row["version"] < form["version"]) and row["answers"].get("username"):
+                if form and row["version"] > 0 and row["version"] < form["version"]:
                     await self.reset_member(member, row["game"])
                 await self.reconcile_member(member)
             except Exception:

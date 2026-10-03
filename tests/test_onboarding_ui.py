@@ -34,15 +34,13 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_add_two_days_then_finish_saves_and_submits_once(self):
-        for day, start, end in [("Monday", 18, 22), ("Friday", 22, 2)]:
+        for day, start, end in [("Monday", 18, 22), ("Friday", 22, 24)]:
             view = AvailabilityView(self.modal)
-            window = TimeWindow(view, day)
-            window.start._values = [str(start)]
-            window.end._values = [str(end)]
-            await window.on_submit(self.interaction)
+            window = TimeWindow(view, day, start, end)
+            await window.save_day(self.interaction)
         days = self.store.member(42)["answers"]["availability_days"]
-        self.assertEqual(days["Friday"], dict(start=22, end=2))
-        self.assertIn("next day", schedule_text(days))
+        self.assertEqual(days["Friday"], dict(start=22, end=24))
+        self.assertIn("12:00 AM", schedule_text(days))
         view = AvailabilityView(self.modal)
         self.assertEqual(len(view.days), 2)
         with patch.object(self.app, "submit", new_callable=AsyncMock) as submit:
@@ -63,6 +61,16 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
             await view.finish(self.interaction)
         with self.assertRaises(ValueError):
             validate_days({"Monday": {"start": 18, "end": 18}})
+
+    async def test_start_filters_end_times_and_clears_too_early_end(self):
+        window = TimeWindow(AvailabilityView(self.modal), "Monday", 15, 17)
+        self.assertEqual([int(option.value) for option in window.end.options], list(range(16, 25)))
+        window.start._values = ["18"]
+        await window.choose_start(self.interaction)
+        changed = self.interaction.response.edit_message.call_args.kwargs["view"]
+        self.assertIsNone(changed.end_hour)
+        self.assertTrue(changed.children[2].disabled)
+        self.assertEqual([int(option.value) for option in changed.end.options], list(range(19, 25)))
 
     async def test_wrong_user_cannot_change_schedule(self):
         self.interaction.user.id = 99

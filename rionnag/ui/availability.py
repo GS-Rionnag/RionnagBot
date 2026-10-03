@@ -3,12 +3,13 @@
 import discord
 
 from rionnag import config
-from rionnag.ui.onboarding import SafeView, report
+from rionnag.ui.onboarding import SafeView
 
 DAYS = ("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 
 
 def hour_label(hour):
+    hour %= 24
     return f"{hour % 12 or 12}:00 {'AM' if hour < 12 else 'PM'}"
 
 
@@ -19,7 +20,7 @@ def validate_days(days):
         if day not in DAYS or not isinstance(window, dict):
             raise ValueError("Choose a valid availability day.")
         start, end = window.get("start"), window.get("end")
-        if type(start) is not int or type(end) is not int or not 0 <= start < 24 or not 0 <= end < 24:
+        if type(start) is not int or type(end) is not int or not 0 <= start < 24 or not 0 <= end <= 24:
             raise ValueError("Choose valid start and end times.")
         if start == end:
             raise ValueError("Start and end times must be different.")
@@ -71,8 +72,9 @@ class AvailabilityView(SafeView):
         embed = discord.Embed(
             title="Scrim availability",
             color=config.COLOR,
-            description="Select a day, choose your start and end times, then add more days. "
-            "Press **Finish & submit** when your schedule is complete.",
+            description="Select day(s) you are free to play for ATLEAST 1 hour. "
+            "This is to find scrims during everyones common hours, "
+            "not always a must, can always reject scrims",
         )
         embed.add_field(
             name="Time zone", value=self.modal.answers.get("time_zone", "Your selected time zone")
@@ -101,7 +103,8 @@ class AvailabilityView(SafeView):
             m.service.store.update(m.owner_id, answers=m.answers)
 
     async def choose_day(self, interaction):
-        await interaction.response.send_modal(TimeWindow(self, self.children[0].values[0]))
+        view = TimeWindow(self, self.children[0].values[0])
+        await interaction.response.edit_message(embed=view.embed(), view=view)
 
     async def remove_day(self, interaction):
         day = self.children[1].values[0]
@@ -122,37 +125,79 @@ class AvailabilityView(SafeView):
         self.stop()
 
 
-class TimeWindow(discord.ui.Modal):
-    def __init__(self, view, day):
-        super().__init__(title=f"{day} availability", timeout=600)
+class TimeWindow(SafeView):
+    """Sequential message selects update end-time options when the start changes."""
+
+    def __init__(self, view, day, start=None, end=None):
+        super().__init__(timeout=900)
         self.view, self.day = view, day
         saved = view.days.get(day, {})
-        self.start = self.selector(saved.get("start"))
-        self.end = self.selector(saved.get("end"))
-        self.add_item(discord.ui.Label(text="Available from", component=self.start))
-        self.add_item(discord.ui.Label(text="Available until", component=self.end))
-
-    @staticmethod
-    def selector(saved):
-        return discord.ui.Select(
+        self.start_hour = saved.get("start") if start is None else start
+        self.end_hour = saved.get("end") if end is None else end
+        if self.start_hour is not None and self.end_hour is not None and self.end_hour <= self.start_hour:
+            self.end_hour = None
+        self.start = discord.ui.Select(
+            placeholder="Available from",
+            row=0,
             options=[
-                discord.SelectOption(label=hour_label(hour), value=str(hour), default=hour == saved)
+                discord.SelectOption(label=hour_label(hour), value=str(hour), default=hour == self.start_hour)
                 for hour in range(24)
             ],
-            min_values=1,
-            max_values=1,
-            required=True,
         )
+        self.start.callback = self.choose_start
+        self.add_item(self.start)
+        hours = range(self.start_hour + 1, 25) if self.start_hour is not None else []
+        self.end = discord.ui.Select(
+            placeholder="Available until (at least 1 hour later)",
+            row=1,
+            disabled=self.start_hour is None,
+            options=[
+                discord.SelectOption(
+                    label=hour_label(hour) + (" (midnight)" if hour == 24 else ""),
+                    value=str(hour),
+                    default=hour == self.end_hour,
+                )
+                for hour in hours
+            ]
+            or [discord.SelectOption(label="Choose a start time first", value="0")],
+        )
+        self.end.callback = self.choose_end
+        self.add_item(self.end)
+        save = discord.ui.Button(
+            label="Save day",
+            style=discord.ButtonStyle.success,
+            row=2,
+            disabled=self.end_hour is None or self.start_hour is None,
+        )
+        save.callback = self.save_day
+        self.add_item(save)
+        back = discord.ui.Button(label="Back to days", row=2)
+        back.callback = self.back
+        self.add_item(back)
 
-    async def on_error(self, interaction, error):
-        await report(interaction, error)
+    async def interaction_check(self, interaction):
+        return await self.view.interaction_check(interaction)
 
-    async def on_submit(self, interaction):
-        if interaction.user.id != self.view.modal.owner_id or interaction.guild_id != config.GUILD_ID:
-            raise ValueError("This availability picker belongs to another member.")
-        window = dict(start=int(self.start.values[0]), end=int(self.end.values[0]))
-        validate_days({self.day: window})
-        self.view.days[self.day] = window
+    def embed(self):
+        embed = self.view.embed()
+        embed.title = f"{self.day} availability"
+        return embed
+
+    async def choose_start(self, interaction):
+        view = TimeWindow(self.view, self.day, int(self.start.values[0]), self.end_hour)
+        await interaction.response.edit_message(embed=view.embed(), view=view)
+
+    async def choose_end(self, interaction):
+        view = TimeWindow(self.view, self.day, self.start_hour, int(self.end.values[0]))
+        await interaction.response.edit_message(embed=view.embed(), view=view)
+
+    async def save_day(self, interaction):
+        if self.start_hour is None or self.end_hour is None or self.end_hour - self.start_hour < 1:
+            raise ValueError("Choose an end time at least one hour after the start.")
+        self.view.days[self.day] = {"start": self.start_hour, "end": self.end_hour}
         await self.view.save()
         view = AvailabilityView(self.view.modal)
         await interaction.response.edit_message(embed=view.embed(), view=view)
+
+    async def back(self, interaction):
+        await interaction.response.edit_message(embed=self.view.embed(), view=self.view)

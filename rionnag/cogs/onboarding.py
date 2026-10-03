@@ -72,7 +72,7 @@ class Onboarding(commands.Cog):
             return
         row = self.service.store.member(member.id)
         form = self.service.form_for(row)
-        if form and row["version"] < form["version"] and row["answers"].get("username"):
+        if form and row["version"] > 0 and row["version"] < form["version"]:
             await self.resets.reset_member(member, row["game"])
         await self.resets.reconcile_member(member)
 
