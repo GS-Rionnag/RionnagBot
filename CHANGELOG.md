@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-04 - Rivals API rate-limit update
+
+- Require rivals-api 5.2.0, retaining browser support and normal/precise lookup selection.
+- Use the SDK's randomized request pacing, shared provider cooldowns, and preservation of usable summaries when other providers fail.
+
 ## 2026-10-04 - Show available partial overall rates
 
 - Display SDK `partial_result` overall rates when full requested-mode counts
