@@ -14,6 +14,7 @@ from rionnag.integrations.rivals import (
 from rionnag.services.lookup import Lookup
 from rionnag.services.permissions import has_role
 from rionnag.ui.onboarding import report
+from rionnag.ui.profile import form_profile_embed
 
 
 class Profiles(commands.Cog):
@@ -26,9 +27,19 @@ class Profiles(commands.Cog):
     async def edit_form(self, interaction: discord.Interaction):
         await self.service.edit_saved_form(interaction)
 
-    @app_commands.command(name="lookup", description="Search a member or Marvel Rivals account")
+    @app_commands.command(name="profile", description="View your saved game form and availability")
     @app_commands.guild_only()
-    @app_commands.describe(query="Discord username, display name, mention, or Marvel Rivals username")
+    async def profile(self, interaction: discord.Interaction):
+        row = self.service.store.member(interaction.user.id)
+        form = self.service.forms.get(row["game"])
+        if not form or row["status"] in {"new", "reset"} or row["version"] != form["version"]:
+            raise ValueError("Finish your current game form first to view your profile.")
+        embed = form_profile_embed(interaction.user, form, row["answers"])
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="lookup", description="Search a member or game account")
+    @app_commands.guild_only()
+    @app_commands.describe(query="Discord username, display name, mention, or in-game username")
     async def lookup(self, interaction: discord.Interaction, query: str):
         member, saved, account = self.lookup_service.resolve(interaction.guild, query)
         await interaction.response.defer(ephemeral=True, thinking=True)

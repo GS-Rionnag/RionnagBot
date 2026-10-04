@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 - own form profile
+
+- Add `/profile` without arguments to privately show the caller's saved game form, current local time, and weekly availability in their selected time zone.
+- Render configured question fields for the saved game; keep internal account and workflow metadata out of the profile.
+- Use general game wording in profile and lookup command descriptions, with no form changes or membership resets.
+
 ## 2026-10-03 - searchable account lookup
 
 - Replace `/profile` with `/lookup` and a required text query accepting names or pasted mentions.

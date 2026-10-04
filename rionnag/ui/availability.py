@@ -29,14 +29,18 @@ def validate_days(days):
             raise ValueError("Start and end times must be different.")
 
 
-def schedule_text(days, time_zone="Eastern Time (ET)", now=None):
+def selected_zone(time_zone):
     zones = {
         "Eastern Time (ET)": "America/New_York",
         "Central Time (CT)": "America/Chicago",
         "Mountain Time (MT)": "America/Denver",
         "Pacific Time (PT)": "America/Los_Angeles",
     }
-    zone = ZoneInfo(zones.get(time_zone, "America/New_York"))
+    return ZoneInfo(zones.get(time_zone, "America/New_York"))
+
+
+def schedule_text(days, time_zone="Eastern Time (ET)", now=None):
+    zone = selected_zone(time_zone)
     today = (now or datetime.now(UTC)).astimezone(zone).date()
     lines = []
     for index, day in enumerate(DAYS):
