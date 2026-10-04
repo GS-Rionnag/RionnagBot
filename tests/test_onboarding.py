@@ -403,6 +403,42 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.member.remove_roles.assert_not_awaited()
         self.assertEqual(self.store.saved_profile(config.GUILD_ID, 42)[2], "Support")
 
+    async def test_rejected_account_is_reusable_and_active_conflict_mentions_member(self):
+        self.guild.fetch_member = AsyncMock(return_value=self.member)
+        interaction = SimpleNamespace(
+            user=self.member, guild_id=config.GUILD_ID, guild=self.guild, channel_id=999
+        )
+        self.store.update(42, status="accepted", game="marvel-rivals", version=1, answers=self.answers)
+        for status, restore in (
+            ("rejected", None),
+            ("visitor", None),
+            ("new", None),
+            ("pending", None),
+            ("accepted", None),
+            ("deciding", None),
+            ("reset", []),
+        ):
+            self.store.update(
+                99,
+                status=status,
+                game="marvel-rivals",
+                answers=dict(self.answers, player_uid="123"),
+                restore_roles=restore,
+            )
+            with patch(
+                "rionnag.integrations.accounts.verify_account",
+                AsyncMock(return_value=dict(uid="123", name="Player")),
+            ):
+                if status in {"pending", "accepted", "deciding", "reset"}:
+                    with self.assertRaisesRegex(ValueError, "<@99>"):
+                        await self.app.submit(
+                            interaction, 42, "marvel-rivals", self.answers, 1, editing="accepted"
+                        )
+                else:
+                    await self.app.submit(
+                        interaction, 42, "marvel-rivals", self.answers, 1, editing="accepted"
+                    )
+
     async def test_new_fields_paginate_and_old_answers_prefill(self):
         self.form["questions"].append(dict(key="extra", label="New question", required=True))
         page = FormPage(self.app, 42, "marvel-rivals", 0, self.answers)

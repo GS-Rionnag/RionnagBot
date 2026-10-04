@@ -212,9 +212,16 @@ class Applications:
                     if other_id == member_id:
                         continue
                     other = self.store.member(other_id)
-                    if other["game"] == game and other["answers"].get("player_uid") == identity["uid"]:
+                    holds_account = other["status"] in {"pending", "accepted", "deciding"} or (
+                        other["status"] == "reset" and other["restore_roles"] is not None
+                    )
+                    if (
+                        holds_account
+                        and other["game"] == game
+                        and other["answers"].get("player_uid") == identity["uid"]
+                    ):
                         raise ValueError(
-                            "That game account is already linked to another member. Contact the owner."
+                            f"That game account is already linked to <@{other_id}>. Contact the owner."
                         )
                 answers = dict(answers, player_uid=identity["uid"], username=identity["name"])
                 self.store.update(member_id, answers=answers)

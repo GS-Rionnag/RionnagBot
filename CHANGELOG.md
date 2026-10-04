@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 - release rejected account claims
+
+- Stop rejected/visitor forms and unfinished drafts from reserving game accounts; retain their prefilled answers.
+- Include the actively linked member's Discord mention in duplicate-account errors.
+- Preserve account reservations for accepted/pending members and saved reset restoration.
+
 ## 2026-10-03 - self-service form editing
 
 - Add `/edit_form` for everyone to edit their own current saved game form with prefilled answers.
