@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-03 - username-only public search suggestions
+
+- Display only the username for Rivals API autocomplete results; keep account UIDs internal for selecting the correct account.
+
 ## 2026-10-03 - combine member and public account search
 
 - Always search Rivals accounts for autocomplete queries of at least two characters, including queries matching saved members; list saved members first.

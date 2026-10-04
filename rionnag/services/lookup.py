@@ -60,7 +60,7 @@ class Lookup:
             if uid in seen:
                 continue
             seen.add(uid)
-            choices.append((f"{row['name']} · {uid}"[:100], f"account:{uid}"))
+            choices.append((str(row["name"])[:100], f"account:{uid}"))
         return choices[:25]
 
     def resolve(self, guild, query):

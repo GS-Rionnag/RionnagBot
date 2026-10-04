@@ -47,7 +47,7 @@ class LookupTests(unittest.IsolatedAsyncioTestCase):
         with patch("rionnag.services.lookup.search_player_accounts",
                    return_value=[{"name": "Other", "uid": "123"}]):
             self.assertEqual(await self.lookup.autocomplete(self.guild, "Other"),
-                             [("Other · 123", "account:123")])
+                             [("Other", "account:123")])
         self.assertEqual(self.lookup.resolve(self.guild, "account:123"), (None, None, "123"))
         self.assertEqual(self.lookup.resolve(self.guild, "Other"), (None, None, "Other"))
         with patch("rionnag.services.lookup.search_player_accounts", side_effect=RuntimeError("offline")):
@@ -59,7 +59,7 @@ class LookupTests(unittest.IsolatedAsyncioTestCase):
         ]) as search:
             choices = await self.lookup.autocomplete(self.guild, "chenoa")
             self.assertEqual(choices, [("Chenoa_ · @eternalwiinter", "member:42"),
-                                       ("Chenoa_other · 123", "account:123")])
+                                       ("Chenoa_other", "account:123")])
             self.assertEqual(await self.lookup.autocomplete(self.guild, "CHENOA"), choices)
             search.assert_called_once_with("chenoa")
 
@@ -86,7 +86,7 @@ class LookupTests(unittest.IsolatedAsyncioTestCase):
             finally:
                 release.set()
                 results = await asyncio.gather(*pending)
-            self.assertEqual(results, [[(f"{query} · 123", "account:123")]
+            self.assertEqual(results, [[(query, "account:123")]
                                        for query in ("alpha", "beta", "gamma")])
 
     def test_ambiguous_names_require_selection(self):
