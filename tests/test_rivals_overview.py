@@ -78,7 +78,7 @@ class OverviewTests(unittest.TestCase):
         result, _ = self.fetch(rate=None, partial_result={
             "win_rate_pct": 60, "included_modes": ["competitive"]})
         self.assertEqual(result["win_rate"], 60)
-        self.assertIn("available modes only (competitive)", result["win_rate_note"])
+        self.assertIn("Overall win rate: Competitive only.", result["win_rate_note"])
 
     def test_invalid_method_rejected_before_provider_work(self):
         with patch("rionnag.integrations.rivals.RivalsClient") as client:
@@ -108,7 +108,7 @@ class OverviewTests(unittest.TestCase):
 
     def test_partial_provider_coverage_is_visible(self):
         result, _ = self.fetch(partial=True)
-        self.assertIn("coverage is partial", result["win_rate_note"])
+        self.assertEqual(result["win_rate_note"], "Some stats may be incomplete.")
 
     def test_profile_adds_one_combined_hero_field_with_rank(self):
         result, _ = self.fetch()
@@ -125,7 +125,7 @@ class OverviewTests(unittest.TestCase):
             result, _ = self.fetch(blocked_rank=True)
         fields, _ = profile_overview(result)
         self.assertIn("58% WR `#324`", fields["competitive_heroes"])
-        self.assertIn("leaderboard placements", result["win_rate_note"])
+        self.assertIn("Some hero rankings are unavailable.", result["win_rate_note"])
 
     def test_blocked_current_season_never_falls_back_to_all_seasons(self):
         with self.assertLogs("rionnag.integrations.rivals", level="ERROR"):

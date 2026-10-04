@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-04 - readable stats footer
+
+- Replace repeated provider/attribution diagnostics with short, deduplicated notes about incomplete stats, unavailable stats, or missing hero rankings.
+- Keep partial overall rates clearly labeled with the included game modes and refresh application embed caches.
+
 ## 2026-10-04 - Rivals API rate-limit update
 
 - Require rivals-api 5.2.0, retaining browser support and normal/precise lookup selection.

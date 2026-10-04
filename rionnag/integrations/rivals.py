@@ -78,26 +78,27 @@ def fetch_player_overview(username: str, method: str | None = None) -> dict:
                 rates[name] = fetch().to_dict()
                 metadata = rates[name].get("metadata", {})
                 if metadata.get("provider_errors"):
-                    errors.append(f"{name.capitalize()} provider coverage is partial.")
+                    errors.append("Some stats may be incomplete.")
                 if (
                     metadata.get("unresolved")
                     or metadata.get("selection_uncertain")
                     or metadata.get("coverage", {}).get("unknown_results")
                 ):
-                    errors.append(f"Some {name} outcomes or hero attributions are unresolved.")
+                    errors.append("Some stats may be incomplete.")
             except (RivalsAPIError, ValueError):
                 logger.exception("Couldn't fetch canonical %s rates", name)
-                errors.append(f"{name.capitalize()} win rates are temporarily unavailable.")
+                errors.append("Some stats are temporarily unavailable.")
         if rank_errors:
-            errors.append("Some hero leaderboard placements are temporarily unavailable.")
+            errors.append("Some hero rankings are unavailable.")
         overall = rates["overall"] or {}
         overall_rate = overall.get("win_rate_pct")
         partial = overall.get("partial_result")
         if overall_rate is None and isinstance(partial, dict) and partial.get("win_rate_pct") is not None:
             overall_rate = partial["win_rate_pct"]
-            available = ", ".join(partial.get("included_modes", []))
+            modes = {"competitive": "Competitive", "quickplay": "Quick Play"}
+            available = ", ".join(modes.get(mode, mode) for mode in partial.get("included_modes", []))
             errors.append(
-                f"Overall win rate covers available modes only ({available}); other modes are unavailable."
+                f"Overall win rate: {available or 'available modes'} only."
             )
         return {
             "player_uid": str(player.uid),
@@ -111,7 +112,7 @@ def fetch_player_overview(username: str, method: str | None = None) -> dict:
             "stats_mode": "all",
             "overall_scope": overall_scope,
             "hero_scope": "Current Season",
-            "win_rate_note": " ".join(errors),
+            "win_rate_note": " ".join(dict.fromkeys(errors)),
         }
 
 
