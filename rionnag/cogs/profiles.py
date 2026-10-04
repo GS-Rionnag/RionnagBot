@@ -27,14 +27,16 @@ class Profiles(commands.Cog):
     async def edit_form(self, interaction: discord.Interaction):
         await self.service.edit_saved_form(interaction)
 
-    @app_commands.command(name="profile", description="View your saved game form and availability")
+    @app_commands.command(name="profile", description="View a member's saved game form and availability")
     @app_commands.guild_only()
-    async def profile(self, interaction: discord.Interaction):
-        row = self.service.store.member(interaction.user.id)
+    @app_commands.describe(member="Member to view; leave empty for your own profile")
+    async def profile(self, interaction: discord.Interaction, member: discord.Member | None = None):
+        member = member or interaction.user
+        row = self.service.store.member(member.id)
         form = self.service.forms.get(row["game"])
         if not form or row["status"] in {"new", "reset"} or row["version"] != form["version"]:
-            raise ValueError("Finish your current game form first to view your profile.")
-        embed = form_profile_embed(interaction.user, form, row["answers"])
+            raise ValueError("This member must finish their current game form first to view their profile.")
+        embed = form_profile_embed(member, form, row["answers"])
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="lookup", description="Search a member or game account")

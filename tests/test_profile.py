@@ -43,8 +43,9 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         start = datetime.fromtimestamp(int(stamps[0]), UTC)
         self.assertEqual(start.hour, 17)
 
-    async def test_profile_has_no_arguments_and_uses_only_caller(self):
-        self.assertEqual(Profiles.profile.parameters, [])
+    async def test_profile_defaults_to_caller_and_accepts_other_member(self):
+        self.assertEqual(Profiles.profile.parameters[0].name, "member")
+        self.assertFalse(Profiles.profile.parameters[0].required)
         store = Mock()
         store.member.return_value = {"game": "future", "version": 2,
                                      "status": "accepted", "answers": self.answers}
@@ -53,7 +54,11 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         await Profiles.profile.callback(cog, interaction)
         store.member.assert_called_once_with(42)
         self.assertTrue(interaction.response.send_message.call_args.kwargs["ephemeral"])
+        other = SimpleNamespace(id=99, display_name="Other member")
+        await Profiles.profile.callback(cog, interaction, other)
+        store.member.assert_called_with(99)
+        self.assertIn("Other member", interaction.response.send_message.call_args.kwargs["embed"].title)
         for status, version in (("reset", 2), ("new", 2), ("accepted", 1)):
             store.member.return_value.update(status=status, version=version)
-            with self.assertRaisesRegex(ValueError, "Finish"):
+            with self.assertRaisesRegex(ValueError, "finish"):
                 await Profiles.profile.callback(cog, interaction)

@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-03 - member profile selection
+
+- Add an optional member argument to `/profile`; default to the caller and allow viewing another member's saved game form and availability.
+- Keep responses ephemeral and require a completed current-version form for the selected member.
+
 ## 2026-10-03 - profile Discord timestamps
 
 - Display `/profile` current time and availability windows as Discord time-only timestamps.
