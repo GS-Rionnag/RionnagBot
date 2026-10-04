@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
+from collections.abc import Mapping
 
 import discord
 from rivals_api import RivalsAPIError, RivalsClient
@@ -77,6 +79,10 @@ def fetch_player_overview(username: str, method: str | None = None) -> dict:
             try:
                 rates[name] = fetch().to_dict()
                 metadata = rates[name].get("metadata", {})
+                if metadata.get("private_profile"):
+                    errors.append("Profile is private; available stats may be inaccurate.")
+                if metadata.get("stale_data"):
+                    errors.append("Some stats use last-known data while a provider is unavailable.")
                 if metadata.get("provider_errors"):
                     errors.append("Some stats may be incomplete.")
                 if (
@@ -90,6 +96,11 @@ def fetch_player_overview(username: str, method: str | None = None) -> dict:
                 errors.append("Some stats are temporarily unavailable.")
         if rank_errors:
             errors.append("Some hero rankings are unavailable.")
+        rank_summary = getattr(player, "rank_summary", None)
+        if hasattr(rank_summary, "to_dict"):
+            rank_summary = rank_summary.to_dict()
+        if isinstance(rank_summary, dict) and rank_summary.get("private_profile"):
+            errors.append("Profile is private; available stats may be inaccurate.")
         overall = rates["overall"] or {}
         overall_rate = overall.get("win_rate_pct")
         partial = overall.get("partial_result")
@@ -106,6 +117,7 @@ def fetch_player_overview(username: str, method: str | None = None) -> dict:
             "win_rate": overall_rate,
             "top_heroes": [],
             "rank_game_season": player.rank_game_season or {},
+            "rank_summary": rank_summary,
             "match_hero_rates": rates["heroes"]["data"] if rates["heroes"] is not None else None,
             "match_class_rates": rates["classes"]["data"] if rates["classes"] is not None else None,
             "hero_ranks": hero_ranks,
@@ -138,9 +150,14 @@ RANK_ICON_URLS = {
 
 def rank_details(score: int | float | None, *, top_rank: bool = False) -> tuple[str, str | None]:
     """Return the ranked tier and its logo from the rank score."""
-    if score is None:
-        return "Unranked", None
-    value = float(score)
+    if score is None or isinstance(score, bool):
+        return "Unavailable", None
+    try:
+        value = float(score)
+    except (ValueError, TypeError):
+        return "Unavailable", None
+    if not math.isfinite(value) or value < 0:
+        return "Unavailable", None
     thresholds = (
         (5100, "Eternity"),
         (4800, "Celestial"),
@@ -161,28 +178,51 @@ def rank_details(score: int | float | None, *, top_rank: bool = False) -> tuple[
 def profile_overview(profile: dict) -> tuple[dict[str, str], str | None]:
     """Format profile data for separate Discord embed fields."""
     rows = profile["rank_game_season"]
+    def field(row, key, default=None):
+        return row.get(key, default) if isinstance(row, Mapping) else getattr(row, key, default)
+
+    def numeric(value):
+        if isinstance(value, bool):
+            return 0
+        try:
+            value = float(value)
+            return value if math.isfinite(value) and value >= 0 else 0
+        except (ValueError, TypeError):
+            return 0
     competitive = [row for account, row in rows.items() if str(account).startswith("1001")]
     if not competitive:
         competitive = list(rows.values())
-    latest = max(competitive, key=lambda row: int(getattr(row, "rank_game_id", 0) or 0), default=None)
-    current_score = getattr(latest, "rank_score", None) if latest else None
+    latest = max(competitive, key=lambda row: numeric(field(row, "rank_game_id")), default=None)
+    current_score = field(latest, "rank_score") if latest else None
     current_rank, _ = rank_details(current_score)
     peak_row = max(
         competitive,
-        key=lambda row: float(getattr(row, "max_rank_score", None) or getattr(row, "rank_score", 0) or 0),
+        key=lambda row: numeric(field(row, "max_rank_score") or field(row, "rank_score")),
         default=None,
     )
     peak_score = (
-        getattr(peak_row, "max_rank_score", None) or getattr(peak_row, "rank_score", None)
+        field(peak_row, "max_rank_score") or field(peak_row, "rank_score")
         if peak_row
         else None
     )
     peak_level = (
-        getattr(peak_row, "max_level", None) or getattr(peak_row, "season_max_level", None)
+        field(peak_row, "max_level") or field(peak_row, "season_max_level")
         if peak_row
         else None
     )
-    peak_rank, peak_icon = rank_details(peak_score, top_rank=bool(peak_level and int(peak_level) >= 23))
+    peak_rank, peak_icon = rank_details(peak_score, top_rank=numeric(peak_level) >= 23)
+    summary = profile.get("rank_summary") or {}
+    current = summary.get("current")
+    peak = summary.get("peak")
+    if isinstance(current, dict) and current.get("tier_name") and (
+        current.get("used_for_fallback") or current_score is None
+    ):
+        current_rank = f"{current['tier_name']} ({current['rank_score']:g} points)"
+    if isinstance(peak, dict) and peak.get("tier_name") and (
+        peak.get("used_for_fallback") or peak_score is None
+    ):
+        peak_rank = f"{peak['tier_name']} ({peak['rank_score']:g} points)"
+        peak_icon = peak.get("icon_url") or peak_icon
 
     character_rows = []
     for hero in profile["top_heroes"]:

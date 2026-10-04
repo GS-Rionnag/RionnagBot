@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-04 - Rank recovery and private-profile accuracy
+
+- Display recovered current and lifetime peak ranks from the SDK's rank summary.
+- Keep private-profile stats visible with an accuracy warning and label cached
+  outage data when the SDK reports it.
+- Show missing rank data as unavailable and accept dictionary rank records.
+
 ## 2026-10-04 - readable stats footer
 
 - Replace repeated provider/attribution diagnostics with short, deduplicated notes about incomplete stats, unavailable stats, or missing hero rankings.

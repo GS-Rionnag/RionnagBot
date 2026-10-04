@@ -10,8 +10,9 @@ from rionnag.integrations.rivals import add_hero_fields, fetch_player_overview, 
 
 class OverviewTests(unittest.TestCase):
     def fetch(self, rate=57, partial=False, blocked_season=False, blocked_rank=False, method=None,
-              partial_result=None):
-        metadata = {"provider_errors": ["offline"] if partial else [], "unresolved": []}
+              partial_result=None, private=False, rank_summary=None):
+        metadata = {"provider_errors": ["offline"] if partial else [], "unresolved": [],
+                    "private_profile": private}
 
         def response(data):
             value = Mock()
@@ -46,6 +47,7 @@ class OverviewTests(unittest.TestCase):
             name="Test",
             stats=stats,
             rank_game_season={"100120": SimpleNamespace(rank_game_id=20, rank_score=3600)},
+            rank_summary=rank_summary,
         )
         if blocked_rank:
             stats.summary_heroes.side_effect = [
@@ -73,6 +75,36 @@ class OverviewTests(unittest.TestCase):
             _, stats = self.fetch(method=method)
             for call in (stats.win_rate, stats.hero_win_rates, stats.class_win_rates):
                 call.assert_called_once_with(season="current", method=method)
+
+    def test_private_profiles_keep_values_with_warning(self):
+        result, _ = self.fetch(private=True)
+        self.assertEqual(result["win_rate"], 57)
+        self.assertTrue(result["match_hero_rates"])
+        self.assertIn("Profile is private; available stats may be inaccurate.", result["win_rate_note"])
+
+    def test_tracker_rank_names_display_when_selected_for_fallback(self):
+        result, _ = self.fetch(rank_summary={
+            "current": {"rank_score": 4609, "tier_name": "Grandmaster II", "used_for_fallback": True},
+            "peak": {"rank_score": 4894, "tier_name": "Celestial III", "used_for_fallback": True}})
+        fields, _ = profile_overview(result)
+        self.assertIn("Grandmaster II", fields["current_rank"])
+        self.assertIn("Celestial III", fields["peak_rank"])
+
+    def test_unknown_rank_is_unavailable_not_unranked(self):
+        result, _ = self.fetch()
+        result["rank_game_season"] = {}
+        fields, _ = profile_overview(result)
+        self.assertEqual(fields["current_rank"], "Unavailable")
+        self.assertEqual(fields["peak_rank"], "Unavailable")
+
+    def test_plain_dictionary_rank_records_are_displayed(self):
+        result, _ = self.fetch()
+        result["rank_game_season"] = {
+            "1001020": {"rank_game_id": 20, "rank_score": 4609, "max_rank_score": 4700},
+            "1001019": {"rank_game_id": 19, "rank_score": 4800, "max_rank_score": 4894}}
+        fields, _ = profile_overview(result)
+        self.assertIn("Grandmaster", fields["current_rank"])
+        self.assertIn("Celestial", fields["peak_rank"])
 
     def test_available_mode_fallback_is_displayed_with_coverage_note(self):
         result, _ = self.fetch(rate=None, partial_result={

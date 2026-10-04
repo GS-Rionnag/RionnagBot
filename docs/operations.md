@@ -29,4 +29,10 @@ Role failures: place the bot above all membership roles, below Rionnag. Check co
 
 Inspect staged paths before public pushes. Exclude .env, data/, logs/, backups, transcripts, and provider caches. Future agents must commit/push coherent minor/major changes and maintain the timeline.
 
+Lookup retains available private-profile stats and warns that they may be
+inaccurate. SDK rank summaries can recover current and lifetime peak ranks;
+missing ranks display as unavailable. Last-known provider responses carry a
+cached-data warning when reported by the SDK. These additions require the
+corresponding SDK update and a bot restart to take effect in the running service.
+
 The organization uses discord.py's [cogs](https://discordpy.readthedocs.io/en/latest/ext/commands/cogs.html) and [persistent view registration](https://github.com/Rapptz/discord.py/blob/master/examples/views/persistent.py).
