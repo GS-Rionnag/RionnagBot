@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-04 - Conservative Rivals request pacing
+
+- Default to three-second request gaps and sixty-second fallback cooldowns per
+  provider. Configure them with `RIVALS_API_REQUEST_INTERVAL` and
+  `RIVALS_API_RATE_LIMIT_COOLDOWN`; SDK provider limits remain shared across
+  client instances. Provider Retry-After takes precedence over fallback timing.
+
 ## 2026-10-04 - Browser recovery for provider blocks
 
 - Enable browser fallback for normal profile lookups by default, with explicit
