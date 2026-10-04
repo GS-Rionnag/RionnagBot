@@ -1,5 +1,15 @@
 # Change timeline
 
+## 2026-10-04 - Browser recovery for provider blocks
+
+- Enable browser fallback for normal profile lookups by default, with explicit
+  `RIVALS_API_BROWSER_FALLBACK=false` opt-out. Install the browser dependency and
+  document fetching the Camoufox binary.
+- Require rivals-api 5.1 for shared provider pacing and HTTP 429 cooldowns.
+  Browser fallback recovers supported HTTP access blocks; it does not bypass
+  provider rate limits or guarantee availability. Scrim monitoring retains its
+  explicit browser-disabled setting.
+
 ## 2026-10-04 - Rivals API 5 lookup methods
 
 - Upgrade to rivals-api 5.0.0; omitted calculation method uses the SDK's normal summary-based default for current-season rates.

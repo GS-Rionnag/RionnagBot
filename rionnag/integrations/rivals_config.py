@@ -10,6 +10,6 @@ def client_options() -> dict:
     return {
         "timeout": float(os.getenv("RIVALS_API_TIMEOUT", "20")),
         "enrich": os.getenv("RIVALS_API_ENRICH", "true").strip().lower() in {"true", "1", "yes", "on"},
-        "use_browser_fallback": os.getenv("RIVALS_API_BROWSER_FALLBACK", "false").strip().lower()
+        "use_browser_fallback": os.getenv("RIVALS_API_BROWSER_FALLBACK", "true").strip().lower()
         in {"true", "1", "yes", "on"},
     }

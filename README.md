@@ -13,6 +13,7 @@ Read [architecture](docs/architecture.md), [permissions](docs/permissions.md), [
 ```powershell
 rtk proxy python -m venv .venv
 rtk proxy .venv\Scripts\python.exe -m pip install -e ".[dev]"
+rtk proxy .venv\Scripts\python.exe -m camoufox fetch
 # Copy .env.example to .env and privately set DISCORD_TOKEN.
 rtk proxy .venv\Scripts\python.exe -m rionnag
 rtk proxy .venv\Scripts\python.exe -m unittest discover -s tests -q
