@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,7 +25,8 @@ class LookupTests(unittest.IsolatedAsyncioTestCase):
         self.lookup = Lookup(SimpleNamespace(store=self.store, forms={
             "marvel-rivals": {"team_role": 7, "manager_role": 8}}))
 
-    async def test_aliases_show_saved_name_without_membership_label(self):
+    @patch("rionnag.services.lookup.search_player_accounts", return_value=[])
+    async def test_aliases_show_saved_name_without_membership_label(self, search):
         for query in ("eternalwii", "eternalwiinter", "chenoa", "winter"):
             choices = await self.lookup.autocomplete(self.guild, query)
             self.assertEqual(choices[0][1], "member:42")
@@ -43,14 +45,49 @@ class LookupTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_provider_search_and_failure(self):
         with patch("rionnag.services.lookup.search_player_accounts",
-                   return_value=[{"name": "Other", "uid": "123"}]), \
-             patch("rionnag.services.lookup.queued_lookup", side_effect=lambda fn, arg: fn(arg)):
+                   return_value=[{"name": "Other", "uid": "123"}]):
             self.assertEqual(await self.lookup.autocomplete(self.guild, "Other"),
                              [("Other · 123", "account:123")])
         self.assertEqual(self.lookup.resolve(self.guild, "account:123"), (None, None, "123"))
         self.assertEqual(self.lookup.resolve(self.guild, "Other"), (None, None, "Other"))
-        with patch("rionnag.services.lookup.queued_lookup", side_effect=RuntimeError("offline")):
+        with patch("rionnag.services.lookup.search_player_accounts", side_effect=RuntimeError("offline")):
             self.assertEqual(await self.lookup.autocomplete(self.guild, "offline"), [])
+
+    async def test_saved_matches_do_not_suppress_public_search_and_cache(self):
+        with patch("rionnag.services.lookup.search_player_accounts", return_value=[
+            {"name": "Chenoa_other", "uid": "123"}, {"name": "Chenoa_other", "uid": "123"}
+        ]) as search:
+            choices = await self.lookup.autocomplete(self.guild, "chenoa")
+            self.assertEqual(choices, [("Chenoa_ · @eternalwiinter", "member:42"),
+                                       ("Chenoa_other · 123", "account:123")])
+            self.assertEqual(await self.lookup.autocomplete(self.guild, "CHENOA"), choices)
+            search.assert_called_once_with("chenoa")
+
+    async def test_provider_failure_preserves_saved_suggestions(self):
+        with patch("rionnag.services.lookup.search_player_accounts", side_effect=RuntimeError("offline")):
+            self.assertEqual(await self.lookup.autocomplete(self.guild, "chenoa"),
+                             [("Chenoa_ · @eternalwiinter", "member:42")])
+
+    async def test_concurrent_queries_are_bounded_and_keep_their_own_results(self):
+        release = asyncio.Event()
+
+        async def search(function, query):
+            await release.wait()
+            return [{"name": query, "uid": "123"}]
+
+        with patch("rionnag.services.lookup.asyncio.to_thread", side_effect=search):
+            pending = []
+            try:
+                for query in ("alpha", "beta", "gamma"):
+                    pending.append(asyncio.create_task(self.lookup.autocomplete(self.guild, query)))
+                    await asyncio.sleep(0)
+                self.assertEqual(await self.lookup.autocomplete(self.guild, "delta"), [])
+                self.assertEqual(len(self.lookup.searches), 3)
+            finally:
+                release.set()
+                results = await asyncio.gather(*pending)
+            self.assertEqual(results, [[(f"{query} · 123", "account:123")]
+                                       for query in ("alpha", "beta", "gamma")])
 
     def test_ambiguous_names_require_selection(self):
         second = SimpleNamespace(id=43, name="eternalother", display_name="eternalwii",

@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-03 - combine member and public account search
+
+- Always search Rivals accounts for autocomplete queries of at least two characters, including queries matching saved members; list saved members first.
+- Run bounded account searches independently from slow stats reads, cache results briefly, and retain member suggestions when public search is unavailable.
+
 ## 2026-10-03 - simplify lookup suggestions
 
 - Remove Saved member and In team labels from `/lookup` autocomplete; retain saved game and Discord usernames.

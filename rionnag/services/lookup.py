@@ -2,15 +2,15 @@
 
 import asyncio
 import re
+import time
 
-from rionnag.integrations.rivals import queued_lookup, search_player_accounts
+from rionnag.integrations.rivals import search_player_accounts
 
 
 class Lookup:
     def __init__(self, service):
         self.service = service
-        self.search_task = None
-        self.search_query = None
+        self.searches = {}
 
     def matches(self, guild, query):
         query = query.strip().casefold()
@@ -30,24 +30,38 @@ class Lookup:
 
     async def autocomplete(self, guild, query):
         local = self.matches(guild, query)
-        if local:
-            return [(label[:100], f"member:{member.id}") for _, label, member in local[:25]]
+        choices = [(label[:100], f"member:{member.id}") for _, label, member in local[:25]]
         query = query.strip()
         if len(query) < 2:
-            return []
-        # Keep slow provider searches from accumulating behind the shared provider queue.
-        if self.search_task is None or (self.search_task.done() and query != self.search_query):
-            self.search_query = query
-            self.search_task = asyncio.create_task(asyncio.to_thread(
-                queued_lookup, search_player_accounts, query
-            ))
-        if query != self.search_query:
-            return []
+            return choices
+        key = query.casefold()
+        now = time.monotonic()
+        self.searches = {key: entry for key, entry in self.searches.items()
+                         if not entry[1].done() or now - entry[0] < 30}
+        if key not in self.searches:
+            # Search must not wait behind minute-long stats reads. Bound independent searches.
+            if sum(not task.done() for _, task in self.searches.values()) >= 3:
+                return choices
+            if len(self.searches) >= 32:
+                completed = next((key for key, (_, task) in self.searches.items() if task.done()), None)
+                if completed is not None:
+                    del self.searches[completed]
+            task = asyncio.create_task(asyncio.to_thread(search_player_accounts, query))
+            # Retrieve errors even if every waiting autocomplete has already timed out.
+            task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
+            self.searches[key] = (now, task)
         try:
-            accounts = await asyncio.wait_for(asyncio.shield(self.search_task), timeout=1.5)
+            accounts = await asyncio.wait_for(asyncio.shield(self.searches[key][1]), timeout=2.0)
         except Exception:
-            return []
-        return [(f"{row['name']} · {row['uid']}"[:100], f"account:{row['uid']}") for row in accounts[:25]]
+            return choices
+        seen = set()
+        for row in accounts:
+            uid = str(row["uid"])
+            if uid in seen:
+                continue
+            seen.add(uid)
+            choices.append((f"{row['name']} · {uid}"[:100], f"account:{uid}"))
+        return choices[:25]
 
     def resolve(self, guild, query):
         query = query.strip()
