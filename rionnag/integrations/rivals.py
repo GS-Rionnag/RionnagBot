@@ -96,7 +96,9 @@ def fetch_player_overview(username: str, method: str | None = None) -> dict:
         if overall_rate is None and isinstance(partial, dict) and partial.get("win_rate_pct") is not None:
             overall_rate = partial["win_rate_pct"]
             available = ", ".join(partial.get("included_modes", []))
-            errors.append(f"Overall win rate covers available modes only ({available}); other modes are unavailable.")
+            errors.append(
+                f"Overall win rate covers available modes only ({available}); other modes are unavailable."
+            )
         return {
             "player_uid": str(player.uid),
             "player_name": player.name or str(player.uid),

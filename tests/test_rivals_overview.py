@@ -56,7 +56,9 @@ class OverviewTests(unittest.TestCase):
 
             def rate_after_ranks(**kwargs):
                 self.assertEqual(stats.summary_heroes.call_count, 2)
-                return response({"win_rate_pct": rate, "metadata": metadata, "partial_result": partial_result})
+                return response({
+                    "win_rate_pct": rate, "metadata": metadata, "partial_result": partial_result
+                })
 
             stats.win_rate.side_effect = rate_after_ranks
         if blocked_season:
