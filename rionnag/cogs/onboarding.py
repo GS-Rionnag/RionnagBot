@@ -79,8 +79,11 @@ class Onboarding(commands.Cog):
     @commands.Cog.listener()
     async def on_member_remove(self, member):
         if member.guild.id == config.GUILD_ID and not member.bot:
-            async with self.service.lock(member.id):
-                await self.service.close_ticket(member)
+            async with self.reconcile_lock, self.service.lock(member.id):
+                try:
+                    await self.service.close_ticket(member)
+                finally:
+                    self.service.store.delete_member(member.guild.id, member.id)
 
     @app_commands.command(
         name="reload_forms", description="Owner: load updated forms and reset outdated members"

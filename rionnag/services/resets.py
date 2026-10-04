@@ -121,6 +121,10 @@ class Resets:
                 failed.append(member.id)
         # Prune abandoned bot tickets (including tickets predating the database wipe).
         active_ids = {member.id for member in members}
+        # Catch departures missed while the bot was offline.
+        for member_id in set(self.store.ids()) - active_ids:
+            async with self.app.lock(member_id):
+                self.store.delete_member(guild.id, member_id)
         category = guild.get_channel(config.APPLICATIONS_CATEGORY_ID)
         if category:
             registered = {self.store.member(mid)["channel_id"] for mid in active_ids}

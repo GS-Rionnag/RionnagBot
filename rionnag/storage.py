@@ -82,6 +82,15 @@ class Store:
         with self.connection() as db:
             return [row[0] for row in db.execute("SELECT member_id FROM members")]
 
+    def delete_member(self, guild_id, member_id):
+        """Erase saved membership, answers, caches, and game profile atomically."""
+        with self.connection() as db:
+            db.execute("DELETE FROM player_profiles WHERE guild_id=? AND member_id=?", (guild_id, member_id))
+            db.execute(
+                "DELETE FROM player_availability WHERE guild_id=? AND member_id=?", (guild_id, member_id)
+            )
+            db.execute("DELETE FROM members WHERE member_id=?", (member_id,))
+
     def check_form(self, key: str, form: dict):
         definition = json.dumps(form, sort_keys=True)
         with self.connection() as db:

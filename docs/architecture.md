@@ -8,6 +8,8 @@ The monitor probes only real players in the starting six and skips simulated acc
 
 The member registry is authoritative: roles alone do not prove completion. Members without completed data receive tickets during startup, joins, or repair, including the owner. Reconciliation retries every five minutes. Per-member locks serialize transitions; an OS lock prevents duplicate processes.
 
+Leaving the server erases the member registry entry, all form answers and embedded stats caches, role-restoration metadata, pending DMs, saved game profiles, and availability. The private ticket is deleted. Reconciliation also erases entries for members who left while the bot was offline. Rejoining starts fresh onboarding with no saved answers or automatic restoration.
+
 States: new → visitor, or new/visitor/rejected → pending → deciding → accepted/rejected. Changed forms move outdated entries to reset. Accepted members cache assignable roles and return to their former completed status after filling the current form. Draft/rejected answers never authorize automatic approval.
 
 All entrypoints use Applications.submit. Onboarding already has a private channel; visitors get one at submission. There is no user close/cancel action. The review panel has Accept, Reject, and an applicant-only Edit button. Managers cannot review themselves; the server owner has an explicit review override for any game.

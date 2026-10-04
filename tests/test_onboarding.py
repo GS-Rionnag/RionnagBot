@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import discord
 
 from rionnag import config
+from rionnag.cogs.onboarding import Onboarding
 from rionnag.services.applications import Applications
 from rionnag.services.permissions import apply_server_policy, ticket_overwrites, visitor_eligible
 from rionnag.services.resets import Resets
@@ -69,6 +70,34 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "New question"):
             self.app.validate(form, self.answers)
         self.app.validate(form, dict(self.answers, new="answered"))
+
+    async def test_departure_erases_saved_data_even_if_ticket_delete_fails(self):
+        self.store.update(
+            42,
+            status="accepted",
+            game="marvel-rivals",
+            answers=self.answers,
+            restore_roles=[self.form["manager_role"]],
+            dm_pending="private",
+        )
+        self.store.save_profile(config.GUILD_ID, 42, self.form, self.answers)
+        with self.store.connection() as db:
+            db.execute(
+                "INSERT INTO player_availability VALUES(?,?,?,?)",
+                (config.GUILD_ID, 42, "Marvel Rivals", "{}"),
+            )
+        cog = Onboarding(Mock(), self.app)
+        with patch.object(self.app, "close_ticket", AsyncMock(side_effect=RuntimeError("Discord offline"))):
+            with self.assertRaises(RuntimeError):
+                await cog.on_member_remove(self.member)
+        self.assertNotIn(42, self.store.ids())
+        self.assertIsNone(self.store.saved_profile(config.GUILD_ID, 42))
+        with self.store.connection() as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM player_availability").fetchone()[0], 0)
+        row = self.store.member(42)
+        self.assertEqual(row["status"], "new")
+        self.assertEqual(row["answers"], {})
+        self.assertIsNone(row["restore_roles"])
 
     def test_version_guard_requires_increment(self):
         self.store.record_form("marvel-rivals", self.form)
@@ -465,6 +494,8 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.guild.create_text_channel.assert_not_called()
 
     async def test_partial_draft_is_not_reset_by_periodic_reconciliation(self):
+        self.store.update(99, status="accepted", game="marvel-rivals", answers=self.answers)
+        self.store.save_profile(config.GUILD_ID, 99, self.form, self.answers)
         self.store.update(
             42, status="new", game="marvel-rivals", version=0, answers=self.answers, message_id=100
         )
@@ -482,6 +513,8 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
             await resets.reconcile(self.guild)
         reset.assert_not_awaited()
         self.assertEqual(self.store.member(42)["message_id"], 100)
+        self.assertNotIn(99, self.store.ids())
+        self.assertIsNone(self.store.saved_profile(config.GUILD_ID, 99))
 
 
 if __name__ == "__main__":

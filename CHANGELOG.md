@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-03 - delete member data on departure
+
+- Delete departing members' saved forms, stats caches, profile/availability, account links, and restoration metadata.
+- Remove private tickets and catch departures missed while offline during reconciliation.
+- Rejoining starts fresh onboarding without saved answers or role restoration.
+
 ## 2026-10-03 - release rejected account claims
 
 - Stop rejected/visitor forms and unfinished drafts from reserving game accounts; retain their prefilled answers.
