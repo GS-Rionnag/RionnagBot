@@ -11,7 +11,7 @@ requires-python = ">=3.11"
 dependencies = [
     "discord.py>=2.7,<3",
     "python-dotenv>=1.0,<2",
-    "rivals-api>=4.1.0,<5",
+    "rivals-api>=5.0.0,<6",
     "tzdata>=2025.1",
 ]
 

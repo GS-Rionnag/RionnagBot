@@ -9,7 +9,7 @@ from rionnag.integrations.rivals import add_hero_fields, fetch_player_overview, 
 
 
 class OverviewTests(unittest.TestCase):
-    def fetch(self, rate=57, partial=False, blocked_season=False, blocked_rank=False):
+    def fetch(self, rate=57, partial=False, blocked_season=False, blocked_rank=False, method=None):
         metadata = {"provider_errors": ["offline"] if partial else [], "unresolved": []}
 
         def response(data):
@@ -62,8 +62,20 @@ class OverviewTests(unittest.TestCase):
             stats.win_rate.side_effect = [RivalsAPIError("season blocked"), response({"win_rate_pct": 61})]
         with patch("rionnag.integrations.rivals.RivalsClient") as client:
             client.return_value.__enter__.return_value.get_player.return_value = player
-            result = fetch_player_overview("123")
+            result = fetch_player_overview("123", method)
         return result, stats
+
+    def test_selected_method_is_applied_to_all_rates(self):
+        for method in ("normal", "precise"):
+            _, stats = self.fetch(method=method)
+            for call in (stats.win_rate, stats.hero_win_rates, stats.class_win_rates):
+                call.assert_called_once_with(season="current", method=method)
+
+    def test_invalid_method_rejected_before_provider_work(self):
+        with patch("rionnag.integrations.rivals.RivalsClient") as client:
+            with self.assertRaises(ValueError):
+                fetch_player_overview("123", "invalid")
+            client.assert_not_called()
 
     def test_canonical_calls_use_default_modes_and_current_season(self):
         result, stats = self.fetch()

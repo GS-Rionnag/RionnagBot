@@ -46,8 +46,13 @@ def search_player_accounts(username: str) -> list[dict]:
         ]
 
 
-def fetch_player_overview(username: str) -> dict:
-    """Use v4 canonical default-mode rates and its shared automatic calculation cache."""
+def fetch_player_overview(username: str, method: str | None = None) -> dict:
+    """Use canonical rates, preserving the SDK default unless a method is selected."""
+    if method not in {None, "normal", "precise"}:
+        raise ValueError("Choose normal or precise lookup.")
+    rate_options = {"season": "current"}
+    if method is not None:
+        rate_options["method"] = method
     with RivalsClient(**client_options()) as client:
         player = client.get_player(username)
         hero_ranks = {}
@@ -65,9 +70,9 @@ def fetch_player_overview(username: str) -> dict:
         errors = []
         overall_scope = "Current Season"
         for name, fetch in (
-            ("overall", lambda: player.stats.win_rate(season="current")),
-            ("heroes", lambda: player.stats.hero_win_rates(season="current")),
-            ("classes", lambda: player.stats.class_win_rates(season="current")),
+            ("overall", lambda: player.stats.win_rate(**rate_options)),
+            ("heroes", lambda: player.stats.hero_win_rates(**rate_options)),
+            ("classes", lambda: player.stats.class_win_rates(**rate_options)),
         ):
             try:
                 rates[name] = fetch().to_dict()

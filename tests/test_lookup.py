@@ -104,3 +104,7 @@ class LookupTests(unittest.IsolatedAsyncioTestCase):
         parameter = Profiles.lookup.parameters[0]
         self.assertTrue(parameter.required)
         self.assertTrue(parameter.autocomplete)
+        method = Profiles.lookup.parameters[1]
+        self.assertFalse(method.required)
+        self.assertIsNone(method.default)
+        self.assertEqual([choice.value for choice in method.choices], ["normal", "precise"])

@@ -41,11 +41,14 @@ class Profiles(commands.Cog):
 
     @app_commands.command(name="lookup", description="Search a member or game account")
     @app_commands.guild_only()
-    @app_commands.describe(query="Discord username, display name, mention, or in-game username")
-    async def lookup(self, interaction: discord.Interaction, query: str):
+    @app_commands.describe(query="Discord username, display name, mention, or in-game username",
+                           method="Normal uses summaries; precise checks match history and can take longer")
+    @app_commands.choices(method=[app_commands.Choice(name="Normal", value="normal"),
+                                 app_commands.Choice(name="Precise", value="precise")])
+    async def lookup(self, interaction: discord.Interaction, query: str, method: str | None = None):
         member, saved, account = self.lookup_service.resolve(interaction.guild, query)
         await interaction.response.defer(ephemeral=True, thinking=True)
-        player = await asyncio.to_thread(queued_lookup, fetch_player_overview, account)
+        player = await asyncio.to_thread(queued_lookup, fetch_player_overview, account, method)
         fields, icon = profile_overview(player)
         name = member.display_name if member else player.get("player_name", account)
         embed = discord.Embed(title=f"{name} · Marvel Rivals", color=config.COLOR)
@@ -60,6 +63,8 @@ class Profiles(commands.Cog):
         ):
             embed.add_field(name=label, value=fields[key])
         add_hero_fields(embed, fields)
+        if fields.get("win_rate_note"):
+            embed.set_footer(text=fields["win_rate_note"][:300])
         if icon:
             embed.set_image(url=icon)
         await interaction.followup.send(embed=embed, ephemeral=True)

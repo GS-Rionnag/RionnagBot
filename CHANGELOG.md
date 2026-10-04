@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-04 - Rivals API 5 lookup methods
+
+- Upgrade to rivals-api 5.0.0; omitted calculation method uses the SDK's normal summary-based default for current-season rates.
+- Add optional Normal/Precise choices to `/lookup`, applying the selected method to overall, hero, and class rates consistently.
+- Show partial-coverage notes in lookup results and refresh application stats caches without changing forms or membership.
+
 ## 2026-10-03 - username-only public search suggestions
 
 - Display only the username for Rivals API autocomplete results; keep account UIDs internal for selecting the correct account.

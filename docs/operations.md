@@ -2,7 +2,7 @@
 
 Start `.venv\Scripts\python.exe -m rionnag` from the workspace. bot.py is a compatibility launcher. Run one process; the second fails explicitly. Generated state is in data/ and logs/ and never belongs in public Git.
 
-Rivals stats require rivals-api 4.1 or later. Browser fallback remains optional (`rivals-api[browser]` plus `python -m camoufox fetch`); it did not resolve Tracker's current-season network block during the migration check. All three win-rate calls explicitly use season="current"; unavailable current-season data is reported without substituting all-season totals. Canonical hero attribution can require one detail read per tracked match, so application lookup allows up to five minutes while Discord interactions remain deferred. Scrim monitoring retains its existing browser-disabled request pacing.
+Rivals stats require rivals-api 5.0 or later. Normal summary-based calculation is the SDK default. `/lookup` accepts an optional method choice: Normal or Precise. Omitted method is not passed to the SDK; Precise traverses available match history and details and can take several minutes. Browser fallback remains optional (`rivals-api[browser]` plus `python -m camoufox fetch`); it did not resolve Tracker's current-season network block during the migration check. All three win-rate calls explicitly use season="current"; unavailable current-season data is reported without substituting all-season totals. Precise hero attribution can require one detail read per tracked match. Application stats use normal calculations and retain their five-minute timeout while interactions remain deferred. Scrim monitoring retains its existing browser-disabled request pacing.
 
 ## Form changes
 

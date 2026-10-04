@@ -9,7 +9,7 @@ from rionnag import config
 from rionnag.integrations.rivals import fetch_player_overview, profile_overview, queued_lookup
 
 log = logging.getLogger(__name__)
-STATS_VERSION = 7
+STATS_VERSION = 8
 
 
 async def player_stats_embed(answers):
