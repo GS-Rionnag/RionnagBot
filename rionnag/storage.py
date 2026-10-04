@@ -116,6 +116,13 @@ class Store:
             ).fetchone()
             return tuple(row) if row else None
 
+    def profile_names(self, guild_id, game="Marvel Rivals"):
+        with self.connection() as db:
+            return dict(db.execute(
+                "SELECT member_id,username FROM player_profiles WHERE guild_id=? AND game=?",
+                (guild_id, game),
+            ).fetchall())
+
     def save_profile(self, guild_id, member_id, form, answers):
         import time
 

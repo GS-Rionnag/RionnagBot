@@ -11,6 +11,7 @@ from rionnag.integrations.rivals import (
     profile_overview,
     queued_lookup,
 )
+from rionnag.services.lookup import Lookup
 from rionnag.services.permissions import has_role
 from rionnag.ui.onboarding import report
 
@@ -18,25 +19,27 @@ from rionnag.ui.onboarding import report
 class Profiles(commands.Cog):
     def __init__(self, service):
         self.service = service
+        self.lookup_service = Lookup(service)
 
     @app_commands.command(name="edit_form", description="Edit your own saved game form data")
     @app_commands.guild_only()
     async def edit_form(self, interaction: discord.Interaction):
         await self.service.edit_saved_form(interaction)
 
-    @app_commands.command(name="profile", description="View a saved member’s Marvel Rivals profile")
-    async def profile(self, interaction: discord.Interaction, member: discord.Member | None = None):
-        member = member or interaction.user
-        saved = self.service.store.saved_profile(interaction.guild_id, member.id)
-        if not saved:
-            raise ValueError("This member has no completed game profile.")
+    @app_commands.command(name="lookup", description="Search a member or Marvel Rivals account")
+    @app_commands.guild_only()
+    @app_commands.describe(query="Discord username, display name, mention, or Marvel Rivals username")
+    async def lookup(self, interaction: discord.Interaction, query: str):
+        member, saved, account = self.lookup_service.resolve(interaction.guild, query)
         await interaction.response.defer(ephemeral=True, thinking=True)
-        player = await asyncio.to_thread(queued_lookup, fetch_player_overview, saved[0])
+        player = await asyncio.to_thread(queued_lookup, fetch_player_overview, account)
         fields, icon = profile_overview(player)
-        embed = discord.Embed(title=f"{member.display_name} · Marvel Rivals", color=config.COLOR)
-        embed.add_field(name="Username", value=saved[0])
-        embed.add_field(name="Time zone", value=saved[1])
-        embed.add_field(name="Preferred roles", value=f"{saved[2]} / {saved[3]}")
+        name = member.display_name if member else player.get("player_name", account)
+        embed = discord.Embed(title=f"{name} · Marvel Rivals", color=config.COLOR)
+        embed.add_field(name="Username", value=saved[0] if saved else player.get("player_name", account))
+        if saved:
+            embed.add_field(name="Time zone", value=saved[1])
+            embed.add_field(name="Preferred roles", value=f"{saved[2]} / {saved[3]}")
         for label, key in (
             ("Current rank", "current_rank"),
             ("Peak rank", "peak_rank"),
@@ -47,6 +50,13 @@ class Profiles(commands.Cog):
         if icon:
             embed.set_image(url=icon)
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @lookup.autocomplete("query")
+    async def lookup_autocomplete(self, interaction: discord.Interaction, current: str):
+        if interaction.guild is None or interaction.guild_id != config.GUILD_ID:
+            return []
+        return [app_commands.Choice(name=name, value=value)
+                for name, value in await self.lookup_service.autocomplete(interaction.guild, current)]
 
     @app_commands.command(
         name="promote", description="Game manager: promote a tryout to team, or team to manager"

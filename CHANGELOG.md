@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-03 - searchable account lookup
+
+- Replace `/profile` with `/lookup` and a required text query accepting names or pasted mentions.
+- Match saved game names and Discord usernames/display names; prioritize saved-member autocomplete with team labels.
+- Use the form's public account search for other names, select by UID, and show external account stats without saved form fields.
+- Keep autocomplete provider work bounded and require explicit selection for ambiguous member matches.
+
 ## 2026-10-03 - availability video
 
 - Show the owner's YouTube video in message content when applicants reach day selection, including form edits.
