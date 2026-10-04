@@ -4,7 +4,6 @@ import asyncio
 import re
 
 from rionnag.integrations.rivals import queued_lookup, search_player_accounts
-from rionnag.services.permissions import has_role
 
 
 class Lookup:
@@ -16,7 +15,6 @@ class Lookup:
     def matches(self, guild, query):
         query = query.strip().casefold()
         names = self.service.store.profile_names(guild.id)
-        form = self.service.forms["marvel-rivals"]
         matches = []
         for member in guild.members:
             if member.id not in names:
@@ -26,8 +24,7 @@ class Lookup:
             if query and not any(query in name for name in aliases):
                 continue
             rank = 0 if query in aliases else 1 if any(name.startswith(query) for name in aliases) else 2
-            team = has_role(member, form["team_role"]) or has_role(member, form["manager_role"])
-            label = f"{names[member.id]} · @{member.name} · {'In team' if team else 'Saved member'}"
+            label = f"{names[member.id]} · @{member.name}"
             matches.append((rank, label, member))
         return sorted(matches, key=lambda row: (row[0], row[1].casefold(), row[2].id))
 

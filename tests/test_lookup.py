@@ -24,12 +24,12 @@ class LookupTests(unittest.IsolatedAsyncioTestCase):
         self.lookup = Lookup(SimpleNamespace(store=self.store, forms={
             "marvel-rivals": {"team_role": 7, "manager_role": 8}}))
 
-    async def test_aliases_show_saved_name_and_team_first(self):
+    async def test_aliases_show_saved_name_without_membership_label(self):
         for query in ("eternalwii", "eternalwiinter", "chenoa", "winter"):
             choices = await self.lookup.autocomplete(self.guild, query)
             self.assertEqual(choices[0][1], "member:42")
             self.assertTrue(choices[0][0].startswith("Chenoa_"))
-            self.assertIn("In team", choices[0][0])
+            self.assertEqual(choices[0][0], "Chenoa_ · @eternalwiinter")
 
     def test_mentions_and_plain_names_resolve_saved_account(self):
         for query in ("<@42>", "<@!42>", "member:42", "eternalwii", "Chenoa_"):
