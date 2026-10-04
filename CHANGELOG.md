@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-04 - Rivals API 5.3 update
+
+- Require rivals-api 5.3.0 with rank recovery, provider outage cache fallbacks, and additional public account-search fallback.
+- Preserve browser support and the existing normal/precise lookup choices.
+
 ## 2026-10-04 - Rank recovery and private-profile accuracy
 
 - Display recovered current and lifetime peak ranks from the SDK's rank summary.
