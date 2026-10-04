@@ -1,11 +1,11 @@
-"""Show a member's saved form using their own selected local time zone."""
+"""Show saved form data with Discord timestamps for viewer-local times."""
 
 from datetime import UTC, datetime
 
 import discord
 
 from rionnag import config
-from rionnag.ui.availability import DAYS, hour_label, selected_zone
+from rionnag.ui.availability import schedule_text
 
 
 def form_profile_embed(member, form, answers, now=None):
@@ -20,17 +20,13 @@ def form_profile_embed(member, form, answers, now=None):
         embed.add_field(name=label[:256], value=value[:1024], inline=False)
         if len(embed.fields) >= 22:
             break
-    local = (now or datetime.now(UTC)).astimezone(selected_zone(time_zone)) if time_zone else None
+    current = now or datetime.now(UTC)
     embed.add_field(name="Time zone", value=time_zone or "Not saved")
-    embed.add_field(name="Your local time", value=local.strftime("%A, %I:%M %p %Z") if local else "Not saved")
+    embed.add_field(name="Current time", value=f"<t:{int(current.timestamp())}:t>")
     days = answers.get("availability_days", {})
-    lines = []
-    for day in DAYS:
-        if day in days:
-            start, end = days[day]["start"], days[day]["end"]
-            suffix = " (next day)" if end <= start or end == 24 else ""
-            lines.append(f"{day}: {hour_label(start)} – {hour_label(end)}{suffix}")
-    embed.add_field(name="Days and times free (your local time)",
-                    value=("\n".join(lines) or answers.get("availability") or "Not saved")[:1024],
+    embed.add_field(name="Days and times free",
+                    value=(schedule_text(days, time_zone, current)
+                           or answers.get("availability") or "Not saved")[:1024],
                     inline=False)
+    embed.set_footer(text="Times display in your Discord local time zone.")
     return embed

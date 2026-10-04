@@ -1,7 +1,9 @@
+import re
 import unittest
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
+from zoneinfo import ZoneInfo
 
 from rionnag.cogs.profiles import Profiles
 from rionnag.ui.profile import form_profile_embed
@@ -19,22 +21,27 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
                         "availability_days": {"Sunday": {"start": 9, "end": 24}}}
         self.member = SimpleNamespace(id=42, display_name="Member")
 
-    def test_form_fields_and_member_local_clock(self):
+    def test_form_fields_and_discord_timestamps(self):
         embed = form_profile_embed(self.member, self.form, self.answers,
                                    datetime(2026, 10, 3, 18, tzinfo=UTC))
         fields = {field.name: field.value for field in embed.fields}
         self.assertIn("Future Game", embed.title)
         self.assertEqual(fields["In-game username"], "Player")
         self.assertEqual(fields["Favorite character"], "Hero")
-        self.assertEqual(fields["Your local time"], "Saturday, 11:00 AM PDT")
-        self.assertEqual(fields["Days and times free (your local time)"],
-                         "Sunday: 9:00 AM – 12:00 AM (next day)")
+        self.assertEqual(fields["Current time"],
+                         f"<t:{int(datetime(2026, 10, 3, 18, tzinfo=UTC).timestamp())}:t>")
+        stamps = re.findall(r"<t:(\d+):t>", fields["Days and times free"])
+        dates = [datetime.fromtimestamp(int(stamp), ZoneInfo("America/Los_Angeles"))
+                 for stamp in stamps]
+        self.assertEqual([(date.weekday(), date.hour) for date in dates], [(6, 9), (0, 0)])
         self.assertNotIn("private metadata", str(embed.to_dict()))
 
-    def test_local_clock_observes_winter_dst(self):
+    def test_availability_observes_winter_dst(self):
         embed = form_profile_embed(self.member, self.form, self.answers,
                                    datetime(2026, 12, 3, 18, tzinfo=UTC))
-        self.assertEqual(embed.fields[-2].value, "Thursday, 10:00 AM PST")
+        stamps = re.findall(r"<t:(\d+):t>", embed.fields[-1].value)
+        start = datetime.fromtimestamp(int(stamps[0]), UTC)
+        self.assertEqual(start.hour, 17)
 
     async def test_profile_has_no_arguments_and_uses_only_caller(self):
         self.assertEqual(Profiles.profile.parameters, [])

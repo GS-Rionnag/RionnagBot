@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-03 - profile Discord timestamps
+
+- Display `/profile` current time and availability windows as Discord time-only timestamps.
+- Convert saved availability from the member's selected zone; Discord renders each viewer's local time.
+
 ## 2026-10-03 - own form profile
 
 - Add `/profile` without arguments to privately show the caller's saved game form, current local time, and weekly availability in their selected time zone.
