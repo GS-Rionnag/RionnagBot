@@ -90,10 +90,17 @@ def fetch_player_overview(username: str, method: str | None = None) -> dict:
                 errors.append(f"{name.capitalize()} win rates are temporarily unavailable.")
         if rank_errors:
             errors.append("Some hero leaderboard placements are temporarily unavailable.")
+        overall = rates["overall"] or {}
+        overall_rate = overall.get("win_rate_pct")
+        partial = overall.get("partial_result")
+        if overall_rate is None and isinstance(partial, dict) and partial.get("win_rate_pct") is not None:
+            overall_rate = partial["win_rate_pct"]
+            available = ", ".join(partial.get("included_modes", []))
+            errors.append(f"Overall win rate covers available modes only ({available}); other modes are unavailable.")
         return {
             "player_uid": str(player.uid),
             "player_name": player.name or str(player.uid),
-            "win_rate": rates["overall"].get("win_rate_pct") if rates["overall"] is not None else None,
+            "win_rate": overall_rate,
             "top_heroes": [],
             "rank_game_season": player.rank_game_season or {},
             "match_hero_rates": rates["heroes"]["data"] if rates["heroes"] is not None else None,

@@ -9,7 +9,8 @@ from rionnag.integrations.rivals import add_hero_fields, fetch_player_overview, 
 
 
 class OverviewTests(unittest.TestCase):
-    def fetch(self, rate=57, partial=False, blocked_season=False, blocked_rank=False, method=None):
+    def fetch(self, rate=57, partial=False, blocked_season=False, blocked_rank=False, method=None,
+              partial_result=None):
         metadata = {"provider_errors": ["offline"] if partial else [], "unresolved": []}
 
         def response(data):
@@ -55,7 +56,7 @@ class OverviewTests(unittest.TestCase):
 
             def rate_after_ranks(**kwargs):
                 self.assertEqual(stats.summary_heroes.call_count, 2)
-                return response({"win_rate_pct": rate, "metadata": metadata})
+                return response({"win_rate_pct": rate, "metadata": metadata, "partial_result": partial_result})
 
             stats.win_rate.side_effect = rate_after_ranks
         if blocked_season:
@@ -70,6 +71,12 @@ class OverviewTests(unittest.TestCase):
             _, stats = self.fetch(method=method)
             for call in (stats.win_rate, stats.hero_win_rates, stats.class_win_rates):
                 call.assert_called_once_with(season="current", method=method)
+
+    def test_available_mode_fallback_is_displayed_with_coverage_note(self):
+        result, _ = self.fetch(rate=None, partial_result={
+            "win_rate_pct": 60, "included_modes": ["competitive"]})
+        self.assertEqual(result["win_rate"], 60)
+        self.assertIn("available modes only (competitive)", result["win_rate_note"])
 
     def test_invalid_method_rejected_before_provider_work(self):
         with patch("rionnag.integrations.rivals.RivalsClient") as client:

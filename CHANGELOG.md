@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-04 - Show available partial overall rates
+
+- Display SDK `partial_result` overall rates when full requested-mode counts
+  are unavailable, with an explicit note naming the available modes. Keep missing
+  data unavailable when no measured fallback exists. Preserve healthy provider
+  hero/class results and their coverage notes.
+
 ## 2026-10-04 - Conservative Rivals request pacing
 
 - Default to three-second request gaps and sixty-second fallback cooldowns per
