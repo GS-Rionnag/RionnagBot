@@ -28,6 +28,8 @@ Account uniqueness applies to pending applications, accepted members, decisions 
 
 Start/end selection happens sequentially on the message, allowing end choices to update immediately. End times start one hour after the chosen start and continue through midnight. Older cached overnight windows still display. Unfinished version-zero drafts do not trigger version resets during background repair, and actual resets retain the existing welcome message ID.
 
+Entering day selection includes https://youtu.be/TQXOmacHAYs in the ephemeral message content, both after account selection and when entering directly by UID. Form edits use the same entry point.
+
 Welcome and tryout panels are embeds with the MR game emoji. Applicant welcome messages mention the member in the message content above the embed, with explicit allowed mentions so new messages ping them. Existing panels are edited in place. Ticket names use the Discord username plus the last four digits of the member ID; the immutable topic/full ID and database mapping remain authoritative for ownership/recovery. These presentation changes do not change the form definition/version or force an unrelated reset.
 
 player_profiles is populated only after acceptance/restoration and removed during reset/rejection. Existing scrim tables share the private connection; collected offers use a separate private feed database. The collector needs a separate environment because discord.py-self conflicts with discord.py.

@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-03 - availability video
+
+- Show the owner's YouTube video in message content when applicants reach day selection, including form edits.
+
 ## 2026-10-03 - delete member data on departure
 
 - Delete departing members' saved forms, stats caches, profile/availability, account links, and restoration metadata.
