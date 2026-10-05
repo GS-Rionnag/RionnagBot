@@ -177,7 +177,7 @@ class OpportunityPublisher:
                     message = await channel.send(
                         content=content, embed=embed, view=OpportunityVotes(self, key),
                         allowed_mentions=discord.AllowedMentions(
-                            users=[discord.Object(mid) for mid in members] if previous is None else False,
+                            users=[discord.Object(mid) for mid in members],
                             roles=False, everyone=False,
                         ),
                     )

@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-05 - ping every new scrim post
+
+- Ping matching players on every new channel post, including offers that return after changing the rank filter. Edits to existing posts and vote updates remain silent.
+
 ## 2026-10-05 - saved scrim rank searches and clearer timing
 
 - Add owner/Marvel-manager `/scrim_rank min_rank max_rank` to save the default opponent search for both automatic channel posts and `/scrim_opportunities`. Maximum is optional; one rank searches that tier, aliases/divisions are supported, and Any clears the filter.

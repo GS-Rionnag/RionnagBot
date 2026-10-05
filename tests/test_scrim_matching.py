@@ -204,7 +204,8 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.store.set_scrim_rank_filter(10, ("Grandmaster", "Grandmaster"))
         await self.publisher.sync(self.now)
         self.assertEqual(self.channel.send.await_count, 2)
-        self.assertFalse(self.channel.send.call_args.kwargs["allowed_mentions"].users)
+        self.assertEqual({u.id for u in self.channel.send.call_args.kwargs["allowed_mentions"].users},
+                         {1, 2, 3, 4, 5})
 
     async def test_lost_send_ack_recovers_without_duplicate(self):
         self.store.reserve_opportunity(10, "3:0")
