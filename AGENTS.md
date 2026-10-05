@@ -1,5 +1,7 @@
 # Agent instructions
 
+Use the shared per-user supervisor in this canonical checkout for runtime control: `rtk proxy .venv\Scripts\python.exe -m rionnag.service status|restart|stop|start` (choose one action). Do not launch a bot per chat/worktree or kill Python processes by name. Read docs/operations.md for startup and recovery details.
+
 Read `C:\Users\giris\.codex\RTK.md` and prefix shell commands with `rtk`.
 
 Read README.md, docs/architecture.md, docs/permissions.md, and docs/operations.md before modifying behavior. This is the Rionnag owner's private server bot. Discord connector tools act as the owner account; prefer them for server inspection and the bot for ongoing workflows. Initial data deletion and membership rework were explicitly authorized. Do not infer authorization for future wipes.

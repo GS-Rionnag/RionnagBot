@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-05 - shared per-user Windows bot service
+
+- Run one hidden supervisor outside chat terminals, with automatic bot crash recovery and startup at Windows sign-in without administrator rights.
+- Provide shared status/start/restart/stop controls, restrict termination to the owned child tree, and retain OS duplicate-instance locks.
+- Document the canonical checkout and agent controls; keep runtime state and logs private.
+
 ## 2026-10-05 - preserve votes across same-start scrim replacements
 
 - Keep the saved voter mentions and count when newer offers, fallback sources, or rank-filter changes update an existing start-time message, including a change of opponent.

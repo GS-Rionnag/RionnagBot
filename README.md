@@ -15,12 +15,14 @@ rtk proxy python -m venv .venv
 rtk proxy .venv\Scripts\python.exe -m pip install -e ".[dev]"
 rtk proxy .venv\Scripts\python.exe -m camoufox fetch
 # Copy .env.example to .env and privately set DISCORD_TOKEN.
-rtk proxy .venv\Scripts\python.exe -m rionnag
+rtk proxy .venv\Scripts\python.exe -m rionnag.service install
 rtk proxy .venv\Scripts\python.exe -m unittest discover -s tests -q
 rtk proxy .venv\Scripts\ruff.exe check .
 ```
 
 Enable Server Members Intent. Keep the bot role above membership roles and below Rionnag. An OS lock prevents duplicate bot instances.
+
+On Windows, `install` starts the shared background supervisor and enables hidden startup at user sign-in without admin rights. Any chat can use `python -m rionnag.service status` or `restart` from this checkout. See operations for the full control commands. The PC must remain awake for the bot to stay online.
 
 ## Workspace
 
