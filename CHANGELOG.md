@@ -1,5 +1,13 @@
 # Change timeline
 
+## 2026-10-05 - saved scrim rank searches and clearer timing
+
+- Add owner/Marvel-manager `/scrim_rank min_rank max_rank` to save the default opponent search for both automatic channel posts and `/scrim_opportunities`. Maximum is optional; one rank searches that tier, aliases/divisions are supported, and Any clears the filter.
+- Match opponent ranges that overlap the selected range; refresh channel posts immediately when the filter changes, and enforce it on voting.
+- Label future offers Upcoming with a relative start time and started offers In progress with a relative end time. Retain actual advertised times and existing player pings.
+- Preserve owner-managed scrim finder channel overwrites during onboarding repairs so a hidden testing channel is not automatically reopened. Restore the requested hidden testing visibility while retaining bot access.
+- Use the Eastern date/time range as the opportunity title, remove the Available players field and attendance disclaimer, and retain player mentions in message content. Updates and previously posted offers returning after a filter change do not re-ping.
+
 ## 2026-10-05 - automatic scrim matching and votes
 
 - Publish collector offers in the designated scrim channel when at least four current, accepted Marvel Rivals tryouts/team members/managers can cover the full advertised duration. Start-only offers require one continuous hour; advertised durations shorter than one hour do not qualify.

@@ -11,6 +11,7 @@ from rionnag.scrims.scrim_discord import ScrimController
 from rionnag.scrims.scrim_feed import FeedStore
 from rionnag.scrims.scrim_feed_view import OfferPreview
 from rionnag.services.permissions import has_role
+from rionnag.services.scrim_search import normalize_filter, rank_matches, rank_suggestions
 
 
 class Scrims(commands.Cog):
@@ -64,6 +65,42 @@ class Scrims(commands.Cog):
             self.restored = True
 
     @app_commands.command(
+        name="scrim_rank", description="Set the default opponent rank search for scrim offers"
+    )
+    @app_commands.describe(min_rank="Minimum rank, or Any to clear the filter",
+                           max_rank="Maximum rank; omit to search only the minimum rank")
+    async def rank_filter(self, interaction: discord.Interaction, min_rank: str, max_rank: str | None = None):
+        is_owner = interaction.guild and interaction.user.id == interaction.guild.owner_id
+        if interaction.guild_id != config.GUILD_ID or not (
+            is_owner or self.authorize(interaction, "Marvel Rivals")
+        ):
+            await interaction.response.send_message(
+                "Only the owner or Marvel Rivals Managers can change the scrim rank search.", ephemeral=True
+            )
+            return
+        try:
+            ranks = normalize_filter(min_rank, max_rank)
+        except ValueError as exc:
+            await interaction.response.send_message(str(exc), ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        self.service.store.set_scrim_rank_filter(config.SCRIM_OPPORTUNITIES_CHANNEL_ID, ranks)
+        if self.publisher:
+            await self.publisher.sync()
+        selected = "Any rank" if ranks is None else (
+            ranks[0] if ranks[0] == ranks[1] else f"{ranks[0]} to {ranks[1]}"
+        )
+        await interaction.followup.send(
+            f"Default scrim search: {selected}. Matches opponent rank ranges that overlap this selection. "
+            "Applies to channel posts and /scrim_opportunities.", ephemeral=True,
+        )
+
+    @rank_filter.autocomplete("min_rank")
+    @rank_filter.autocomplete("max_rank")
+    async def autocomplete_rank(self, interaction: discord.Interaction, current: str):
+        return [app_commands.Choice(name=rank, value=rank) for rank in rank_suggestions(current)]
+
+    @app_commands.command(
         name="scrim_opportunities", description="Game managers: preview collected scrim offers"
     )
     async def opportunities(self, interaction: discord.Interaction):
@@ -73,7 +110,8 @@ class Scrims(commands.Cog):
             )
             return
         feed = FeedStore(config.ROOT / "data" / "scrim_feed.sqlite3")
-        offers = feed.offers()["scrims"]
+        ranks = self.service.store.scrim_rank_filter(config.SCRIM_OPPORTUNITIES_CHANNEL_ID)
+        offers = [offer for offer in feed.offers()["scrims"] if rank_matches(offer, ranks)]
         if not offers:
             await interaction.response.send_message(
                 "No collected scrim offers are available.", ephemeral=True

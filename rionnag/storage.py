@@ -36,6 +36,8 @@ class Store:
                 CREATE TABLE IF NOT EXISTS scrim_opportunity_votes (
                     channel_id INTEGER NOT NULL, offer_key TEXT NOT NULL, member_id INTEGER NOT NULL,
                     PRIMARY KEY(channel_id,offer_key,member_id));
+                CREATE TABLE IF NOT EXISTS scrim_search_settings (
+                    channel_id INTEGER PRIMARY KEY, min_rank TEXT NOT NULL, max_rank TEXT NOT NULL);
             """)
 
     @contextmanager
@@ -148,6 +150,19 @@ class Store:
             return {row["offer_key"]: dict(row) for row in db.execute(
                 "SELECT * FROM scrim_opportunity_posts WHERE channel_id=?", (channel_id,)
             )}
+
+    def scrim_rank_filter(self, channel_id):
+        with self.connection() as db:
+            row = db.execute("SELECT min_rank,max_rank FROM scrim_search_settings WHERE channel_id=?",
+                             (channel_id,)).fetchone()
+        return tuple(row) if row else None
+
+    def set_scrim_rank_filter(self, channel_id, ranks):
+        with self.connection() as db:
+            if ranks is None:
+                db.execute("DELETE FROM scrim_search_settings WHERE channel_id=?", (channel_id,))
+            else:
+                db.execute("INSERT OR REPLACE INTO scrim_search_settings VALUES(?,?,?)", (channel_id, *ranks))
 
     def reserve_opportunity(self, channel_id, offer_key):
         import time

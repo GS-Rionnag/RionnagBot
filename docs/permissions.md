@@ -20,6 +20,8 @@ Accepted members do not retain Visitor/Member. Discord combines role overwrites 
 
 Ordinary channels deny @everyone visibility. Main/Marvel category access comes from membership roles. Bot-making stays restricted to Rionnag/admin access. Repairs preserve unrelated capabilities and completed members' scrim admission overwrites; unfinished members' individual visibility bypasses are removed. Managed roles and @everyone cannot be removed. Rionnag stays deliberately.
 
+The scrim finder channel (1555989494451146802) has owner-managed overwrites and is excluded from automatic onboarding channel-permission repair. Its hidden testing visibility remains until the owner changes it; restarting or routine repair must not grant game-role visibility there. The bot keeps access to post and maintain opportunities. Owner/Administrator bypass behavior still applies.
+
 Marvel roles: team 1554272432309797015, tryout 1554275227901632512, manager 1554281222023421992. Applications category 1555725074693099580; entry 1555730197939101737; Main category 1555732719583895622; Marvel category 1555382746992353290.
 
 Future resets cache every removable role, including managers and unrelated assignable roles. Completion restores exact surviving IDs without needing managers who temporarily lost their role. Deleted roles require owner repair. After the initial wipe, existing game members' live Discord roles become fresh restoration metadata. Their old stored answers remain deleted; they must fill the form again. People without existing game membership need normal manager review.

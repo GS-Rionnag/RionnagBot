@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from rionnag.cogs.scrims import Scrims
 from rionnag.scrims.scrim_feed import FeedStore
+from rionnag.storage import Store
 
 
 class OpportunityTests(unittest.IsolatedAsyncioTestCase):
@@ -15,11 +16,16 @@ class OpportunityTests(unittest.IsolatedAsyncioTestCase):
         self.root = Path(self.directory.name)
         self.feed = FeedStore(self.root / "data" / "scrim_feed.sqlite3")
         self.cog = object.__new__(Scrims)
+        self.cog.service = SimpleNamespace(store=Store(self.root / "members.db"))
+        self.cog.publisher = SimpleNamespace(sync=AsyncMock())
         self.cog.authorize = lambda interaction, game: True
         self.interaction = SimpleNamespace(
             user=SimpleNamespace(id=4),
             response=SimpleNamespace(send_message=AsyncMock()),
+            guild=SimpleNamespace(owner_id=4), guild_id=1554260744327929987,
+            followup=SimpleNamespace(send=AsyncMock()),
         )
+        self.interaction.response.defer = AsyncMock()
 
     async def invoke(self):
         with patch("rionnag.cogs.scrims.config.ROOT", self.root):
@@ -48,6 +54,12 @@ class OpportunityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sent["embed"].title, "Scrim opportunity")
         self.assertEqual(sent["view"].offers[0]["messageContent"], "Diamond scrim")
         sent["view"].stop()
+        self.interaction.response.send_message.reset_mock()
+        self.cog.service.store.set_scrim_rank_filter(1555989494451146802, ("Grandmaster", "Grandmaster"))
+        await self.invoke()
+        self.interaction.response.send_message.assert_awaited_once_with(
+            "No collected scrim offers are available.", ephemeral=True
+        )
 
     async def test_non_manager_cannot_open_preview(self):
         self.cog.authorize = lambda interaction, game: False
@@ -55,3 +67,30 @@ class OpportunityTests(unittest.IsolatedAsyncioTestCase):
         self.interaction.response.send_message.assert_awaited_once_with(
             "Only Marvel Rivals Managers can view scrim offers.", ephemeral=True
         )
+
+    async def test_single_rank_command_saves_default_and_refreshes(self):
+        await Scrims.rank_filter.callback(self.cog, self.interaction, "gm")
+        self.assertEqual(self.cog.service.store.scrim_rank_filter(1555989494451146802),
+                         ("Grandmaster", "Grandmaster"))
+        self.cog.publisher.sync.assert_awaited_once()
+
+    async def test_rank_range_clear_and_invalid_range(self):
+        await Scrims.rank_filter.callback(self.cog, self.interaction, "dia", "gm")
+        self.assertEqual(self.cog.service.store.scrim_rank_filter(1555989494451146802),
+                         ("Diamond", "Grandmaster"))
+        await Scrims.rank_filter.callback(self.cog, self.interaction, "gm", "dia")
+        self.assertIn("below", self.interaction.response.send_message.call_args.args[0])
+        self.assertEqual(self.cog.service.store.scrim_rank_filter(1555989494451146802),
+                         ("Diamond", "Grandmaster"))
+        await Scrims.rank_filter.callback(self.cog, self.interaction, "Any")
+        self.assertIsNone(self.cog.service.store.scrim_rank_filter(1555989494451146802))
+
+    async def test_rank_command_denies_non_managers_and_other_guilds(self):
+        self.cog.authorize = lambda interaction, game: False
+        self.interaction.guild.owner_id = 99
+        await Scrims.rank_filter.callback(self.cog, self.interaction, "gm")
+        self.assertIsNone(self.cog.service.store.scrim_rank_filter(1555989494451146802))
+        self.interaction.guild.owner_id = 4
+        self.interaction.guild_id = 123
+        await Scrims.rank_filter.callback(self.cog, self.interaction, "gm")
+        self.cog.publisher.sync.assert_not_awaited()

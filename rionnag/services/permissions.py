@@ -56,6 +56,9 @@ async def apply_server_policy(guild, forms, store):
     entry = guild.get_channel(config.ENTRY_CHANNEL_ID)
     category = guild.get_channel(config.APPLICATIONS_CATEGORY_ID)
     for channel in guild.channels:
+        # The owner controls finder visibility, including hiding it during testing.
+        if channel.id == config.SCRIM_OPPORTUNITIES_CHANNEL_ID:
+            continue
         if (
             channel.id == config.APPLICATIONS_CATEGORY_ID
             or channel.category_id == config.APPLICATIONS_CATEGORY_ID

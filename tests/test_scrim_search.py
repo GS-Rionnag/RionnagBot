@@ -1,0 +1,78 @@
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import discord
+
+from rionnag import config
+from rionnag.services.permissions import apply_server_policy
+from rionnag.services.scrim_search import normalize_filter, rank_matches, rank_suggestions
+from rionnag.storage import Store
+from rionnag.ui.scrim_opportunities import matched_offer_embed
+
+
+class RankSearchTests(unittest.TestCase):
+    def test_single_tier_alias_range_and_divisions(self):
+        self.assertEqual(normalize_filter("gm"), ("Grandmaster", "Grandmaster"))
+        self.assertEqual(normalize_filter("dia", "cel"), ("Diamond", "Celestial"))
+        self.assertTrue(rank_matches({"rank_minimum": "Diamond", "rank_maximum": "Grandmaster"},
+                                     normalize_filter("gm")))
+        self.assertTrue(rank_matches({"rank_minimum": "Grandmaster III", "rank_maximum": "Grandmaster III"},
+                                     normalize_filter("gm")))
+        self.assertFalse(rank_matches({"rank_minimum": "Celestial", "rank_maximum": "Eternity"},
+                                      normalize_filter("gm")))
+        self.assertFalse(rank_matches({"rank_minimum": "Grandmaster III", "rank_maximum": "Grandmaster III"},
+                                      normalize_filter("gm I")))
+
+    def test_invalid_ranges_and_clear(self):
+        for minimum, maximum in (("gm", "dia"), ("gm I", "gm III"), ("Masters", None), ("Any", "gm")):
+            with self.assertRaises(ValueError):
+                normalize_filter(minimum, maximum)
+        self.assertIsNone(normalize_filter("Any"))
+        self.assertTrue(rank_matches({}, None))
+        self.assertFalse(rank_matches({}, normalize_filter("gm")))
+
+    def test_settings_survive_restart(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "members.db"
+            store = Store(path)
+            self.assertIsNone(store.scrim_rank_filter(1))
+            store.set_scrim_rank_filter(1, normalize_filter("gm"))
+            self.assertEqual(Store(path).scrim_rank_filter(1), ("Grandmaster", "Grandmaster"))
+            store.set_scrim_rank_filter(1, None)
+            self.assertIsNone(Store(path).scrim_rank_filter(1))
+
+    def test_autocomplete_supports_aliases_and_limit(self):
+        self.assertIn("Grandmaster", rank_suggestions("gm"))
+        self.assertIn("Diamond", rank_suggestions("dia"))
+        self.assertLessEqual(len(rank_suggestions("")), 25)
+
+    def test_time_labels_distinguish_future_and_in_progress(self):
+        offer = {"Start_Time_timestamp": "2026-10-06T00:00:00Z", "End_Time_timestamp": None}
+        from rionnag.scrims.scrim_offer_rules import timestamp
+        start = timestamp(offer["Start_Time_timestamp"])
+        before = matched_offer_embed(offer, [1, 2, 3, 4], "3:0", now=start-3600)
+        after = matched_offer_embed(offer, [1, 2, 3, 4], "3:0", now=start)
+        self.assertIn("Upcoming", before.description)
+        self.assertIn("In progress", after.description)
+        self.assertIn(f"<t:{start}:R>", before.description)
+        self.assertEqual(before.title, "Monday, October 5, 2026 8:00 PM – 9:00 PM")
+        offer["End_Time_timestamp"] = "2026-10-06T02:00:00Z"
+        full = matched_offer_embed(offer, [1, 2, 3, 4], "3:0", now=start-3600)
+        self.assertEqual(full.title, "Monday, October 5, 2026 8:00 PM – 10:00 PM")
+        offer["End_Time_timestamp"] = "2026-10-06T05:00:00Z"
+        overnight = matched_offer_embed(offer, [1, 2, 3, 4], "3:0", now=start-3600)
+        self.assertIn("Tuesday, October 6, 2026 1:00 AM", overnight.title)
+
+
+class FinderPermissionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_repair_preserves_owner_managed_finder_overwrites(self):
+        overwrite = discord.PermissionOverwrite(view_channel=False)
+        channel = SimpleNamespace(id=config.SCRIM_OPPORTUNITIES_CHANNEL_ID, category_id=1555382746992353290,
+                                  overwrites={7: overwrite}, edit=AsyncMock())
+        guild = SimpleNamespace(channels=[channel], get_channel=lambda cid: None)
+        await apply_server_policy(guild, {}, None)
+        channel.edit.assert_not_awaited()
+        self.assertFalse(channel.overwrites[7].view_channel)

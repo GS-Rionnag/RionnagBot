@@ -92,7 +92,8 @@ class MatchingTests(unittest.TestCase):
         embed = matched_offer_embed(offer(), [1, 2, 3, 4], "3:0")
         self.assertIn("1 hour", embed.description)
         self.assertIn(":F>", embed.description)
-        self.assertIn("<@4>", embed.fields[1].value)
+        self.assertNotIn("Available players", {field.name for field in embed.fields})
+        self.assertNotIn("Based on saved availability", embed.description)
         self.assertEqual(embed.url, offer()["messageURL"])
         self.assertEqual(embed.footer.text, "Scrim finder • 3:0")
 
@@ -132,7 +133,8 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         sent = self.channel.send.call_args.kwargs
         self.assertEqual({u.id for u in sent["allowed_mentions"].users}, {1, 2, 3, 4, 5})
         self.assertEqual(sent["content"], "<@1> <@2> <@3> <@4> <@5>")
-        self.assertIn("5 players", self.channel.send.call_args.kwargs["embed"].title)
+        self.assertEqual(self.channel.send.call_args.kwargs["embed"].title,
+                         "Monday, June 7, 2027 8:00 PM – 9:00 PM")
         self.publisher = OpportunityPublisher(self.bot, Store(self.store.path), self.feed,
                                               {"marvel-rivals": self.form}, 1, 10)
         await self.publisher.sync(self.now)
@@ -140,7 +142,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.message.edit.assert_not_awaited()
         self.store.update(5, answers=answers(start=22))
         await self.publisher.sync(self.now)
-        self.assertIn("4 players", self.message.edit.call_args.kwargs["embed"].title)
+        self.assertEqual(self.message.edit.call_args.kwargs["content"], "<@1> <@2> <@3> <@4>")
         self.assertFalse(self.message.edit.call_args.kwargs["allowed_mentions"].users)
         self.channel.send.assert_awaited_once()
 
@@ -166,7 +168,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.opportunity_posts(10)["3:0"]["status"], "inactive")
         self.store.update(4, answers=answers())
         await self.publisher.sync(self.now)
-        self.assertIn("4 players", self.channel.send.call_args.kwargs["embed"].title)
+        self.assertEqual(self.channel.send.call_args.kwargs["content"], "<@1> <@2> <@3> <@4>")
         self.assertEqual(self.channel.send.await_count, 2)
 
     async def test_source_edit_updates_same_message_and_deletion_withdraws(self):
@@ -188,6 +190,21 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.message.delete.assert_not_awaited()
         await self.publisher.sync(instant(offer()["Start_Time_timestamp"]) + 3600)
         self.message.delete.assert_awaited_once()
+
+    async def test_saved_rank_filter_removes_out_of_range_posts_and_blocks_votes(self):
+        await self.publisher.sync(self.now)
+        self.store.set_scrim_rank_filter(10, ("Celestial", "Eternity"))
+        blocked = self.interaction(1)
+        with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
+            await self.publisher.vote(blocked, "3:0", True)
+        self.assertIn("no longer", blocked.followup.send.call_args.args[0])
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
+        await self.publisher.sync(self.now)
+        self.message.delete.assert_awaited_once()
+        self.store.set_scrim_rank_filter(10, ("Grandmaster", "Grandmaster"))
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.channel.send.await_count, 2)
+        self.assertFalse(self.channel.send.call_args.kwargs["allowed_mentions"].users)
 
     async def test_lost_send_ack_recovers_without_duplicate(self):
         self.store.reserve_opportunity(10, "3:0")
@@ -215,7 +232,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
             await self.publisher.vote(one, "3:0", True)
             await self.publisher.vote(two, "3:0", True)
             self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1, 2])
-            self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[2].name, "Voted 2/6")
+            self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].name, "Voted 2/6")
             await self.publisher.vote(one, "3:0", False)
             self.assertEqual(Store(self.store.path).opportunity_votes(10, "3:0"), [2])
         self.publisher.register_views()

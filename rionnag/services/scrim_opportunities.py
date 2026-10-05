@@ -13,6 +13,7 @@ from zoneinfo import ZoneInfo
 import discord
 
 from rionnag.scrims.scrim_offer_rules import timestamp
+from rionnag.services.scrim_search import rank_matches
 from rionnag.ui.scrim_opportunities import OpportunityVotes, matched_offer_embed
 
 log = logging.getLogger(__name__)
@@ -120,6 +121,7 @@ class OpportunityPublisher:
             return
         players = self.eligible_players(guild, form)
         offers = self.feed.identified_offers()
+        ranks = self.store.scrim_rank_filter(self.channel_id)
         posts = self.store.opportunity_posts(self.channel_id)
         pending = [p for p in posts.values() if p["message_id"] is None and p["status"] == "pending"]
         recovered = {}
@@ -135,7 +137,7 @@ class OpportunityPublisher:
         for key in sorted(offers.keys() | posts.keys()):
             offer = offers.get(key)
             members = match_offer(offer, players, now) if offer else []
-            eligible = len(members) >= 4
+            eligible = len(members) >= 4 and rank_matches(offer, ranks)
             previous = posts.get(key)
             if not eligible and previous is None:
                 continue
@@ -144,7 +146,7 @@ class OpportunityPublisher:
             self.store.clear_opportunity_votes(self.channel_id, key, {p["member_id"] for p in players})
             if eligible:
                 votes = self.store.opportunity_votes(self.channel_id, key)
-                embed = matched_offer_embed(offer, members, key, votes)
+                embed = matched_offer_embed(offer, members, key, votes, now=now)
                 content = " ".join(f"<@{mid}>" for mid in members)
                 fingerprint = hashlib.sha256(
                     json.dumps([content, embed.to_dict()], sort_keys=True).encode()
@@ -175,7 +177,8 @@ class OpportunityPublisher:
                     message = await channel.send(
                         content=content, embed=embed, view=OpportunityVotes(self, key),
                         allowed_mentions=discord.AllowedMentions(
-                            users=[discord.Object(mid) for mid in members], roles=False, everyone=False
+                            users=[discord.Object(mid) for mid in members] if previous is None else False,
+                            roles=False, everyone=False,
                         ),
                     )
                 if not eligible:
@@ -204,7 +207,8 @@ class OpportunityPublisher:
             offer = self.feed.identified_offers().get(key)
             members = match_offer(offer, players, time.time()) if offer else []
             if (not post or post["status"] != "active" or post["message_id"] != interaction.message.id
-                    or len(members) < 4):
+                    or len(members) < 4
+                    or not rank_matches(offer, self.store.scrim_rank_filter(self.channel_id))):
                 await interaction.followup.send(
                     "This scrim opportunity is no longer available.", ephemeral=True
                 )

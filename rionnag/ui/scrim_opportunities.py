@@ -1,41 +1,41 @@
 """Public scrim summaries expose only matched members and opponent details."""
 
+import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import discord
 
 from rionnag import config
 from rionnag.scrims.scrim_offer_rules import timestamp
 
 
-def matched_offer_embed(offer, members, key, votes=()):
+def matched_offer_embed(offer, members, key, votes=(), now=None):
     start = timestamp(offer["Start_Time_timestamp"])
     end = timestamp(offer.get("End_Time_timestamp"))
     assumed = end is None
     end = end if end is not None else start + 3600
+    now = time.time() if now is None else now
+    status = f"Upcoming • Starts <t:{start}:R>" if now < start else f"In progress • Ends <t:{end}:R>"
+    zone = ZoneInfo("America/New_York")
+    local_start, local_end = datetime.fromtimestamp(start, zone), datetime.fromtimestamp(end, zone)
+
+    def clock(value):
+        return f"{value.hour % 12 or 12}:{value.minute:02d} {'AM' if value.hour < 12 else 'PM'}"
+
+    title = f"{local_start.strftime('%A, %B')} {local_start.day}, {local_start.year} {clock(local_start)}"
+    if local_end.date() != local_start.date():
+        title += f" – {local_end.strftime('%A, %B')} {local_end.day}, {local_end.year} {clock(local_end)}"
+    else:
+        title += f" – {clock(local_end)}"
     embed = discord.Embed(
-        title=f"Possible scrim · {len(members)} players available",
+        title=title,
         url=offer.get("messageURL"), color=config.COLOR,
-        description=f"<t:{start}:F> – <t:{end}:t>\n"
-        + ("End time not advertised; checked 1 hour of availability.\n" if assumed else "")
-        + "Based on saved availability; attendance is not confirmed.",
+        description=f"{status}\n<t:{start}:F> – <t:{end}:t>\n"
+        + ("End time not advertised; checked 1 hour of availability.\n" if assumed else ""),
     )
     ranks = list(dict.fromkeys(offer.get(k) for k in ("rank_minimum", "rank_maximum") if offer.get(k)))
     embed.add_field(name="Opponent rank", value=" to ".join(ranks) or "Not specified")
-    mentions = [f"<@{mid}>" for mid in members]
-    # Split large rosters without breaking mentions or Discord embed limits.
-    chunks = []
-    current = ""
-    for mention in mentions:
-        if len(current) + len(mention) + 2 > 1024:
-            chunks.append(current)
-            current = ""
-        current += (", " if current else "") + mention
-    if current:
-        chunks.append(current)
-    for index, chunk in enumerate(chunks[:4]):
-        embed.add_field(name="Available players" if index == 0 else "Available players (continued)",
-                        value=chunk, inline=False)
-    if len(chunks) > 4:
-        embed.add_field(name="Additional players", value="More members are available than fit in this post.")
     embed.add_field(name=f"Voted {len(votes)}/6",
                     value="\n".join(f"<@{mid}>" for mid in votes) or "No votes yet.", inline=False)
     author = str(offer.get("authorID", ""))
