@@ -90,7 +90,8 @@ class MatchingTests(unittest.TestCase):
 
     def test_embed_shows_date_source_and_assumed_hour_without_private_answers(self):
         embed = matched_offer_embed(offer(), [1, 2, 3, 4], "3:0")
-        self.assertIn("1 hour", embed.description)
+        self.assertIn("End time not advertised", embed.description)
+        self.assertNotIn("checked 1 hour", embed.description)
         self.assertIn(":F>", embed.description)
         self.assertNotIn("Available players", {field.name for field in embed.fields})
         self.assertNotIn("Based on saved availability", embed.description)
@@ -134,7 +135,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({u.id for u in sent["allowed_mentions"].users}, {1, 2, 3, 4, 5})
         self.assertEqual(sent["content"], "<@1> <@2> <@3> <@4> <@5>")
         self.assertEqual(self.channel.send.call_args.kwargs["embed"].title,
-                         "Monday, June 7, 2027 8:00 PM – 9:00 PM")
+                         "Monday, June 7, 2027 8:00 PM")
         self.publisher = OpportunityPublisher(self.bot, Store(self.store.path), self.feed,
                                               {"marvel-rivals": self.form}, 1, 10)
         await self.publisher.sync(self.now)

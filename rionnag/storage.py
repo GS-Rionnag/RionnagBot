@@ -164,6 +164,12 @@ class Store:
             else:
                 db.execute("INSERT OR REPLACE INTO scrim_search_settings VALUES(?,?,?)", (channel_id, *ranks))
 
+    def reset_opportunity_posts(self, channel_id):
+        """Explicit operator rebuild only; retain source feed and search settings."""
+        with self.connection() as db:
+            db.execute("DELETE FROM scrim_opportunity_votes WHERE channel_id=?", (channel_id,))
+            db.execute("DELETE FROM scrim_opportunity_posts WHERE channel_id=?", (channel_id,))
+
     def reserve_opportunity(self, channel_id, offer_key):
         import time
 

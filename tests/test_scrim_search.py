@@ -44,6 +44,20 @@ class RankSearchTests(unittest.TestCase):
             store.set_scrim_rank_filter(1, None)
             self.assertIsNone(Store(path).scrim_rank_filter(1))
 
+    def test_explicit_rebuild_clears_only_selected_channel_posts_and_votes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(Path(directory) / "members.db")
+            for channel in (1, 2):
+                store.save_opportunity(channel, "3:0", 99, "fingerprint", "active")
+                store.vote_opportunity(channel, "3:0", 4, True)
+                store.set_scrim_rank_filter(channel, normalize_filter("gm"))
+            store.reset_opportunity_posts(1)
+            self.assertEqual(store.opportunity_posts(1), {})
+            self.assertEqual(store.opportunity_votes(1, "3:0"), [])
+            self.assertEqual(store.scrim_rank_filter(1), ("Grandmaster", "Grandmaster"))
+            self.assertEqual(store.opportunity_posts(2)["3:0"]["message_id"], 99)
+            self.assertEqual(store.opportunity_votes(2, "3:0"), [4])
+
     def test_autocomplete_supports_aliases_and_limit(self):
         self.assertIn("Grandmaster", rank_suggestions("gm"))
         self.assertIn("Diamond", rank_suggestions("dia"))
@@ -58,7 +72,9 @@ class RankSearchTests(unittest.TestCase):
         self.assertIn("Upcoming", before.description)
         self.assertIn("In progress", after.description)
         self.assertIn(f"<t:{start}:R>", before.description)
-        self.assertEqual(before.title, "Monday, October 5, 2026 8:00 PM – 9:00 PM")
+        self.assertEqual(before.title, "Monday, October 5, 2026 8:00 PM")
+        self.assertNotIn("9:00 PM", before.description + before.title)
+        self.assertNotIn("Ends", after.description)
         offer["End_Time_timestamp"] = "2026-10-06T02:00:00Z"
         full = matched_offer_embed(offer, [1, 2, 3, 4], "3:0", now=start-3600)
         self.assertEqual(full.title, "Monday, October 5, 2026 8:00 PM – 10:00 PM")

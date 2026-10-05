@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-05 - fresh scrim channel rebuild and start-only display
+
+- Add an explicitly confirmed channel rebuild tool that clears only the destination messages, message mappings, and votes, then publishes eligible collected offers as new posts. Preserve collected source data and the rank filter; use the bot instance lock to avoid races.
+- Restore everyone visibility at the owner's request before rebuilding the opportunity posts.
+- Start-only offers display only their real start and End time not advertised. The one-hour matching/expiry rule stays internal; no invented end is shown.
+
 ## 2026-10-05 - ping every new scrim post
 
 - Ping matching players on every new channel post, including offers that return after changing the rank filter. Edits to existing posts and vote updates remain silent.
