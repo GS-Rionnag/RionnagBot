@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - profile owner's local clock
+
+- Show Current time as plain clock text in the profile owner's saved time zone, including daylight-saving abbreviation.
+- Keep availability as viewer-local Discord timestamps and clarify the footer applies to availability.
+
 ## 2026-10-04 - Rivals API 5.3 update
 
 - Require rivals-api 5.3.0 with rank recovery, provider outage cache fallbacks, and additional public account-search fallback.

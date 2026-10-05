@@ -1,11 +1,11 @@
-"""Show saved form data with Discord timestamps for viewer-local times."""
+"""Show the owner's local clock and viewer-local availability timestamps."""
 
 from datetime import UTC, datetime
 
 import discord
 
 from rionnag import config
-from rionnag.ui.availability import schedule_text
+from rionnag.ui.availability import schedule_text, selected_zone
 
 
 def form_profile_embed(member, form, answers, now=None):
@@ -22,11 +22,13 @@ def form_profile_embed(member, form, answers, now=None):
             break
     current = now or datetime.now(UTC)
     embed.add_field(name="Time zone", value=time_zone or "Not saved")
-    embed.add_field(name="Current time", value=f"<t:{int(current.timestamp())}:t>")
+    local = current.astimezone(selected_zone(time_zone)) if time_zone else None
+    clock = f"{local.hour % 12 or 12}:{local.minute:02d} {local.strftime('%p %Z')}" if local else "Not saved"
+    embed.add_field(name="Current time", value=clock)
     days = answers.get("availability_days", {})
     embed.add_field(name="Days and times free",
                     value=(schedule_text(days, time_zone, current)
                            or answers.get("availability") or "Not saved")[:1024],
                     inline=False)
-    embed.set_footer(text="Times display in your Discord local time zone.")
+    embed.set_footer(text="Availability displays in your Discord local time zone.")
     return embed

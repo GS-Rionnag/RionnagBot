@@ -28,8 +28,7 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Future Game", embed.title)
         self.assertEqual(fields["In-game username"], "Player")
         self.assertEqual(fields["Favorite character"], "Hero")
-        self.assertEqual(fields["Current time"],
-                         f"<t:{int(datetime(2026, 10, 3, 18, tzinfo=UTC).timestamp())}:t>")
+        self.assertEqual(fields["Current time"], "11:00 AM PDT")
         stamps = re.findall(r"<t:(\d+):t>", fields["Days and times free"])
         dates = [datetime.fromtimestamp(int(stamp), ZoneInfo("America/Los_Angeles"))
                  for stamp in stamps]
@@ -42,6 +41,14 @@ class ProfileTests(unittest.IsolatedAsyncioTestCase):
         stamps = re.findall(r"<t:(\d+):t>", embed.fields[-1].value)
         start = datetime.fromtimestamp(int(stamps[0]), UTC)
         self.assertEqual(start.hour, 17)
+        self.assertEqual(embed.fields[-2].value, "10:00 AM PST")
+
+    def test_current_time_uses_profile_owner_central_zone(self):
+        self.answers["time_zone"] = "Central Time (CT)"
+        embed = form_profile_embed(self.member, self.form, self.answers,
+                                   datetime(2026, 10, 5, 16, tzinfo=UTC))
+        self.assertEqual(embed.fields[-2].value, "11:00 AM CDT")
+        self.assertNotIn("<t:", embed.fields[-2].value)
 
     async def test_profile_defaults_to_caller_and_accepts_other_member(self):
         self.assertEqual(Profiles.profile.parameters[0].name, "member")
