@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
+from rionnag import config
 from rionnag.scrims import scrim_rivals
 from rionnag.scrims.scrim_discord import LineupEditor, ScrimController, ScrimPanel
 from rionnag.scrims.scrims import Player, ScrimStore, random_team, substitute_one
@@ -19,6 +20,36 @@ from rionnag.storage import Store
 
 
 class QueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_setup_recognizes_visitor_by_id_after_rename(self):
+        category = MagicMock(spec=discord.CategoryChannel)
+        category.id, category.name = 200, "Marvel Rivals"
+        visitor = SimpleNamespace(id=config.VISITOR_ROLE_ID, name="Visitor")
+        legacy = SimpleNamespace(id=999, name="Member")
+        self.guild.roles = [visitor, legacy]
+        self.guild.default_role = MagicMock(spec=discord.Role)
+        self.guild.me = MagicMock(spec=discord.Member)
+        self.guild.me.guild_permissions.administrator = True
+        self.guild.fetch_channels = AsyncMock(return_value=[category])
+        self.control.id = 100
+        for channel in (self.control, self.waiting, self.stage):
+            channel.category_id = category.id
+            channel.overwrites = {}
+            channel.overwrites_for = MagicMock(side_effect=lambda target: discord.PermissionOverwrite())
+            channel.set_permissions = AsyncMock()
+        await self.controller.setup_channels(
+            self.guild, "Marvel Rivals", self.control, self.waiting, self.stage
+        )
+        for channel in (self.control, self.waiting, self.stage):
+            calls = [c for c in channel.set_permissions.call_args_list if c.args[0] is visitor]
+            self.assertEqual(len(calls), 1)
+            access = calls[0].kwargs["overwrite"]
+            self.assertTrue(access.view_channel)
+            self.assertTrue(access.read_message_history)
+            self.assertFalse(access.send_messages)
+            self.assertFalse(access.connect)
+            self.assertFalse(access.speak)
+            self.assertFalse(any(c.args[0] is legacy for c in channel.set_permissions.call_args_list))
+
     async def test_new_profile_store_supplies_uid_without_legacy_claims_table(self):
         profiles = Store(Path(self.temp.name) / "new-profiles.sqlite3")
         answers = dict(

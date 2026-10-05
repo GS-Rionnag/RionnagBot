@@ -6,13 +6,13 @@ import asyncio
 import io
 import json
 import logging
-import os
 import sqlite3
 from dataclasses import asdict
 
 import discord
 from discord import app_commands
 
+from rionnag import config
 from rionnag.scrims import scrim_rivals
 from rionnag.scrims.scrim_monitor import ScrimMonitor
 from rionnag.scrims.scrim_results import match_outcome
@@ -1072,7 +1072,7 @@ class ScrimController:
             if overwrite != channel.overwrites_for(guild.default_role):
                 await channel.set_permissions(guild.default_role, overwrite=overwrite)
             for role in guild.roles:
-                visitor = role.name == os.getenv("MEMBER_ROLE_NAME", "Member")
+                visitor = role.id == config.VISITOR_ROLE_ID
                 game_role = role.name in (game, f"{game} Tryout", f"{game} Manager")
                 if not visitor and not game_role:
                     continue

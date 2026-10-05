@@ -1,6 +1,6 @@
 # Permission contract
 
-Guild: 1554260744327929987. Protected Rionnag role: 1555657055287648326. Visitor is the current role named **Member**, ID 1554272420959879188.
+Guild: 1554260744327929987. Protected Rionnag role: 1555657055287648326. **Visitor** role: 1554272420959879188. Onboarding and scrim setup use this stable ID, preserving membership and overwrites across renames.
 
 | Surface | Applicant | Visitors | Tryout/team | Selected manager | Other managers |
 | --- | --- | --- | --- | --- | --- |
@@ -16,7 +16,7 @@ Tickets explicitly deny other roles and allow applicant/bot members. Only the se
 
 The owner's completed form is automatically accepted even after the initial wipe, so they never need to review their own onboarding application. Accepted returners, including managers, also bypass review after completing reset forms and regain their exact saved roles.
 
-Accepted members do not retain Visitor/Member. Discord combines role overwrites so a Visitor allow can override team denies; this invariant hides tryout entry. Runtime checks also reject team/tryout/managers even if manually given Member.
+Accepted members do not retain Visitor. Discord combines role overwrites so a Visitor allow can override team denies; this invariant hides tryout entry. Runtime checks also reject team/tryout/managers even if manually given Visitor.
 
 Ordinary channels deny @everyone visibility. Main/Marvel category access comes from membership roles. Bot-making stays restricted to Rionnag/admin access. Repairs preserve unrelated capabilities and completed members' scrim admission overwrites; unfinished members' individual visibility bypasses are removed. Managed roles and @everyone cannot be removed. Rionnag stays deliberately.
 

@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - Visitor role name and stable scrim permissions
+
+- Rename the existing Member role to Visitor, preserving its ID, assignments, and permissions.
+- Identify Visitor by its configured role ID during scrim setup instead of the legacy Member name/environment override.
+
 ## 2026-10-05 - immediate form update feedback
 
 - Respond to the final click with Updating your form / Submitting your application immediately, change the button label, and disable controls while saving. Restore controls after a failure.
