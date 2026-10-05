@@ -202,11 +202,23 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
         await self.publisher.sync(self.now)
         self.message.delete.assert_awaited_once()
-        self.store.set_scrim_rank_filter(10, ("Grandmaster", "Grandmaster"))
+        self.store.set_scrim_rank_filter(10, ("Diamond", "Celestial"))
         await self.publisher.sync(self.now)
         self.assertEqual(self.channel.send.await_count, 2)
         self.assertEqual({u.id for u in self.channel.send.call_args.kwargs["allowed_mentions"].users},
                          {1, 2, 3, 4, 5})
+
+    async def test_celestial_to_eternity_post_is_removed_by_diamond_to_celestial_filter(self):
+        self.feed.put({**self.source, "content": "Celestial to Eternity"})
+        self.feed.complete(self.feed.pending(), {"scrims": [
+            {**offer(), "source_message_id": "3", "rank_minimum": "Celestial", "rank_maximum": "Eternity"}
+        ]})
+        await self.publisher.sync(self.now)
+        self.channel.send.assert_awaited_once()
+        self.store.set_scrim_rank_filter(10, ("Diamond", "Celestial"))
+        await self.publisher.sync(self.now)
+        self.message.delete.assert_awaited_once()
+        self.assertEqual(self.store.opportunity_posts(10)["3:0"]["status"], "inactive")
 
     async def test_lost_send_ack_recovers_without_duplicate(self):
         self.store.reserve_opportunity(10, "3:0")

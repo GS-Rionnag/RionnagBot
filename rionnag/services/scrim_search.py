@@ -36,7 +36,7 @@ def rank_matches(offer, ranks):
         wanted_low, wanted_high = rank_bounds(ranks[0])[0], rank_bounds(ranks[1])[1]
     except ValueError:
         return False
-    return low <= high and low <= wanted_high and high >= wanted_low
+    return wanted_low <= low <= high <= wanted_high
 
 
 def rank_suggestions(current):

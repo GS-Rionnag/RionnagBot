@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - enforce full opponent rank range
+
+- Require the entire advertised opponent rank range to fit within the saved search. Diamond–Celestial retains Diamond–Grandmaster but removes Celestial–Eternity and ranges starting below Diamond.
+- Apply the same containment rule to channel refreshes, command previews, and voting; keep single-tier searches limited to that tier and its divisions.
+
 ## 2026-10-05 - fresh scrim channel rebuild and start-only display
 
 - Add an explicitly confirmed channel rebuild tool that clears only the destination messages, message mappings, and votes, then publishes eligible collected offers as new posts. Preserve collected source data and the rank filter; use the bot instance lock to avoid races.

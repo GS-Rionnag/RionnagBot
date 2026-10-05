@@ -17,14 +17,23 @@ class RankSearchTests(unittest.TestCase):
     def test_single_tier_alias_range_and_divisions(self):
         self.assertEqual(normalize_filter("gm"), ("Grandmaster", "Grandmaster"))
         self.assertEqual(normalize_filter("dia", "cel"), ("Diamond", "Celestial"))
-        self.assertTrue(rank_matches({"rank_minimum": "Diamond", "rank_maximum": "Grandmaster"},
-                                     normalize_filter("gm")))
+        self.assertFalse(rank_matches({"rank_minimum": "Diamond", "rank_maximum": "Grandmaster"},
+                                      normalize_filter("gm")))
         self.assertTrue(rank_matches({"rank_minimum": "Grandmaster III", "rank_maximum": "Grandmaster III"},
                                      normalize_filter("gm")))
         self.assertFalse(rank_matches({"rank_minimum": "Celestial", "rank_maximum": "Eternity"},
                                       normalize_filter("gm")))
         self.assertFalse(rank_matches({"rank_minimum": "Grandmaster III", "rank_maximum": "Grandmaster III"},
                                       normalize_filter("gm I")))
+
+    def test_diamond_to_celestial_requires_both_endpoints_inside(self):
+        ranks = normalize_filter("Diamond", "Celestial")
+        for low, high in (("Diamond", "Grandmaster"), ("Diamond", "Celestial"),
+                          ("Celestial", "Celestial"), ("Grandmaster III", "Celestial I")):
+            self.assertTrue(rank_matches({"rank_minimum": low, "rank_maximum": high}, ranks))
+        for low, high in (("Celestial", "Eternity"), ("Platinum", "Diamond"),
+                          ("Bronze", "One Above All"), ("Eternity", "Celestial")):
+            self.assertFalse(rank_matches({"rank_minimum": low, "rank_maximum": high}, ranks))
 
     def test_invalid_ranges_and_clear(self):
         for minimum, maximum in (("gm", "dia"), ("gm I", "gm III"), ("Masters", None), ("Any", "gm")):

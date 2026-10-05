@@ -91,7 +91,7 @@ class Scrims(commands.Cog):
             ranks[0] if ranks[0] == ranks[1] else f"{ranks[0]} to {ranks[1]}"
         )
         await interaction.followup.send(
-            f"Default scrim search: {selected}. Matches opponent rank ranges that overlap this selection. "
+            f"Default scrim search: {selected}. Matches opponent rank ranges entirely within this selection. "
             "Applies to channel posts and /scrim_opportunities.", ephemeral=True,
         )
 
