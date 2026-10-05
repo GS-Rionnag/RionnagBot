@@ -49,7 +49,7 @@ class Scrims(commands.Cog):
             )
             return
         feed = FeedStore(config.ROOT / "data" / "scrim_feed.sqlite3")
-        offers = feed.offers()
+        offers = feed.offers()["scrims"]
         if not offers:
             await interaction.response.send_message(
                 "No collected scrim offers are available.", ephemeral=True

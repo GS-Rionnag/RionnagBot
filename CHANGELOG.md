@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - repair scrim opportunity finder
+
+- Pass the collected offer list to the manager preview so populated feeds render and empty feeds return the intended message.
+- Add command-level regression coverage using temporary feed databases.
+
 ## 2026-10-05 - full YouTube URL
 
 - Use the full YouTube watch URL beside the welcome mention.
