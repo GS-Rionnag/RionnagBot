@@ -1,8 +1,6 @@
 """Public scrim summaries expose only matched members and opponent details."""
 
 import time
-from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import discord
 
@@ -19,21 +17,8 @@ def matched_offer_embed(offer, members, key, votes=(), now=None):
     status = f"Upcoming • Starts <t:{start}:R>" if now < start else (
         "In progress" if assumed else f"In progress • Ends <t:{end}:R>"
     )
-    zone = ZoneInfo("America/New_York")
-    local_start, local_end = datetime.fromtimestamp(start, zone), datetime.fromtimestamp(end, zone)
-
-    def clock(value):
-        return f"{value.hour % 12 or 12}:{value.minute:02d} {'AM' if value.hour < 12 else 'PM'}"
-
-    title = f"{local_start.strftime('%A, %B')} {local_start.day}, {local_start.year} {clock(local_start)}"
-    if assumed:
-        pass
-    elif local_end.date() != local_start.date():
-        title += f" – {local_end.strftime('%A, %B')} {local_end.day}, {local_end.year} {clock(local_end)}"
-    else:
-        title += f" – {clock(local_end)}"
     embed = discord.Embed(
-        title=title,
+        title="Scrim Found!",
         url=offer.get("messageURL"), color=config.COLOR,
         description=f"{status}\n<t:{start}:F>"
         + ("\nEnd time not advertised" if assumed else f" – <t:{end}:t>"),

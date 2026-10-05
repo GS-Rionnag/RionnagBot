@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-05 - short scrim notification title
+
+- Use Scrim Found! as the automatic opportunity title, retaining the advertised date/time and start-only end notice in the details. Existing message updates remain silent.
+
 ## 2026-10-05 - manager-only scrim opportunity discussion
 
 - Make Marvel Rivals team/tryout roles read-only in the scrim opportunities channel, including thread messages and creation. Allow Marvel Rivals managers to send messages and use threads.

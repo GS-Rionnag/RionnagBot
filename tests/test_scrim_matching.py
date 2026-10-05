@@ -135,7 +135,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({u.id for u in sent["allowed_mentions"].users}, {1, 2, 3, 4, 5})
         self.assertEqual(sent["content"], "<@1> <@2> <@3> <@4> <@5>")
         self.assertEqual(self.channel.send.call_args.kwargs["embed"].title,
-                         "Monday, June 7, 2027 8:00 PM")
+                         "Scrim Found!")
         self.publisher = OpportunityPublisher(self.bot, Store(self.store.path), self.feed,
                                               {"marvel-rivals": self.form}, 1, 10)
         await self.publisher.sync(self.now)

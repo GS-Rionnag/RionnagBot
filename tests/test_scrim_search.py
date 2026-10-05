@@ -81,15 +81,17 @@ class RankSearchTests(unittest.TestCase):
         self.assertIn("Upcoming", before.description)
         self.assertIn("In progress", after.description)
         self.assertIn(f"<t:{start}:R>", before.description)
-        self.assertEqual(before.title, "Monday, October 5, 2026 8:00 PM")
+        self.assertEqual(before.title, "Scrim Found!")
         self.assertNotIn("9:00 PM", before.description + before.title)
         self.assertNotIn("Ends", after.description)
         offer["End_Time_timestamp"] = "2026-10-06T02:00:00Z"
         full = matched_offer_embed(offer, [1, 2, 3, 4], "3:0", now=start-3600)
-        self.assertEqual(full.title, "Monday, October 5, 2026 8:00 PM – 10:00 PM")
+        self.assertEqual(full.title, "Scrim Found!")
+        self.assertIn(f"<t:{start + 7200}:t>", full.description)
         offer["End_Time_timestamp"] = "2026-10-06T05:00:00Z"
         overnight = matched_offer_embed(offer, [1, 2, 3, 4], "3:0", now=start-3600)
-        self.assertIn("Tuesday, October 6, 2026 1:00 AM", overnight.title)
+        self.assertEqual(overnight.title, "Scrim Found!")
+        self.assertIn(f"<t:{start + 18000}:t>", overnight.description)
 
 
 class FinderPermissionTests(unittest.IsolatedAsyncioTestCase):
