@@ -59,6 +59,8 @@ class AvailabilityView(SafeView):
     def __init__(self, modal):
         super().__init__(timeout=900)
         self.modal = modal
+        self.submitting = False
+        self.submitted = False
         self.days = {day: dict(window) for day, window in modal.answers.get("availability_days", {}).items()}
         day_picker = discord.ui.Select(
             placeholder="Select a day to add or edit",
@@ -139,14 +141,31 @@ class AvailabilityView(SafeView):
         await interaction.response.edit_message(embed=view.embed(), view=view)
 
     async def finish(self, interaction):
+        if self.submitting or self.submitted:
+            await interaction.response.send_message(
+                "Your form is already saving." if self.submitting else "Your form has already been saved.",
+                ephemeral=True,
+            )
+            return
         validate_days(self.days)
-        await self.save()
-        await interaction.response.defer(ephemeral=True)
-        m = self.modal
-        if m.editing:
-            await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version, editing=m.editing)
-        else:
-            await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version)
+        self.submitting = True
+        try:
+            await interaction.response.defer(ephemeral=True)
+            await interaction.edit_original_response(content="Saving your form…", view=None)
+            await self.save()
+            m = self.modal
+            if m.editing:
+                await m.service.submit(
+                    interaction, m.owner_id, m.game, m.answers, m.version, editing=m.editing
+                )
+            else:
+                await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version)
+        except Exception:
+            await interaction.edit_original_response(content=None, embed=self.embed(), view=self)
+            raise
+        finally:
+            self.submitting = False
+        self.submitted = True
         await interaction.edit_original_response(
             content="Your form data has been updated."
             if m.editing

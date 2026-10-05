@@ -212,7 +212,17 @@ class Applications:
             from rionnag.integrations.accounts import verify_account
 
             async with self.account_lock:
-                identity = await verify_account(game, answers.get("player_uid") or answers["username"])
+                saved = row["answers"]
+                if (
+                    editing
+                    and row["status"] in {"accepted", "pending"}
+                    and saved.get("player_uid")
+                    and answers.get("player_uid") == saved["player_uid"]
+                    and answers["username"] == saved.get("username")
+                ):
+                    identity = {"uid": saved["player_uid"], "name": saved["username"]}
+                else:
+                    identity = await verify_account(game, answers.get("player_uid") or answers["username"])
                 for other_id in self.store.ids():
                     if other_id == member_id:
                         continue

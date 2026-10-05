@@ -11,6 +11,18 @@ from rionnag.ui.onboarding import SafeView
 
 async def continue_to_availability(interaction, modal):
     username = modal.answers["username"].strip()
+    saved = modal.service.store.member(modal.owner_id)
+    if (
+        modal.editing
+        and saved["status"] in {"accepted", "pending"}
+        and saved["game"] == modal.game
+        and saved["answers"].get("player_uid")
+        and username == saved["answers"].get("username")
+    ):
+        modal.answers["player_uid"] = saved["answers"]["player_uid"]
+        view = AvailabilityView(modal)
+        await interaction.response.send_message(embed=view.embed(), view=view, ephemeral=True)
+        return
     if modal.game != "marvel-rivals" or (username.isascii() and username.isdecimal()):
         if modal.game == "marvel-rivals":
             modal.answers["player_uid"] = username

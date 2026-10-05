@@ -468,6 +468,23 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
                         interaction, 42, "marvel-rivals", self.answers, 1, editing="accepted"
                     )
 
+    async def test_accepted_edit_reuses_verified_identity_but_verifies_changed_account(self):
+        self.guild.fetch_member = AsyncMock(return_value=self.member)
+        saved = dict(self.answers, player_uid="123")
+        self.store.update(42, status="accepted", game="marvel-rivals", version=1, answers=saved)
+        interaction = SimpleNamespace(user=self.member, guild_id=config.GUILD_ID, guild=self.guild)
+        with patch("rionnag.integrations.accounts.verify_account", new_callable=AsyncMock) as verify:
+            await self.app.submit(interaction, 42, "marvel-rivals", saved, 1, editing="accepted")
+            verify.assert_not_awaited()
+            self.store.update(99, status="accepted", game="marvel-rivals", answers=saved)
+            with self.assertRaisesRegex(ValueError, "<@99>"):
+                await self.app.submit(interaction, 42, "marvel-rivals", saved, 1, editing="accepted")
+            verify.assert_not_awaited()
+            verify.return_value = dict(uid="456", name="Different")
+            changed = dict(saved, player_uid="456", username="Different")
+            await self.app.submit(interaction, 42, "marvel-rivals", changed, 1, editing="accepted")
+            verify.assert_awaited_once_with("marvel-rivals", "456")
+
     async def test_new_fields_paginate_and_old_answers_prefill(self):
         self.form["questions"].append(dict(key="extra", label="New question", required=True))
         page = FormPage(self.app, 42, "marvel-rivals", 0, self.answers)

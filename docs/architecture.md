@@ -18,6 +18,8 @@ Pending applicants can reopen prefilled forms through the review panel's Edit bu
 
 Anyone can use `/edit_form` to edit their own saved current-version game data from any server channel. Accepted members update their saved profile without a ticket, review, or role changes; pending members update the existing application. Rejected/visitor records retain their status and do not gain acceptance. Drafts stay ephemeral until complete validation and account verification. A status change while editing invalidates the draft. Members undergoing a reset must finish the onboarding form first.
 
+Accepted/pending edits reuse the stored verified account when its username and UID are unchanged, avoiding provider search and verification queues. Changed accounts still require verification, and every save still checks account uniqueness. Finish acknowledges immediately before waiting for member locks, displays Saving, and ignores repeated clicks; failures reopen the availability controls for retry.
+
 Reset returners with saved acceptance are automatically restored without posting a review panel. The owner also receives automatic acceptance on fresh form completion after the initial wipe; they are not asked to approve themselves.
 
 SQLite stores status, game/version, JSON answers, channel/message IDs, restoration intent, and pending DMs. Reset snapshots are written before role removal and survive interrupted resets. Decisions first enter deciding so interrupted role changes can retry. Ticket topics identify members for recovery if Discord creation succeeds before SQLite saves. Failed DMs remain queued and results appear in tickets before deletion.

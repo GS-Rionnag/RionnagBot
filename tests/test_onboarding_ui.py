@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -53,6 +54,41 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
         window = TimeWindow(AvailabilityView(self.modal), "Monday")
         self.assertEqual([o.value for o in window.start.options if o.default], ["18"])
         self.assertEqual([o.value for o in window.end.options if o.default], ["22"])
+
+    async def test_double_finish_acknowledges_without_waiting_for_member_lock(self):
+        view = AvailabilityView(self.modal)
+        view.days = {"Monday": {"start": 18, "end": 22}}
+        async with self.app.lock(42):
+            with patch.object(self.app, "submit", new_callable=AsyncMock) as submit:
+                first = asyncio.create_task(view.finish(self.interaction))
+                await asyncio.sleep(0)
+                self.interaction.response.defer.assert_awaited_once()
+                await asyncio.wait_for(view.finish(self.interaction), 1)
+                self.interaction.response.send_message.assert_awaited_once()
+        with patch.object(self.app, "submit", new_callable=AsyncMock) as submit:
+            await first
+            await view.finish(self.interaction)
+            submit.assert_awaited_once()
+
+    async def test_failed_save_can_retry(self):
+        view = AvailabilityView(self.modal)
+        view.days = {"Monday": {"start": 18, "end": 22}}
+        with patch.object(self.app, "submit", AsyncMock(side_effect=ValueError("Retry"))):
+            with self.assertRaises(ValueError):
+                await view.finish(self.interaction)
+        self.assertFalse(view.submitting)
+        self.assertFalse(view.submitted)
+        with patch.object(self.app, "submit", new_callable=AsyncMock) as submit:
+            await view.finish(self.interaction)
+            submit.assert_awaited_once()
+
+    async def test_unchanged_saved_account_skips_search(self):
+        self.store.update(42, status="accepted", answers=dict(self.modal.answers, player_uid="123"))
+        self.modal.editing = "accepted"
+        with patch("rionnag.ui.accounts.queued_lookup") as search:
+            await continue_to_availability(self.interaction, self.modal)
+        search.assert_not_called()
+        self.assertEqual(self.modal.answers["player_uid"], "123")
 
     async def test_pending_edit_draft_does_not_replace_reviewed_answers_until_finish(self):
         self.store.update(

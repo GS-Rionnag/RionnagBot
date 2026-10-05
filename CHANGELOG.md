@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - faster saved form edits
+
+- Reuse unchanged verified account identities for accepted/pending edits instead of waiting for external account searches and verification; retain uniqueness checks and verification for changed accounts.
+- Acknowledge Finish before waiting for locks, show Saving immediately, prevent duplicate submissions, and restore controls after failures.
+
 ## 2026-10-05 - welcome help field
 
 - Move the video link into a Need help? field in the welcome embed, labeled Marvel Rivals.
