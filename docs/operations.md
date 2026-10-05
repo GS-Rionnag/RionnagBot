@@ -35,6 +35,8 @@ When an opponent gives no end, show only the start and End time not advertised; 
 
 The owner manages the finder channel's visibility manually. Onboarding repair skips this channel to preserve its hidden testing permissions across restarts and five-minute reconciliation. Reveal it manually when ready; routine repairs will preserve that choice too. Player pings remain enabled in new messages.
 
+The opportunities channel is currently visible to everyone, with Marvel Rivals team/tryout roles read-only and Marvel Rivals managers allowed to post and use threads. Vote buttons still work for registered eligible players; they do not require Send Messages. Channel-specific role overwrites persist through repairs and restarts.
+
 Role failures: place the bot above all membership roles, below Rionnag. Check configured IDs/logs. Failed reconciliation retries every five minutes. Completed members never receive new tickets solely due to restart. Closed DMs retain a retry notification and post the result in the ticket. Resume forms through ticket buttons.
 
 Inspect staged paths before public pushes. Exclude .env, data/, logs/, backups, transcripts, and provider caches. Future agents must commit/push coherent minor/major changes and maintain the timeline.

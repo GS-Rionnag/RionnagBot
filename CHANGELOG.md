@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - manager-only scrim opportunity discussion
+
+- Make Marvel Rivals team/tryout roles read-only in the scrim opportunities channel, including thread messages and creation. Allow Marvel Rivals managers to send messages and use threads.
+- Preserve channel visibility, bot posting, and existing vote buttons. Owner-managed finder overwrites remain excluded from onboarding permission repair.
+
 ## 2026-10-05 - enforce full opponent rank range
 
 - Require the entire advertised opponent rank range to fit within the saved search. Diamond–Celestial retains Diamond–Grandmaster but removes Celestial–Eternity and ranges starting below Diamond.
