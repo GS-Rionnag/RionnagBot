@@ -28,6 +28,14 @@ class Store:
                 CREATE TABLE IF NOT EXISTS player_availability (
                     guild_id INTEGER, member_id INTEGER, game TEXT, data TEXT NOT NULL,
                     PRIMARY KEY(guild_id,member_id,game));
+                CREATE TABLE IF NOT EXISTS scrim_opportunity_posts (
+                    channel_id INTEGER NOT NULL, offer_key TEXT NOT NULL,
+                    message_id INTEGER, fingerprint TEXT, status TEXT NOT NULL DEFAULT 'pending',
+                    pending_since REAL NOT NULL,
+                    PRIMARY KEY(channel_id,offer_key));
+                CREATE TABLE IF NOT EXISTS scrim_opportunity_votes (
+                    channel_id INTEGER NOT NULL, offer_key TEXT NOT NULL, member_id INTEGER NOT NULL,
+                    PRIMARY KEY(channel_id,offer_key,member_id));
             """)
 
     @contextmanager
@@ -90,6 +98,7 @@ class Store:
                 "DELETE FROM player_availability WHERE guild_id=? AND member_id=?", (guild_id, member_id)
             )
             db.execute("DELETE FROM members WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_opportunity_votes WHERE member_id=?", (member_id,))
 
     def check_form(self, key: str, form: dict):
         definition = json.dumps(form, sort_keys=True)
@@ -122,6 +131,91 @@ class Store:
                 "SELECT member_id,username FROM player_profiles WHERE guild_id=? AND game=?",
                 (guild_id, game),
             ).fetchall())
+
+    def scrim_candidates(self, guild_id, game, version):
+        """Only accepted, current-form players with a restored game profile."""
+        with self.connection() as db:
+            rows = db.execute(
+                "SELECT m.member_id,m.answers FROM members m JOIN player_profiles p "
+                "ON p.member_id=m.member_id WHERE p.guild_id=? AND p.game=? "
+                "AND m.game=? AND m.status='accepted' AND m.version=? AND m.restore_roles IS NULL",
+                (guild_id, "Marvel Rivals", game, version),
+            ).fetchall()
+        return [{"member_id": row[0], "answers": json.loads(row[1])} for row in rows]
+
+    def opportunity_posts(self, channel_id):
+        with self.connection() as db:
+            return {row["offer_key"]: dict(row) for row in db.execute(
+                "SELECT * FROM scrim_opportunity_posts WHERE channel_id=?", (channel_id,)
+            )}
+
+    def reserve_opportunity(self, channel_id, offer_key):
+        import time
+
+        with self.connection() as db:
+            db.execute(
+                "INSERT INTO scrim_opportunity_posts(channel_id,offer_key,pending_since) "
+                "VALUES(?,?,?) ON CONFLICT(channel_id,offer_key) DO UPDATE SET "
+                "status='pending', pending_since=excluded.pending_since "
+                "WHERE scrim_opportunity_posts.status='inactive' "
+                "AND scrim_opportunity_posts.message_id IS NULL",
+                (channel_id, offer_key, time.time()),
+            )
+
+    def save_opportunity(self, channel_id, offer_key, message_id, fingerprint, status):
+        self.reserve_opportunity(channel_id, offer_key)
+        with self.connection() as db:
+            db.execute(
+                "UPDATE scrim_opportunity_posts SET message_id=?,fingerprint=?,status=? "
+                "WHERE channel_id=? AND offer_key=?",
+                (message_id, fingerprint, status, channel_id, offer_key),
+            )
+
+    def opportunity_votes(self, channel_id, offer_key):
+        with self.connection() as db:
+            return [row[0] for row in db.execute(
+                "SELECT member_id FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=? "
+                "ORDER BY member_id", (channel_id, offer_key),
+            )]
+
+    def vote_opportunity(self, channel_id, offer_key, member_id, add):
+        with self.connection() as db:
+            # The write lock makes the six-person cap atomic across connections.
+            db.execute("BEGIN IMMEDIATE")
+            if add:
+                count = db.execute(
+                    "SELECT COUNT(*) FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=?",
+                    (channel_id, offer_key),
+                ).fetchone()[0]
+                exists = db.execute(
+                    "SELECT 1 FROM scrim_opportunity_votes "
+                    "WHERE channel_id=? AND offer_key=? AND member_id=?",
+                    (channel_id, offer_key, member_id),
+                ).fetchone()
+                if count >= 6 and not exists:
+                    raise ValueError("Six players have already voted for this scrim.")
+                db.execute("INSERT OR IGNORE INTO scrim_opportunity_votes VALUES(?,?,?)",
+                           (channel_id, offer_key, member_id))
+            else:
+                db.execute(
+                    "DELETE FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=? AND member_id=?",
+                    (channel_id, offer_key, member_id),
+                )
+
+    def clear_opportunity_votes(self, channel_id, offer_key, valid_ids=None):
+        with self.connection() as db:
+            if valid_ids is None:
+                db.execute("DELETE FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=?",
+                           (channel_id, offer_key))
+            else:
+                rows = db.execute(
+                    "SELECT member_id FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=?",
+                    (channel_id, offer_key),
+                ).fetchall()
+                db.executemany(
+                    "DELETE FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=? AND member_id=?",
+                    [(channel_id, offer_key, row[0]) for row in rows if row[0] not in valid_ids],
+                )
 
     def save_profile(self, guild_id, member_id, form, answers):
         import time

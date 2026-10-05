@@ -9,7 +9,9 @@ from rionnag import config
 from rionnag.cogs.onboarding import Onboarding
 from rionnag.cogs.profiles import Profiles
 from rionnag.cogs.scrims import Scrims
+from rionnag.scrims.scrim_feed import FeedStore
 from rionnag.services.applications import Applications
+from rionnag.services.scrim_opportunities import OpportunityPublisher
 from rionnag.storage import Store
 
 
@@ -30,7 +32,11 @@ class RionnagBot(commands.Bot):
         self.tree.interaction_check = self.check_guild
         await self.add_cog(Onboarding(self, service))
         await self.add_cog(Profiles(service))
-        await self.add_cog(Scrims(self, service))
+        publisher = OpportunityPublisher(
+            self, store, FeedStore(config.ROOT / "data" / "scrim_feed.sqlite3"), service.forms,
+            config.GUILD_ID, config.SCRIM_OPPORTUNITIES_CHANNEL_ID,
+        )
+        await self.add_cog(Scrims(self, service, publisher))
         self.tree.copy_global_to(guild=discord.Object(config.GUILD_ID))
         await self.tree.sync(guild=discord.Object(config.GUILD_ID))
         # Remove legacy public commands: this bot belongs to exactly one server.

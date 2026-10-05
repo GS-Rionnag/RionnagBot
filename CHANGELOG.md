@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-05 - automatic scrim matching and votes
+
+- Publish collector offers in the designated scrim channel when at least four current, accepted Marvel Rivals tryouts/team members/managers can cover the full advertised duration. Start-only offers require one continuous hour; advertised durations shorter than one hour do not qualify.
+- Convert saved weekly schedules using each player's time zone and the scrim date, including overnight windows and daylight-saving rules. Rank is context, not an eligibility filter.
+- Ping matched players in new message content, show opponent details and a Voted x/6 roster, and provide persistent green Vote/red Remove vote buttons restricted to current registered Marvel Rivals members. Votes are unique, capped at six, and saved across restarts.
+- Refresh every minute, update changed posts without repeated pings, and delete posts once the offer ends, its source is removed, or fewer than four eligible players remain. Persist message mappings and recover interrupted sends to avoid duplicates.
+
 ## 2026-10-05 - repair scrim opportunity finder
 
 - Pass the collected offer list to the manager preview so populated feeds render and empty feeds return the intended message.

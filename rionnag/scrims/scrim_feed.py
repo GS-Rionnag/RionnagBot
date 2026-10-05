@@ -186,3 +186,14 @@ class FeedStore:
                 for row in db.execute("SELECT payload FROM feed_offers ORDER BY message_id,position")
             ]
         return {"scrims": [compact_offer(offer) for offer in offers]}
+
+    def identified_offers(self):
+        """Stable source/slot identities for updating automatic channel posts."""
+        self.prune_expired()
+        with self.connect() as db:
+            return {
+                f"{mid}:{position}": compact_offer(json.loads(payload))
+                for mid, position, payload in db.execute(
+                    "SELECT message_id,position,payload FROM feed_offers ORDER BY message_id,position"
+                )
+            }

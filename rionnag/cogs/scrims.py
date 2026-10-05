@@ -1,8 +1,10 @@
 """Adapt the existing scrim subsystem to the new application/profile store."""
 
+import logging
+
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from rionnag import config
 from rionnag.scrims.scrim_discord import ScrimController
@@ -12,8 +14,9 @@ from rionnag.services.permissions import has_role
 
 
 class Scrims(commands.Cog):
-    def __init__(self, bot, service):
+    def __init__(self, bot, service, publisher=None):
         self.bot, self.service = bot, service
+        self.publisher = publisher
         self.controller = ScrimController(
             bot,
             service.store.connection,
@@ -24,6 +27,27 @@ class Scrims(commands.Cog):
             account_uid=service.store.saved_uid,
         )
         self.restored = False
+
+    async def cog_load(self):
+        if self.publisher:
+            self.publisher.register_views()
+            self.publish_opportunities.start()
+
+    async def cog_unload(self):
+        self.publish_opportunities.cancel()
+
+    @tasks.loop(seconds=60)
+    async def publish_opportunities(self):
+        try:
+            # Forms can be replaced when the owner reloads definitions.
+            self.publisher.forms = self.service.forms
+            await self.publisher.sync()
+        except Exception:
+            logging.getLogger(__name__).exception("Scrim opportunity refresh failed; will retry")
+
+    @publish_opportunities.before_loop
+    async def before_opportunity_refresh(self):
+        await self.bot.wait_until_ready()
 
     def authorize(self, interaction, game):
         form = next((f for f in self.service.forms.values() if f["name"] == game), None)
