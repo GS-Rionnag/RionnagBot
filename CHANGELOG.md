@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-05 - supervise scrim collection with the main service
+
+- Start the configured collector automatically with the shared per-user service, using its own virtual environment and private settings. Expose collector status/PID/last exit alongside bot status.
+- Restart either child independently after a crash; shared restart and stop control both owned process trees. Collector startup failures do not stop the main bot, and restart rechecks configuration.
+- Add a per-feed collector instance lock. Reconnect catches up missed messages and resumes persisted extraction, preventing a healthy publisher from silently relying on an offline collector's stale feed.
+
 ## 2026-10-05 - shared per-user Windows bot service
 
 - Run one hidden supervisor outside chat terminals, with automatic bot crash recovery and startup at Windows sign-in without administrator rights.

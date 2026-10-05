@@ -2,6 +2,8 @@
 
 RionnagBot composes Store, Applications, and feature cogs. Onboarding handles joins, repairs, reloads, and persistent view registration. Profiles owns stats/promotion. Scrims adapts the retained scrim controller to the new profile store.
 
+The shared per-user supervisor starts the main bot and, when its private token/source channels are configured, the scrim collector in its separate virtual environment. Each child has independent crash recovery after fifteen seconds; shared restart/stop controls both owned process trees. Status reports collector health separately from bot health. A collector lock per feed prevents duplicate instances. Restarted collectors catch up recent source history and resume persisted extraction, so the publisher does not silently operate on a stale feed after collector loss.
+
 The scrim cog passes `Store.saved_uid` to the controller so accepted account identities come from the current member/profile registry, without querying the removed legacy account-claims table. Saved scrim channel mappings and lobby message IDs reconnect voice events to the existing dashboard; startup queues members already in waiting and edits that dashboard in place.
 
 The monitor probes only real players in the starting six and skips simulated accounts and substitutes. Test rerolls may bench the host; an all-simulated starting lineup correctly stays waiting even when a real substitute enters a Custom game.

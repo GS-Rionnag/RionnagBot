@@ -18,6 +18,7 @@ import jsonschema
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from rionnag.instance import SingleInstance  # noqa: E402
 from rionnag.scrims.scrim_feed import FeedStore  # noqa: E402
 from rionnag.scrims.scrim_offer_rules import validate_offer  # noqa: E402
 
@@ -239,10 +240,11 @@ def main():
         path = ROOT / path
     logging.basicConfig(level=logging.INFO)
     store = FeedStore(path)
-    store.compact_saved_offers()
-    requeued = store.upgrade_extraction("rivals-strict-v1")
-    log.info("Strict extraction enabled; %d previously extracted messages queued for revalidation", requeued)
-    Collector(store, channels).run(token, log_handler=None)
+    with SingleInstance(path.with_suffix(".collector.lock")):
+        store.compact_saved_offers()
+        requeued = store.upgrade_extraction("rivals-strict-v1")
+        log.info("Strict extraction enabled; %d messages queued for revalidation", requeued)
+        Collector(store, channels).run(token, log_handler=None)
 
 
 if __name__ == "__main__":

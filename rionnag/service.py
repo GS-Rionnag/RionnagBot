@@ -1,4 +1,4 @@
-"""Per-user Windows background supervisor; controls only its own bot child."""
+"""Per-user Windows supervisor for the bot and configured scrim collector."""
 
 import argparse
 import json
@@ -7,6 +7,8 @@ import subprocess
 import time
 import uuid
 from pathlib import Path
+
+from dotenv import dotenv_values
 
 from rionnag.instance import SingleInstance
 
@@ -46,14 +48,28 @@ def stop_child(child):
             child.wait(timeout=15)
 
 
+def managed_commands():
+    commands = {"bot": ([str(ROOT / ".venv/Scripts/python.exe"), "-m", "rionnag"], ROOT)}
+    collector_root = ROOT / "scrim_collector"
+    settings = dotenv_values(collector_root / ".env")
+    if (settings.get("DISCORD_USER_TOKEN") or "").strip() and (
+            settings.get("SCRIM_SOURCE_CHANNEL_IDS") or "").strip():
+        commands["collector"] = (
+            [str(collector_root / ".venv/Scripts/python.exe"), str(collector_root / "main.py")],
+            collector_root,
+        )
+    return commands
+
+
 def supervise():
     STATE.mkdir(parents=True, exist_ok=True)
     (ROOT / "logs").mkdir(exist_ok=True)
     with SingleInstance(STATE / "supervisor.lock"):
-        child = None
-        next_start = 0
+        commands = managed_commands()
+        children = dict.fromkeys(commands)
+        next_start = dict.fromkeys(commands, 0)
+        last_exits = dict.fromkeys(commands)
         acknowledgement = None
-        last_exit = None
         stopping = False
         try:
             with (ROOT / "logs" / "service.log").open("ab", buffering=0) as output:
@@ -69,29 +85,42 @@ def supervise():
                         request.unlink(missing_ok=True)
                         if action not in {"restart", "stop"}:
                             continue
-                        stop_child(child)
-                        child = None
-                        next_start = 0
+                        for child in children.values():
+                            stop_child(child)
+                        commands = managed_commands()
+                        children = dict.fromkeys(commands)
+                        next_start = dict.fromkeys(commands, 0)
+                        last_exits = {name: last_exits.get(name) for name in commands}
                         acknowledgement = request.stem
                         stopping = action == "stop"
                         acknowledgements.append((request.stem, action))
                         if stopping:
                             break
-                    if child is not None and child.poll() is not None:
-                        last_exit = child.returncode
-                        child = None
-                        next_start = time.monotonic() + 15
-                    if not stopping and child is None and time.monotonic() >= next_start:
-                        child = subprocess.Popen(
-                            [str(ROOT / ".venv" / "Scripts" / "python.exe"), "-m", "rionnag"],
-                            cwd=ROOT, stdin=subprocess.DEVNULL, stdout=output, stderr=output,
-                            creationflags=subprocess.CREATE_NO_WINDOW,
-                        )
+                    for name, (args, cwd) in commands.items():
+                        child = children[name]
+                        if child is not None and child.poll() is not None:
+                            last_exits[name] = child.returncode
+                            children[name] = None
+                            next_start[name] = time.monotonic() + 15
+                        if not stopping and children[name] is None and time.monotonic() >= next_start[name]:
+                            try:
+                                children[name] = subprocess.Popen(
+                                    args, cwd=cwd, stdin=subprocess.DEVNULL, stdout=output, stderr=output,
+                                    creationflags=subprocess.CREATE_NO_WINDOW,
+                                )
+                            except OSError as exc:
+                                output.write(f"Could not start {name}: {type(exc).__name__}\n".encode())
+                                next_start[name] = time.monotonic() + 15
                     write_json(STATE / "status.json", {
-                        "state": "stopped" if stopping else "running" if child else "retrying",
+                        "state": "stopped" if stopping else "running" if children["bot"] else "retrying",
                         "supervisor_pid": os.getpid(),
-                        "bot_pid": child.pid if child else None,
-                        "heartbeat": time.time(), "last_exit": last_exit,
+                        "bot_pid": children["bot"].pid if children["bot"] else None,
+                        "collector_state": "disabled" if "collector" not in children else (
+                            "stopped" if stopping else "running" if children["collector"] else "retrying"
+                        ),
+                        "collector_pid": children["collector"].pid if children.get("collector") else None,
+                        "collector_last_exit": last_exits.get("collector"),
+                        "heartbeat": time.time(), "last_exit": last_exits["bot"],
                         "acknowledgement": acknowledgement,
                     })
                     for request_id, action in acknowledgements:
@@ -99,8 +128,12 @@ def supervise():
                     if not stopping:
                         time.sleep(1)
         finally:
-            stop_child(child)
-            write_json(STATE / "status.json", {"state": "stopped", "heartbeat": time.time()})
+            for child in children.values():
+                stop_child(child)
+            write_json(STATE / "status.json", {
+                "state": "stopped", "heartbeat": time.time(), "bot_pid": None, "collector_pid": None,
+                "collector_state": "stopped" if "collector" in commands else "disabled",
+            })
 
 
 def start():

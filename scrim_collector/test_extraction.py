@@ -1,7 +1,10 @@
 import json
 import subprocess
+import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import main
@@ -32,6 +35,27 @@ class ExtractionTests(unittest.TestCase):
         ):
             result = main.extract([{"id": "123", "content": "GM to Dia <t:1800000000:F>"}])["scrims"]
         self.assertEqual(result[0], {**fields, "source_message_id": "123"})
+
+
+class CollectorEventTests(unittest.IsolatedAsyncioTestCase):
+    async def test_new_message_is_cached_and_wakes_extraction_only_in_watched_channels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = main.FeedStore(Path(directory) / "feed.db")
+            collector = main.Collector(store, {2})
+            message = SimpleNamespace(id=3, channel=SimpleNamespace(id=2), guild=SimpleNamespace(id=1),
+                                      author=SimpleNamespace(id=4), created_at=datetime.now(UTC),
+                                      content="LFS Diamond-GM today 7pm EST", embeds=[],
+                                      jump_url="https://discord.com/channels/1/2/3")
+            await collector.on_message(message)
+            self.assertTrue(collector.inbox_ready.is_set())
+            self.assertEqual(store.pending()[0][2]["content"], message.content)
+            collector.inbox_ready.clear()
+            message.channel.id = 5
+            message.id = 6
+            await collector.on_message(message)
+            self.assertFalse(collector.inbox_ready.is_set())
+            self.assertEqual(len(store.pending()), 1)
+            await collector.close()
 
 
 if __name__ == "__main__":

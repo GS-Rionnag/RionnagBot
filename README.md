@@ -22,7 +22,7 @@ rtk proxy .venv\Scripts\ruff.exe check .
 
 Enable Server Members Intent. Keep the bot role above membership roles and below Rionnag. An OS lock prevents duplicate bot instances.
 
-On Windows, `install` starts the shared background supervisor and enables hidden startup at user sign-in without admin rights. Any chat can use `python -m rionnag.service status` or `restart` from this checkout. See operations for the full control commands. The PC must remain awake for the bot to stay online.
+On Windows, `install` starts the shared background supervisor and enables hidden startup at user sign-in without admin rights. It starts both the bot and the configured scrim collector, using their separate environments, and restarts either after a crash. Any chat can use `python -m rionnag.service status` or `restart` from this checkout. See operations for the full control commands. The PC must remain awake for the bot and collector to stay online.
 
 ## Workspace
 
