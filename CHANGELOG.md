@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-05 - full YouTube URL
+
+- Use the full YouTube watch URL beside the welcome mention.
+
 ## 2026-10-05 - move video to welcome message
 
 - Place the YouTube URL beside the member mention above the welcome embed, including existing welcome messages during repair.
