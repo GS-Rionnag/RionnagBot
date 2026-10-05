@@ -8,8 +8,6 @@ from rionnag.integrations.rivals import queued_lookup, search_player_accounts
 from rionnag.ui.availability import AvailabilityView
 from rionnag.ui.onboarding import SafeView
 
-AVAILABILITY_VIDEO = "Watch this before choosing your available days: https://youtu.be/TQXOmacHAYs"
-
 
 async def continue_to_availability(interaction, modal):
     username = modal.answers["username"].strip()
@@ -17,9 +15,7 @@ async def continue_to_availability(interaction, modal):
         if modal.game == "marvel-rivals":
             modal.answers["player_uid"] = username
         view = AvailabilityView(modal)
-        await interaction.response.send_message(
-            content=AVAILABILITY_VIDEO, embed=view.embed(), view=view, ephemeral=True
-        )
+        await interaction.response.send_message(embed=view.embed(), view=view, ephemeral=True)
         return
     await interaction.response.defer(ephemeral=True, thinking=True)
     try:
@@ -75,5 +71,5 @@ class AccountPicker(SafeView):
         row = self.candidates[int(self.children[0].values[0])]
         self.modal.answers.update(username=row["name"], player_uid=str(row["uid"]))
         view = AvailabilityView(self.modal)
-        await interaction.response.edit_message(content=AVAILABILITY_VIDEO, embed=view.embed(), view=view)
+        await interaction.response.edit_message(content=None, embed=view.embed(), view=view)
         self.stop()

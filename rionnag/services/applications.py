@@ -79,7 +79,7 @@ class Applications:
             try:
                 message = await channel.fetch_message(row["message_id"])
                 await message.edit(
-                    content=member.mention,
+                    content=f"{member.mention} https://youtu.be/TQXOmacHAYs",
                     embed=self.welcome_embed(member, row),
                     view=WelcomeView(self),
                     allowed_mentions=discord.AllowedMentions(users=[member], roles=False, everyone=False),
@@ -88,7 +88,7 @@ class Applications:
             except discord.NotFound:
                 pass
         message = await channel.send(
-            content=member.mention,
+            content=f"{member.mention} https://youtu.be/TQXOmacHAYs",
             embed=self.welcome_embed(member, row),
             view=WelcomeView(self),
             allowed_mentions=discord.AllowedMentions(users=[member], roles=False, everyone=False),

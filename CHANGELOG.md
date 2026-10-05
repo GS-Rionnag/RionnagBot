@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - move video to welcome message
+
+- Place the YouTube URL beside the member mention above the welcome embed, including existing welcome messages during repair.
+- Remove the video link from ephemeral day-selection messages.
+
 ## 2026-10-05 - profile owner's local clock
 
 - Show Current time as plain clock text in the profile owner's saved time zone, including daylight-saving abbreviation.
