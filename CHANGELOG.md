@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-05 - original scrim post timestamp
+
+- Add Time posted beneath Original post, showing the original source message's creation date/time and relative age using Discord timestamps. Existing opportunity messages refresh silently; replacements use their own source time.
+
 ## 2026-10-05 - newest scrim per start with distinct opponent counts
 
 - Group automatic offers by exact start, ignoring the end for grouping. Same-author/start bumps count once; show the newest qualifying source and use N Scrims Found! for multiple distinct opponents.

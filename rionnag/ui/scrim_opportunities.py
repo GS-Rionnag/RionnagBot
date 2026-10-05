@@ -1,6 +1,7 @@
 """Public scrim summaries expose only matched members and opponent details."""
 
 import time
+from urllib.parse import urlsplit
 
 import discord
 
@@ -35,6 +36,10 @@ def matched_offer_embed(offer, members, key, votes=(), now=None, scrim_count=1):
                         inline=False)
     if offer.get("messageContent"):
         embed.add_field(name="Original post", value=offer["messageContent"][:1024], inline=False)
+    source_id = urlsplit(offer.get("messageURL") or "").path.rstrip("/").rsplit("/", 1)[-1]
+    if source_id.isascii() and source_id.isdigit() and 0 < int(source_id) < 2**64:
+        posted = int(discord.utils.snowflake_time(int(source_id)).timestamp())
+        embed.add_field(name="Time posted", value=f"<t:{posted}:F> (<t:{posted}:R>)", inline=False)
     embed.set_footer(text=f"Scrim finder • {key}")
     return embed
 
