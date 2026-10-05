@@ -207,12 +207,9 @@ class OpportunityPublisher:
                 key = source_key if source_key not in posts else f"time:{start}"
             previous = posts.get(key)
             author = source_author(offer, source_key)
-            previous_author = None if previous is None else (
-                previous["source_author"] or source_author(offers.get(previous["source_key"] or key, {}), key)
-            )
-            changed_opponent = previous is not None and previous_author != author
+            # Votes belong to this start-time message and survive source replacements.
             self.store.clear_opportunity_votes(self.channel_id, key, {p["member_id"] for p in players})
-            votes = [] if changed_opponent else self.store.opportunity_votes(self.channel_id, key)
+            votes = self.store.opportunity_votes(self.channel_id, key)
             embed = matched_offer_embed(offer, members, key, votes, now=now, scrim_count=count)
             content = " ".join(f"<@{mid}>" for mid in members)
             fingerprint = hashlib.sha256(
@@ -224,7 +221,7 @@ class OpportunityPublisher:
                         previous["source_author"]) != (start, source_key, revisions[source_key], author):
                     self.store.save_opportunity(
                         self.channel_id, key, previous["message_id"], fingerprint, "active", start,
-                        source_key, revisions[source_key], author, reset_votes=changed_opponent,
+                        source_key, revisions[source_key], author,
                     )
                 continue
             try:
@@ -249,7 +246,7 @@ class OpportunityPublisher:
                     )
                 self.store.save_opportunity(
                     self.channel_id, key, message.id, fingerprint, "active", start, source_key,
-                    revisions[source_key], author, reset_votes=changed_opponent,
+                    revisions[source_key], author,
                 )
             except discord.HTTPException:
                 log.warning("Scrim opportunity delivery failed; will retry", exc_info=False)

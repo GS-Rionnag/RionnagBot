@@ -189,10 +189,13 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_ongoing_offers_remain_until_end_then_are_deleted(self):
         await self.publisher.sync(self.now)
+        self.store.vote_opportunity(10, "3:0", 1, True)
         await self.publisher.sync(instant(offer()["Start_Time_timestamp"]))
         self.message.delete.assert_not_awaited()
         await self.publisher.sync(instant(offer()["Start_Time_timestamp"]) + 3600)
         self.message.delete.assert_awaited_once()
+
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
 
     async def test_saved_rank_filter_removes_out_of_range_posts_and_blocks_votes(self):
         await self.publisher.sync(self.now)
@@ -255,9 +258,10 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         edited = self.message.edit.call_args.kwargs
         self.assertEqual(edited["embed"].title, "3 Scrims Found!")
         self.assertTrue(edited["embed"].url.endswith("/10"))
-        self.assertEqual(edited["embed"].fields[1].name, "Voted 0/6")
+        self.assertEqual(edited["embed"].fields[1].name, "Voted 1/6")
+        self.assertEqual(edited["embed"].fields[1].value, "<@1>")
         self.assertFalse(edited["allowed_mentions"].users)
-        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
         self.assertEqual(self.active_posts()["3:0"]["source_key"], "10:0")
         self.channel.send.assert_awaited_once()
         self.feed.delete("10")
@@ -268,6 +272,8 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher.sync(self.now)
         self.assertEqual(self.message.edit.call_args.kwargs["embed"].title, "Scrim Found!")
         self.assertTrue(self.message.edit.call_args.kwargs["embed"].url.endswith("/3"))
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].name, "Voted 1/6")
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
         self.message.delete.assert_not_awaited()
         self.channel.send.assert_awaited_once()
 
@@ -313,12 +319,15 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_rank_filter_replaces_in_place_with_matching_previous_source(self):
         await self.publisher.sync(self.now)
+        self.store.vote_opportunity(10, "3:0", 1, True)
         self.add_offer(9, rank_minimum="Celestial", rank_maximum="Eternity")
         await self.publisher.sync(self.now)
         self.store.set_scrim_rank_filter(10, ("Diamond", "Celestial"))
         await self.publisher.sync(self.now)
         self.assertEqual(self.active_posts()["3:0"]["source_key"], "3:0")
         self.assertEqual(self.message.edit.call_args.kwargs["embed"].title, "Scrim Found!")
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].name, "Voted 1/6")
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
         self.message.delete.assert_not_awaited()
         self.channel.send.assert_awaited_once()
 
@@ -340,11 +349,13 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_failed_edit_retries_without_extra_message_and_blocks_old_votes(self):
         await self.publisher.sync(self.now)
+        self.store.vote_opportunity(10, "3:0", 1, True)
         self.add_offer(9)
         self.message.edit.side_effect = discord.HTTPException(SimpleNamespace(status=500, reason="Failed"),
                                                               "Failed")
         await self.publisher.sync(self.now)
         self.assertEqual(self.active_posts()["3:0"]["source_key"], "3:0")
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
         with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
             interaction = self.interaction(1)
             await self.publisher.vote(interaction, "3:0", True)
@@ -352,6 +363,8 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.message.edit.side_effect = None
         await self.publisher.sync(self.now)
         self.assertEqual(self.active_posts()["3:0"]["source_key"], "9:0")
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].name, "Voted 1/6")
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
         self.channel.send.assert_awaited_once()
 
     async def test_pending_send_recovery_can_display_newer_offer_in_same_message(self):
@@ -391,6 +404,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_source_edit_to_other_start_keeps_original_slot_and_creates_new_one(self):
         await self.publisher.sync(self.now)
+        self.store.vote_opportunity(10, "3:0", 1, True)
         self.add_offer(2)
         self.feed.put({**self.source, "content": "Moved to 9 PM"})
         self.feed.complete(self.feed.pending(), {"scrims": [
@@ -403,18 +417,30 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({post["message_id"] for post in posts}, {99, 100})
         self.assertEqual({post["source_key"] for post in posts}, {"2:0", "3:0"})
         self.assertEqual(len({post["start_time"] for post in posts}), 2)
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
+        new_key = next(key for key, post in self.active_posts().items() if post["message_id"] == 100)
+        self.assertEqual(self.store.opportunity_votes(10, new_key), [])
 
-    async def test_votes_follow_latest_source_using_stable_buttons(self):
-        await self.publisher.sync(self.now)
-        self.add_offer(9)
+    async def test_votes_survive_replacement_restart_and_fallback_using_stable_buttons(self):
         await self.publisher.sync(self.now)
         with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
             await self.publisher.vote(self.interaction(1), "3:0", True)
-        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
-        self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].name, "Voted 1/6")
+        self.add_offer(9)
+        await self.publisher.sync(self.now)
+        with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
+            await self.publisher.vote(self.interaction(2), "3:0", True)
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1, 2])
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].name, "Voted 2/6")
+        self.publisher = OpportunityPublisher(self.bot, Store(self.store.path), self.feed,
+                                              {"marvel-rivals": self.form}, 1, 10)
         self.feed.delete("9")
         await self.publisher.sync(self.now)
-        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1, 2])
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].value, "<@1>\n<@2>")
+        with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
+            await self.publisher.vote(self.interaction(1), "3:0", False)
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [2])
+        self.channel.send.assert_awaited_once()
 
     def interaction(self, mid, guild_id=1):
         return SimpleNamespace(user=SimpleNamespace(id=mid), guild_id=guild_id, channel_id=10,
@@ -458,6 +484,9 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now) as clock:
             for mid in range(1, 7):
                 await self.publisher.vote(self.interaction(mid), "3:0", True)
+            self.add_offer(9)
+            await self.publisher.sync(self.now)
+            self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].name, "Voted 6/6")
             seventh = self.interaction(7)
             await self.publisher.vote(seventh, "3:0", True)
             self.assertIn("Six players", seventh.followup.send.call_args.args[0])

@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - preserve votes across same-start scrim replacements
+
+- Keep the saved voter mentions and count when newer offers, fallback sources, or rank-filter changes update an existing start-time message, including a change of opponent.
+- Preserve votes across restarts, the six-person cap, and self-removal. Different starts have separate voters; expired or withdrawn messages still clear votes, and ineligible members are still removed.
+
 ## 2026-10-05 - Visitor role name and stable scrim permissions
 
 - Rename the existing Member role to Visitor, preserving its ID, assignments, and permissions.
