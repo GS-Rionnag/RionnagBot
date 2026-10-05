@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-05 - newest scrim per start with distinct opponent counts
+
+- Group automatic offers by exact start, ignoring the end for grouping. Same-author/start bumps count once; show the newest qualifying source and use N Scrims Found! for multiple distinct opponents.
+- Edit the same channel message silently when a newer source appears or the displayed source disappears or stops matching. Fall back to the next newest eligible source; remove the message once none remain.
+- Preserve availability, minimum-hour, rank, expiry, and voting restrictions. Reset votes when changing opponents, retain votes for same-author bumps, and reject stale-source votes before refresh.
+- Persist stable message identities and current source metadata across restarts, recover interrupted sends, and remove legacy duplicate posts before delivery. Apply newest-per-start selection to manager previews too.
+
 ## 2026-10-05 - short scrim notification title
 
 - Use Scrim Found! as the automatic opportunity title, retaining the advertised date/time and start-only end notice in the details. Existing message updates remain silent.

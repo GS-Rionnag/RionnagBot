@@ -189,11 +189,18 @@ class FeedStore:
 
     def identified_offers(self):
         """Stable source/slot identities for updating automatic channel posts."""
+        return self.opportunity_snapshot()[0]
+
+    def opportunity_snapshot(self):
+        """Read offers and source revisions together without expanding public exports."""
         self.prune_expired()
         with self.connect() as db:
-            return {
-                f"{mid}:{position}": compact_offer(json.loads(payload))
-                for mid, position, payload in db.execute(
-                    "SELECT message_id,position,payload FROM feed_offers ORDER BY message_id,position"
-                )
-            }
+            rows = list(db.execute("""SELECT o.message_id,o.position,o.payload,m.revision
+                FROM feed_offers o JOIN feed_messages m ON m.id=o.message_id
+                ORDER BY o.message_id,o.position"""))
+        offers, revisions = {}, {}
+        for mid, position, payload, revision in rows:
+            key = f"{mid}:{position}"
+            offers[key] = compact_offer(json.loads(payload))
+            revisions[key] = revision
+        return offers, revisions

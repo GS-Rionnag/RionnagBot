@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import discord
+
 from rionnag.scrims.scrim_feed import FeedStore
 from rionnag.services.scrim_opportunities import (
     OpportunityPublisher,
@@ -110,7 +112,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         for mid in range(1, 6):
             self.store.update(mid, status="accepted", game="marvel-rivals", version=1, answers=answers())
             self.store.save_profile(1, mid, self.form, answers())
-        self.source = {"id": "3", "channel_id": "2", "url": offer()["messageURL"]}
+        self.source = {"id": "3", "channel_id": "2", "url": offer()["messageURL"], "author_id": "11"}
         self.feed.put(self.source)
         self.feed.complete(self.feed.pending(), {"scrims": [{**offer(), "source_message_id": "3"}]})
         self.message = SimpleNamespace(id=99, edit=AsyncMock(), delete=AsyncMock(),
@@ -232,6 +234,187 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.channel.send.assert_not_awaited()
         self.message.edit.assert_awaited_once()
         self.assertEqual(self.store.opportunity_posts(10)["3:0"]["message_id"], 99)
+
+    def add_offer(self, mid, author="20", **values):
+        self.feed.put({"id": str(mid), "channel_id": "2", "author_id": author,
+                       "url": f"https://discord.com/channels/1/2/{mid}", "content": "Scrim offer"})
+        self.feed.complete(self.feed.pending(), {"scrims": [
+            {**offer(), **values, "source_message_id": str(mid)}
+        ]})
+
+    def active_posts(self):
+        return {key: post for key, post in self.store.opportunity_posts(10).items()
+                if post["status"] == "active"}
+
+    async def test_newest_start_wins_in_place_counts_and_falls_back_without_pings(self):
+        await self.publisher.sync(self.now)
+        self.store.vote_opportunity(10, "3:0", 1, True)
+        self.add_offer(9)
+        self.add_offer(10, author="21", End_Time_timestamp="2027-06-08T02:00:00Z")
+        await self.publisher.sync(self.now)
+        edited = self.message.edit.call_args.kwargs
+        self.assertEqual(edited["embed"].title, "3 Scrims Found!")
+        self.assertTrue(edited["embed"].url.endswith("/10"))
+        self.assertEqual(edited["embed"].fields[1].name, "Voted 0/6")
+        self.assertFalse(edited["allowed_mentions"].users)
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
+        self.assertEqual(self.active_posts()["3:0"]["source_key"], "10:0")
+        self.channel.send.assert_awaited_once()
+        self.feed.delete("10")
+        await self.publisher.sync(self.now)
+        self.assertTrue(self.message.edit.call_args.kwargs["embed"].url.endswith("/9"))
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].title, "2 Scrims Found!")
+        self.feed.delete("9")
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].title, "Scrim Found!")
+        self.assertTrue(self.message.edit.call_args.kwargs["embed"].url.endswith("/3"))
+        self.message.delete.assert_not_awaited()
+        self.channel.send.assert_awaited_once()
+
+    async def test_bumps_count_once_and_preserve_same_opponent_votes(self):
+        await self.publisher.sync(self.now)
+        self.store.vote_opportunity(10, "3:0", 1, True)
+        self.add_offer(4, author="11")
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].title, "Scrim Found!")
+        self.assertTrue(self.message.edit.call_args.kwargs["embed"].url.endswith("/4"))
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
+        self.add_offer(5, author="11", Start_Time_timestamp="2027-06-08T01:00:00Z")
+        await self.publisher.sync(self.now)
+        self.assertEqual(len(self.active_posts()), 2)
+        self.assertEqual(self.channel.send.await_count, 2)
+
+    async def test_restart_keeps_message_and_selected_source(self):
+        await self.publisher.sync(self.now)
+        self.add_offer(9)
+        await self.publisher.sync(self.now)
+        self.publisher = OpportunityPublisher(self.bot, Store(self.store.path), FeedStore(self.feed.path),
+                                              {"marvel-rivals": self.form}, 1, 10)
+        await self.publisher.sync(self.now)
+        self.channel.send.assert_awaited_once()
+        self.message.edit.assert_awaited_once()
+        self.assertEqual(self.active_posts()["3:0"]["source_key"], "9:0")
+        self.feed.delete("9")
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.active_posts()["3:0"]["source_key"], "3:0")
+
+    async def test_filtered_uncovered_and_short_offers_are_not_counted(self):
+        self.store.set_scrim_rank_filter(10, ("Diamond", "Celestial"))
+        self.add_offer(9, rank_minimum="Celestial", rank_maximum="Eternity")
+        self.add_offer(10, author="21", End_Time_timestamp="2027-06-08T03:00:00Z")
+        self.add_offer(11, author="22", End_Time_timestamp="2027-06-08T00:30:00Z")
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.channel.send.call_args.kwargs["embed"].title, "Scrim Found!")
+        self.assertEqual(len(self.active_posts()), 1)
+        self.feed.delete("3")
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.active_posts(), {})
+        self.message.delete.assert_awaited_once()
+
+    async def test_rank_filter_replaces_in_place_with_matching_previous_source(self):
+        await self.publisher.sync(self.now)
+        self.add_offer(9, rank_minimum="Celestial", rank_maximum="Eternity")
+        await self.publisher.sync(self.now)
+        self.store.set_scrim_rank_filter(10, ("Diamond", "Celestial"))
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.active_posts()["3:0"]["source_key"], "3:0")
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].title, "Scrim Found!")
+        self.message.delete.assert_not_awaited()
+        self.channel.send.assert_awaited_once()
+
+    async def test_expired_newest_falls_back_to_longer_offer_then_slot_expires(self):
+        self.feed.put({**self.source, "content": "Two hours"})
+        self.feed.complete(self.feed.pending(), {"scrims": [
+            {**offer(end="2027-06-08T02:00:00Z"), "source_message_id": "3"}
+        ]})
+        self.add_offer(9)
+        await self.publisher.sync(self.now)
+        self.assertTrue(self.channel.send.call_args.kwargs["embed"].url.endswith("/9"))
+        await self.publisher.sync(instant("2027-06-08T01:00:00Z"))
+        self.assertTrue(self.message.edit.call_args.kwargs["embed"].url.endswith("/3"))
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].title, "Scrim Found!")
+        self.message.delete.assert_not_awaited()
+        await self.publisher.sync(instant("2027-06-08T02:00:00Z"))
+        self.message.delete.assert_awaited_once()
+        self.channel.send.assert_awaited_once()
+
+    async def test_failed_edit_retries_without_extra_message_and_blocks_old_votes(self):
+        await self.publisher.sync(self.now)
+        self.add_offer(9)
+        self.message.edit.side_effect = discord.HTTPException(SimpleNamespace(status=500, reason="Failed"),
+                                                              "Failed")
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.active_posts()["3:0"]["source_key"], "3:0")
+        with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
+            interaction = self.interaction(1)
+            await self.publisher.vote(interaction, "3:0", True)
+        self.assertIn("no longer", interaction.followup.send.call_args.args[0])
+        self.message.edit.side_effect = None
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.active_posts()["3:0"]["source_key"], "9:0")
+        self.channel.send.assert_awaited_once()
+
+    async def test_pending_send_recovery_can_display_newer_offer_in_same_message(self):
+        self.store.reserve_opportunity(10, "3:0", instant(offer()["Start_Time_timestamp"]), "3:0", 1, "11")
+        self.message.embeds = [matched_offer_embed(offer(), [], "3:0", now=self.now)]
+        self.add_offer(9)
+
+        async def history(**kwargs):
+            yield self.message
+
+        self.channel.history = history
+        await self.publisher.sync(self.now)
+        self.channel.send.assert_not_awaited()
+        self.assertTrue(self.message.edit.call_args.kwargs["embed"].url.endswith("/9"))
+        self.assertEqual(self.active_posts()["3:0"]["message_id"], 99)
+
+    async def test_legacy_duplicates_are_deleted_before_silent_latest_update(self):
+        self.add_offer(9)
+        second = SimpleNamespace(id=100, delete=AsyncMock())
+        self.channel.fetch_message.side_effect = lambda mid: self.message if mid == 99 else second
+        self.store.save_opportunity(10, "3:0", 99, "old fingerprint", "active")
+        self.store.save_opportunity(10, "9:0", 100, "old fingerprint", "active")
+        events = MagicMock()
+        events.attach_mock(second.delete, "delete")
+        events.attach_mock(self.message.edit, "edit")
+        second.delete.side_effect = discord.Forbidden(SimpleNamespace(status=403, reason="Denied"), "Denied")
+        await self.publisher.sync(self.now)
+        self.message.edit.assert_not_awaited()
+        self.channel.send.assert_not_awaited()
+        second.delete.side_effect = None
+        events.reset_mock()
+        await self.publisher.sync(self.now)
+        self.assertEqual([call[0] for call in events.mock_calls], ["delete", "edit"])
+        self.assertEqual(set(self.active_posts()), {"3:0"})
+        self.assertEqual(self.active_posts()["3:0"]["source_key"], "9:0")
+        self.channel.send.assert_not_awaited()
+
+    async def test_source_edit_to_other_start_keeps_original_slot_and_creates_new_one(self):
+        await self.publisher.sync(self.now)
+        self.add_offer(2)
+        self.feed.put({**self.source, "content": "Moved to 9 PM"})
+        self.feed.complete(self.feed.pending(), {"scrims": [
+            {**offer(start="2027-06-08T01:00:00Z"), "source_message_id": "3"}
+        ]})
+        second = SimpleNamespace(id=100)
+        self.channel.send.return_value = second
+        await self.publisher.sync(self.now)
+        posts = list(self.active_posts().values())
+        self.assertEqual({post["message_id"] for post in posts}, {99, 100})
+        self.assertEqual({post["source_key"] for post in posts}, {"2:0", "3:0"})
+        self.assertEqual(len({post["start_time"] for post in posts}), 2)
+
+    async def test_votes_follow_latest_source_using_stable_buttons(self):
+        await self.publisher.sync(self.now)
+        self.add_offer(9)
+        await self.publisher.sync(self.now)
+        with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
+            await self.publisher.vote(self.interaction(1), "3:0", True)
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
+        self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].name, "Voted 1/6")
+        self.feed.delete("9")
+        await self.publisher.sync(self.now)
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
 
     def interaction(self, mid, guild_id=1):
         return SimpleNamespace(user=SimpleNamespace(id=mid), guild_id=guild_id, channel_id=10,

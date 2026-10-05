@@ -34,6 +34,18 @@ class FeedTests(unittest.TestCase):
         self.store.complete(self.store.pending(), {"scrims": []})
         self.assertEqual(self.store.pending(), [])
 
+    def test_snapshot_tracks_source_revision_without_changing_export_fields(self):
+        self.store.complete(self.store.pending(), self.result())
+        offers, revisions = self.store.opportunity_snapshot()
+        self.assertEqual(revisions, {"123:0": 1})
+        self.assertEqual(offers, self.store.identified_offers())
+        self.store.put({**self.message, "content": "Changed"})
+        self.assertEqual(self.store.opportunity_snapshot(), ({}, {}))
+        self.store.complete(self.store.pending(), self.result())
+        offers, revisions = FeedStore(self.store.path).opportunity_snapshot()
+        self.assertEqual(revisions, {"123:0": 2})
+        self.assertEqual(set(offers["123:0"]), set(self.store.offers()["scrims"][0]))
+
     def test_delete_during_extraction_cannot_resurrect_offer(self):
         batch = self.store.pending()
         self.store.delete("123")

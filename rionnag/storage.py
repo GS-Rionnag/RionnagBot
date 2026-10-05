@@ -39,6 +39,11 @@ class Store:
                 CREATE TABLE IF NOT EXISTS scrim_search_settings (
                     channel_id INTEGER PRIMARY KEY, min_rank TEXT NOT NULL, max_rank TEXT NOT NULL);
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(scrim_opportunity_posts)")}
+            for name, kind in (("start_time", "INTEGER"), ("source_key", "TEXT"),
+                               ("source_revision", "INTEGER"), ("source_author", "TEXT")):
+                if name not in columns:
+                    db.execute(f"ALTER TABLE scrim_opportunity_posts ADD COLUMN {name} {kind}")
 
     @contextmanager
     def connection(self):
@@ -170,27 +175,40 @@ class Store:
             db.execute("DELETE FROM scrim_opportunity_votes WHERE channel_id=?", (channel_id,))
             db.execute("DELETE FROM scrim_opportunity_posts WHERE channel_id=?", (channel_id,))
 
-    def reserve_opportunity(self, channel_id, offer_key):
+    def reserve_opportunity(self, channel_id, offer_key, start_time=None, source_key=None,
+                            source_revision=None, source_author=None):
         import time
 
         with self.connection() as db:
             db.execute(
-                "INSERT INTO scrim_opportunity_posts(channel_id,offer_key,pending_since) "
-                "VALUES(?,?,?) ON CONFLICT(channel_id,offer_key) DO UPDATE SET "
-                "status='pending', pending_since=excluded.pending_since "
+                "INSERT INTO scrim_opportunity_posts(channel_id,offer_key,pending_since,"
+                "start_time,source_key,source_revision,source_author) VALUES(?,?,?,?,?,?,?) "
+                "ON CONFLICT(channel_id,offer_key) DO UPDATE SET "
+                "status='pending', pending_since=excluded.pending_since, "
+                "start_time=COALESCE(excluded.start_time,scrim_opportunity_posts.start_time), "
+                "source_key=COALESCE(excluded.source_key,scrim_opportunity_posts.source_key), "
+                "source_revision=COALESCE(excluded.source_revision,scrim_opportunity_posts.source_revision), "
+                "source_author=COALESCE(excluded.source_author,scrim_opportunity_posts.source_author) "
                 "WHERE scrim_opportunity_posts.status='inactive' "
                 "AND scrim_opportunity_posts.message_id IS NULL",
-                (channel_id, offer_key, time.time()),
+                (channel_id, offer_key, time.time(), start_time, source_key, source_revision, source_author),
             )
 
-    def save_opportunity(self, channel_id, offer_key, message_id, fingerprint, status):
+    def save_opportunity(self, channel_id, offer_key, message_id, fingerprint, status, start_time=None,
+                         source_key=None, source_revision=None, source_author=None, reset_votes=False):
         self.reserve_opportunity(channel_id, offer_key)
         with self.connection() as db:
             db.execute(
-                "UPDATE scrim_opportunity_posts SET message_id=?,fingerprint=?,status=? "
+                "UPDATE scrim_opportunity_posts SET message_id=?,fingerprint=?,status=?, "
+                "start_time=COALESCE(?,start_time), source_key=COALESCE(?,source_key), "
+                "source_revision=COALESCE(?,source_revision), source_author=COALESCE(?,source_author) "
                 "WHERE channel_id=? AND offer_key=?",
-                (message_id, fingerprint, status, channel_id, offer_key),
+                (message_id, fingerprint, status, start_time, source_key, source_revision, source_author,
+                 channel_id, offer_key),
             )
+            if reset_votes:
+                db.execute("DELETE FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=?",
+                           (channel_id, offer_key))
 
     def opportunity_votes(self, channel_id, offer_key):
         with self.connection() as db:

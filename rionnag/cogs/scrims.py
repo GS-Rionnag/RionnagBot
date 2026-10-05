@@ -11,6 +11,7 @@ from rionnag.scrims.scrim_discord import ScrimController
 from rionnag.scrims.scrim_feed import FeedStore
 from rionnag.scrims.scrim_feed_view import OfferPreview
 from rionnag.services.permissions import has_role
+from rionnag.services.scrim_opportunities import select_offers
 from rionnag.services.scrim_search import normalize_filter, rank_matches, rank_suggestions
 
 
@@ -111,7 +112,9 @@ class Scrims(commands.Cog):
             return
         feed = FeedStore(config.ROOT / "data" / "scrim_feed.sqlite3")
         ranks = self.service.store.scrim_rank_filter(config.SCRIM_OPPORTUNITIES_CHANNEL_ID)
-        offers = [offer for offer in feed.offers()["scrims"] if rank_matches(offer, ranks)]
+        snapshot = feed.identified_offers()
+        qualified = {key: offer for key, offer in snapshot.items() if rank_matches(offer, ranks)}
+        offers = [qualified[key] for key, count in select_offers(qualified).values()]
         if not offers:
             await interaction.response.send_message(
                 "No collected scrim offers are available.", ephemeral=True

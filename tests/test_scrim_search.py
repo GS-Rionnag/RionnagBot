@@ -1,5 +1,7 @@
+import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -71,6 +73,24 @@ class RankSearchTests(unittest.TestCase):
         self.assertIn("Grandmaster", rank_suggestions("gm"))
         self.assertIn("Diamond", rank_suggestions("dia"))
         self.assertLessEqual(len(rank_suggestions("")), 25)
+
+    def test_old_post_schema_upgrade_preserves_mapping_votes_and_filter(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "members.db"
+            with closing(sqlite3.connect(path)) as db, db:
+                db.execute("""CREATE TABLE scrim_opportunity_posts (
+                    channel_id INTEGER, offer_key TEXT, message_id INTEGER, fingerprint TEXT,
+                    status TEXT, pending_since REAL, PRIMARY KEY(channel_id,offer_key))""")
+                db.execute("INSERT INTO scrim_opportunity_posts VALUES(1,'3:0',99,'saved','active',1)")
+            store = Store(path)
+            store.vote_opportunity(1, "3:0", 4, True)
+            store.set_scrim_rank_filter(1, normalize_filter("gm"))
+            restarted = Store(path)
+            post = restarted.opportunity_posts(1)["3:0"]
+            self.assertEqual(post["message_id"], 99)
+            self.assertIsNone(post["source_revision"])
+            self.assertEqual(restarted.opportunity_votes(1, "3:0"), [4])
+            self.assertEqual(restarted.scrim_rank_filter(1), ("Grandmaster", "Grandmaster"))
 
     def test_time_labels_distinguish_future_and_in_progress(self):
         offer = {"Start_Time_timestamp": "2026-10-06T00:00:00Z", "End_Time_timestamp": None}

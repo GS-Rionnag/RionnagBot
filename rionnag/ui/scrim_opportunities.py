@@ -8,7 +8,7 @@ from rionnag import config
 from rionnag.scrims.scrim_offer_rules import timestamp
 
 
-def matched_offer_embed(offer, members, key, votes=(), now=None):
+def matched_offer_embed(offer, members, key, votes=(), now=None, scrim_count=1):
     start = timestamp(offer["Start_Time_timestamp"])
     end = timestamp(offer.get("End_Time_timestamp"))
     assumed = end is None
@@ -18,7 +18,7 @@ def matched_offer_embed(offer, members, key, votes=(), now=None):
         "In progress" if assumed else f"In progress • Ends <t:{end}:R>"
     )
     embed = discord.Embed(
-        title="Scrim Found!",
+        title=f"{scrim_count} Scrims Found!" if scrim_count > 1 else "Scrim Found!",
         url=offer.get("messageURL"), color=config.COLOR,
         description=f"{status}\n<t:{start}:F>"
         + ("\nEnd time not advertised" if assumed else f" – <t:{end}:t>"),

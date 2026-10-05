@@ -88,6 +88,37 @@ def match_offer(offer, players, now):
     })
 
 
+def source_order(key):
+    """Snowflakes determine original post order across all collected channels."""
+    message_id, position = key.split(":")
+    return int(message_id), int(position)
+
+
+def source_author(offer, key):
+    return str(offer.get("authorID") or f"source:{key.split(':')[0]}")
+
+
+def select_offers(offers):
+    """Newest qualifying post per exact start, counting author/start bumps once."""
+    groups = {}
+    for key, offer in offers.items():
+        start = timestamp(offer.get("Start_Time_timestamp"))
+        if start is not None:
+            authors = groups.setdefault(start, {})
+            author = source_author(offer, key)
+            if author not in authors or source_order(key) > source_order(authors[author]):
+                authors[author] = key
+    return {start: (max(authors.values(), key=source_order), len(authors))
+            for start, authors in groups.items()}
+
+
+def post_start(key, post, offers):
+    if post["start_time"] is not None:
+        return post["start_time"]
+    offer = offers.get(post["source_key"] or key, {})
+    return timestamp(offer.get("Start_Time_timestamp"))
+
+
 class OpportunityPublisher:
     def __init__(self, bot, store, feed, forms, guild_id, channel_id):
         self.bot, self.store, self.feed, self.forms = bot, store, feed, forms
@@ -120,9 +151,21 @@ class OpportunityPublisher:
             log.warning("Scrim opportunity channel is unavailable")
             return
         players = self.eligible_players(guild, form)
-        offers = self.feed.identified_offers()
+        offers, revisions = self.feed.opportunity_snapshot()
         ranks = self.store.scrim_rank_filter(self.channel_id)
         posts = self.store.opportunity_posts(self.channel_id)
+        matched = {key: match_offer(offer, players, now) for key, offer in offers.items()}
+        qualified = {key: offer for key, offer in offers.items()
+                     if len(matched[key]) >= 4 and rank_matches(offer, ranks)}
+        selected = select_offers(qualified)
+        # Keep a stable channel-message/button identity while its displayed source changes.
+        anchors = {}
+        for key, post in sorted(posts.items(), key=lambda item: (
+                item[1]["status"] == "inactive", item[1]["message_id"] is None,
+                item[1]["pending_since"], item[0])):
+            start = post_start(key, post, offers)
+            if start in selected:
+                anchors.setdefault(start, key)
         pending = [p for p in posts.values() if p["message_id"] is None and p["status"] == "pending"]
         recovered = {}
         if pending:
@@ -134,27 +177,55 @@ class OpportunityPublisher:
                         marker = embed.footer.text or ""
                         if marker.startswith("Scrim finder • "):
                             recovered[marker.removeprefix("Scrim finder • ")] = message
-        for key in sorted(offers.keys() | posts.keys()):
-            offer = offers.get(key)
-            members = match_offer(offer, players, now) if offer else []
-            eligible = len(members) >= 4 and rank_matches(offer, ranks)
+        # Retire expired slots and any duplicates left by the old per-source publisher.
+        # Failed deletion blocks delivery until retry, preserving one message per start.
+        for key, previous in posts.items():
+            if previous["status"] == "inactive" or key in anchors.values():
+                continue
+            try:
+                message = recovered.pop(key, None)
+                if message is None and previous["message_id"]:
+                    try:
+                        message = await channel.fetch_message(previous["message_id"])
+                    except discord.NotFound:
+                        pass
+                if message is not None:
+                    try:
+                        await message.delete()
+                    except discord.NotFound:
+                        pass
+                self.store.save_opportunity(self.channel_id, key, None, None, "inactive", reset_votes=True)
+            except discord.HTTPException:
+                log.warning("Scrim opportunity withdrawal failed; will retry", exc_info=False)
+                return
+        for start, (source_key, count) in sorted(selected.items()):
+            offer, members = offers[source_key], matched[source_key]
+            key = anchors.get(start)
+            if key is None:
+                # Preserve legacy identities where possible; a source moving to a
+                # different start must not steal the previous slot's message mapping.
+                key = source_key if source_key not in posts else f"time:{start}"
             previous = posts.get(key)
-            if not eligible and previous is None:
-                continue
-            if not eligible and previous and previous["status"] == "inactive":
-                continue
+            author = source_author(offer, source_key)
+            previous_author = None if previous is None else (
+                previous["source_author"] or source_author(offers.get(previous["source_key"] or key, {}), key)
+            )
+            changed_opponent = previous is not None and previous_author != author
             self.store.clear_opportunity_votes(self.channel_id, key, {p["member_id"] for p in players})
-            if eligible:
-                votes = self.store.opportunity_votes(self.channel_id, key)
-                embed = matched_offer_embed(offer, members, key, votes, now=now)
-                content = " ".join(f"<@{mid}>" for mid in members)
-                fingerprint = hashlib.sha256(
-                    json.dumps([content, embed.to_dict()], sort_keys=True).encode()
-                ).hexdigest()
-            else:
-                fingerprint = None
-            if (eligible and previous and previous["fingerprint"] == fingerprint
+            votes = [] if changed_opponent else self.store.opportunity_votes(self.channel_id, key)
+            embed = matched_offer_embed(offer, members, key, votes, now=now, scrim_count=count)
+            content = " ".join(f"<@{mid}>" for mid in members)
+            fingerprint = hashlib.sha256(
+                json.dumps([content, embed.to_dict()], sort_keys=True).encode()
+            ).hexdigest()
+            if (previous and previous["fingerprint"] == fingerprint
                     and previous["status"] == "active"):
+                if (previous["start_time"], previous["source_key"], previous["source_revision"],
+                        previous["source_author"]) != (start, source_key, revisions[source_key], author):
+                    self.store.save_opportunity(
+                        self.channel_id, key, previous["message_id"], fingerprint, "active", start,
+                        source_key, revisions[source_key], author, reset_votes=changed_opponent,
+                    )
                 continue
             try:
                 message = recovered.get(key)
@@ -164,16 +235,11 @@ class OpportunityPublisher:
                     except discord.NotFound:
                         pass
                 if message is not None:
-                    if eligible:
-                        await message.edit(content=content, embed=embed, view=OpportunityVotes(self, key),
-                                           allowed_mentions=discord.AllowedMentions.none())
-                    else:
-                        try:
-                            await message.delete()
-                        except discord.NotFound:
-                            pass
-                elif eligible:
-                    self.store.reserve_opportunity(self.channel_id, key)
+                    await message.edit(content=content, embed=embed, view=OpportunityVotes(self, key),
+                                       allowed_mentions=discord.AllowedMentions.none())
+                else:
+                    self.store.reserve_opportunity(self.channel_id, key, start, source_key,
+                                                   revisions[source_key], author)
                     message = await channel.send(
                         content=content, embed=embed, view=OpportunityVotes(self, key),
                         allowed_mentions=discord.AllowedMentions(
@@ -181,11 +247,9 @@ class OpportunityPublisher:
                             roles=False, everyone=False,
                         ),
                     )
-                if not eligible:
-                    self.store.clear_opportunity_votes(self.channel_id, key)
                 self.store.save_opportunity(
-                    self.channel_id, key, message.id if message and eligible else None, fingerprint,
-                    "active" if eligible else "inactive",
+                    self.channel_id, key, message.id, fingerprint, "active", start, source_key,
+                    revisions[source_key], author, reset_votes=changed_opponent,
                 )
             except discord.HTTPException:
                 log.warning("Scrim opportunity delivery failed; will retry", exc_info=False)
@@ -204,11 +268,19 @@ class OpportunityPublisher:
                 )
                 return
             post = self.store.opportunity_posts(self.channel_id).get(key)
-            offer = self.feed.identified_offers().get(key)
+            offers, revisions = self.feed.opportunity_snapshot()
+            source_key = (post["source_key"] or key) if post else key
+            offer = offers.get(source_key)
             members = match_offer(offer, players, time.time()) if offer else []
+            ranks = self.store.scrim_rank_filter(self.channel_id)
+            qualified = {k: o for k, o in offers.items()
+                         if len(match_offer(o, players, time.time())) >= 4 and rank_matches(o, ranks)}
+            selected = select_offers(qualified)
+            current = selected.get(post_start(key, post, offers)) if post else None
             if (not post or post["status"] != "active" or post["message_id"] != interaction.message.id
                     or len(members) < 4
-                    or not rank_matches(offer, self.store.scrim_rank_filter(self.channel_id))):
+                    or not rank_matches(offer, ranks) or not current or current[0] != source_key
+                    or post["source_revision"] not in (None, revisions.get(source_key))):
                 await interaction.followup.send(
                     "This scrim opportunity is no longer available.", ephemeral=True
                 )

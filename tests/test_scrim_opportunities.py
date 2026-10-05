@@ -68,6 +68,22 @@ class OpportunityTests(unittest.IsolatedAsyncioTestCase):
             "Only Marvel Rivals Managers can view scrim offers.", ephemeral=True
         )
 
+    async def test_preview_selects_latest_start_and_collapses_author_bumps(self):
+        for mid, author, start in ((3, 5, "2099-01-15T08:00:00Z"),
+                                   (4, 5, "2099-01-15T08:00:00Z"),
+                                   (9, 6, "2099-01-15T08:00:00Z"),
+                                   (10, 7, "2099-01-15T08:00:00Z"),
+                                   (11, 5, "2099-01-15T09:00:00Z")):
+            self.feed.put({"id": str(mid), "author_id": str(author), "content": "Scrim",
+                           "url": f"https://discord.com/channels/1/2/{mid}"})
+            self.feed.complete(self.feed.pending(), {"scrims": [
+                {"source_message_id": str(mid), "Start_Time_timestamp": start}
+            ]})
+        await self.invoke()
+        view = self.interaction.response.send_message.call_args.kwargs["view"]
+        self.assertEqual({offer["messageURL"].split("/")[-1] for offer in view.offers}, {"10", "11"})
+        view.stop()
+
     async def test_single_rank_command_saves_default_and_refreshes(self):
         await Scrims.rank_filter.callback(self.cog, self.interaction, "gm")
         self.assertEqual(self.cog.service.store.scrim_rank_filter(1555989494451146802),
