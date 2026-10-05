@@ -125,12 +125,12 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(self.app, "ticket", AsyncMock(return_value=channel)):
             await self.app.welcome(member)
             sent = channel.send.call_args.kwargs
-        self.assertEqual(sent["content"], "<@42> https://youtu.be/TQXOmacHAYs")
+            self.assertEqual(sent["content"], "<@42> https://youtu.be/TQXOmacHAYs")
             self.assertEqual(sent["embed"].title, "Welcome to Rionnag")
             self.assertEqual(sent["allowed_mentions"].users, [member])
             await self.app.welcome(member)
         message = channel.fetch_message.return_value
-        self.assertEqual(message.edit.call_args.kwargs["content"], "<@42>")
+        self.assertEqual(message.edit.call_args.kwargs["content"], "<@42> https://youtu.be/TQXOmacHAYs")
 
 
 if __name__ == "__main__":
