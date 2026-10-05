@@ -62,7 +62,11 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(self.app, "submit", new_callable=AsyncMock) as submit:
                 first = asyncio.create_task(view.finish(self.interaction))
                 await asyncio.sleep(0)
-                self.interaction.response.defer.assert_awaited_once()
+                self.interaction.response.edit_message.assert_awaited_once()
+                progress = self.interaction.response.edit_message.call_args.kwargs
+                self.assertIn("Please wait", progress["content"])
+                self.assertEqual(view.children[-1].label, "Submitting…")
+                self.assertTrue(all(item.disabled for item in view.children))
                 await asyncio.wait_for(view.finish(self.interaction), 1)
                 self.interaction.response.send_message.assert_awaited_once()
         with patch.object(self.app, "submit", new_callable=AsyncMock) as submit:
@@ -78,9 +82,26 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
                 await view.finish(self.interaction)
         self.assertFalse(view.submitting)
         self.assertFalse(view.submitted)
+        self.assertEqual(view.children[-1].label, "Finish & submit")
+        self.assertFalse(view.children[0].disabled)
         with patch.object(self.app, "submit", new_callable=AsyncMock) as submit:
             await view.finish(self.interaction)
             submit.assert_awaited_once()
+
+    async def test_edit_shows_update_message_before_submission(self):
+        self.modal.editing = "accepted"
+        self.store.update(42, status="accepted")
+        view = AvailabilityView(self.modal)
+        view.days = {"Monday": {"start": 18, "end": 22}}
+
+        async def check_progress(*args, **kwargs):
+            progress = self.interaction.response.edit_message.call_args.kwargs
+            self.assertEqual(progress["content"], "Updating your form… Please wait.")
+            self.assertEqual(view.children[-1].label, "Updating…")
+            self.assertTrue(all(item.disabled for item in view.children))
+
+        with patch.object(self.app, "submit", AsyncMock(side_effect=check_progress)):
+            await view.finish(self.interaction)
 
     async def test_unchanged_saved_account_skips_search(self):
         self.store.update(42, status="accepted", answers=dict(self.modal.answers, player_uid="123"))

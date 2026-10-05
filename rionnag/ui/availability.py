@@ -149,9 +149,20 @@ class AvailabilityView(SafeView):
             return
         validate_days(self.days)
         self.submitting = True
+        previous_controls = [(item, item.disabled) for item in self.children]
+        finish = self.children[-1]
+        previous_label = finish.label
+        for item in self.children:
+            item.disabled = True
+        finish.label = "Updating…" if self.modal.editing else "Submitting…"
         try:
-            await interaction.response.defer(ephemeral=True)
-            await interaction.edit_original_response(content="Saving your form…", view=None)
+            await interaction.response.edit_message(
+                content="Updating your form… Please wait."
+                if self.modal.editing
+                else "Submitting your application… Please wait.",
+                embed=None,
+                view=self,
+            )
             await self.save()
             m = self.modal
             if m.editing:
@@ -161,6 +172,9 @@ class AvailabilityView(SafeView):
             else:
                 await m.service.submit(interaction, m.owner_id, m.game, m.answers, m.version)
         except Exception:
+            for item, disabled in previous_controls:
+                item.disabled = disabled
+            finish.label = previous_label
             await interaction.edit_original_response(content=None, embed=self.embed(), view=self)
             raise
         finally:

@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-05 - immediate form update feedback
+
+- Respond to the final click with Updating your form / Submitting your application immediately, change the button label, and disable controls while saving. Restore controls after a failure.
+
 ## 2026-10-05 - faster saved form edits
 
 - Reuse unchanged verified account identities for accepted/pending edits instead of waiting for external account searches and verification; retain uniqueness checks and verification for changed accounts.
