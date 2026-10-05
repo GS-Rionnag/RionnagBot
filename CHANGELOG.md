@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - welcome help field
+
+- Move the video link into a Need help? field in the welcome embed, labeled Marvel Rivals.
+- Keep only the applicant mention in welcome message content.
+
 ## 2026-10-05 - original scrim post timestamp
 
 - Add Time posted beneath Original post, showing the original source message's creation date/time and relative age using Discord timestamps. Existing opportunity messages refresh silently; replacements use their own source time.

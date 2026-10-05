@@ -28,7 +28,7 @@ Account uniqueness applies to pending applications, accepted members, decisions 
 
 Start/end selection happens sequentially on the message, allowing end choices to update immediately. End times start one hour after the chosen start and continue through midnight. Older cached overnight windows still display. Unfinished version-zero drafts do not trigger version resets during background repair, and actual resets retain the existing welcome message ID.
 
-The welcome message includes https://www.youtube.com/watch?v=TQXOmacHAYs beside the applicant mention in normal channel-message content above the welcome embed. Day selection does not send a separate private video link.
+The welcome embed includes a Need help? field with `Marvel Rivals: https://www.youtube.com/watch?v=TQXOmacHAYs`. Message content contains the applicant mention. Day selection does not send a separate private video link.
 
 Welcome and tryout panels are embeds with the MR game emoji. Applicant welcome messages mention the member in the message content above the embed, with explicit allowed mentions so new messages ping them. Existing panels are edited in place. Ticket names use the Discord username plus the last four digits of the member ID; the immutable topic/full ID and database mapping remain authoritative for ownership/recovery. These presentation changes do not change the form definition/version or force an unrelated reset.
 

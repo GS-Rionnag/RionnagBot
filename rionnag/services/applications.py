@@ -79,7 +79,7 @@ class Applications:
             try:
                 message = await channel.fetch_message(row["message_id"])
                 await message.edit(
-                    content=f"{member.mention} https://www.youtube.com/watch?v=TQXOmacHAYs",
+                    content=member.mention,
                     embed=self.welcome_embed(member, row),
                     view=WelcomeView(self),
                     allowed_mentions=discord.AllowedMentions(users=[member], roles=False, everyone=False),
@@ -88,7 +88,7 @@ class Applications:
             except discord.NotFound:
                 pass
         message = await channel.send(
-            content=f"{member.mention} https://www.youtube.com/watch?v=TQXOmacHAYs",
+            content=member.mention,
             embed=self.welcome_embed(member, row),
             view=WelcomeView(self),
             allowed_mentions=discord.AllowedMentions(users=[member], roles=False, everyone=False),
@@ -119,6 +119,11 @@ class Applications:
             inline=False,
         )
         embed.set_footer(text=f"Private onboarding for {member.name}")
+        embed.add_field(
+            name="Need help?",
+            value="Marvel Rivals: https://www.youtube.com/watch?v=TQXOmacHAYs",
+            inline=False,
+        )
         return embed
 
     async def start(self, interaction, game):
