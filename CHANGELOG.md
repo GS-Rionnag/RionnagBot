@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-06 - six-player scrim posting minimum
+
+- Require at least six distinct eligible players available for the full scrim interval before posting or accepting votes.
+- Withdraw existing posts below the six-player minimum on refresh, clearing their votes and updating the summary.
+
 ## 2026-10-06 - renamed channels and mobile scrim summary links
 
 - Reuse saved scrim channel IDs and their category during setup after renames, avoiding duplicate channels. Deliver canonical server scrim results using the stable log-channel ID while retaining the environment override.

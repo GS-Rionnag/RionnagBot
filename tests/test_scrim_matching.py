@@ -109,7 +109,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.store, self.feed = Store(root / "members.db"), FeedStore(root / "feed.db")
         self.form = {"name": "Marvel Rivals", "version": 1,
                      "tryout_role": 7, "team_role": 8, "manager_role": 9}
-        for mid in range(1, 6):
+        for mid in range(1, 8):
             self.store.update(mid, status="accepted", game="marvel-rivals", version=1, answers=answers())
             self.store.save_profile(1, mid, self.form, answers())
         self.source = {"id": "3", "channel_id": "2", "url": offer()["messageURL"], "author_id": "11"}
@@ -137,8 +137,8 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher.sync(self.now)
         self.channel.send.assert_awaited_once()
         sent = self.channel.send.call_args.kwargs
-        self.assertEqual({u.id for u in sent["allowed_mentions"].users}, {1, 2, 3, 4, 5})
-        self.assertEqual(sent["content"], "<@1> <@2> <@3> <@4> <@5>")
+        self.assertEqual({u.id for u in sent["allowed_mentions"].users}, {1, 2, 3, 4, 5, 6, 7})
+        self.assertEqual(sent["content"], "<@1> <@2> <@3> <@4> <@5> <@6> <@7>")
         self.assertEqual(self.channel.send.call_args.kwargs["embed"].title,
                          "Scrim Found!")
         self.publisher = OpportunityPublisher(self.bot, Store(self.store.path), self.feed,
@@ -148,11 +148,35 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.message.edit.assert_not_awaited()
         self.store.update(5, answers=answers(start=22))
         await self.publisher.sync(self.now)
-        self.assertEqual(self.message.edit.call_args.kwargs["content"], "<@1> <@2> <@3> <@4>")
+        self.assertEqual(self.message.edit.call_args.kwargs["content"], "<@1> <@2> <@3> <@4> <@6> <@7>")
         self.assertFalse(self.message.edit.call_args.kwargs["allowed_mentions"].users)
         self.channel.send.assert_awaited_once()
 
-    async def test_under_four_never_posts_and_stale_members_are_excluded(self):
+    async def test_four_and_five_do_not_post_but_six_do(self):
+        for mid in (5, 6, 7):
+            self.store.update(mid, answers=answers(start=22))
+        await self.publisher.sync(self.now)
+        self.channel.send.assert_not_awaited()
+        self.store.update(5, answers=answers())
+        await self.publisher.sync(self.now)
+        self.channel.send.assert_not_awaited()
+        self.store.update(6, answers=answers())
+        await self.publisher.sync(self.now)
+        self.channel.send.assert_awaited_once()
+
+    async def test_legacy_four_player_post_is_removed_with_votes(self):
+        self.store.save_opportunity(10, "3:0", 99, "", "active",
+                                    instant(offer()["Start_Time_timestamp"]))
+        self.store.vote_opportunity(10, "3:0", 1, True)
+        for mid in (5, 6, 7):
+            self.store.update(mid, answers=answers(start=22))
+        await self.publisher.sync(self.now)
+        self.message.delete.assert_awaited_once()
+        self.channel.send.assert_not_awaited()
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
+        self.assertEqual(self.store.opportunity_posts(10)["3:0"]["status"], "inactive")
+
+    async def test_under_six_never_posts_and_stale_members_are_excluded(self):
         self.store.update(4, status="pending")
         self.store.update(5, version=0)
         await self.publisher.sync(self.now)
@@ -167,14 +191,15 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_deletes_after_availability_changes_and_can_post_again(self):
         await self.publisher.sync(self.now)
-        for mid in (4, 5):
+        for mid in (4, 5, 7):
             self.store.update(mid, answers=answers(start=22))
         await self.publisher.sync(self.now)
         self.message.delete.assert_awaited_once()
         self.assertEqual(self.store.opportunity_posts(10)["3:0"]["status"], "inactive")
         self.store.update(4, answers=answers())
+        self.store.update(7, answers=answers())
         await self.publisher.sync(self.now)
-        self.assertEqual(self.channel.send.call_args.kwargs["content"], "<@1> <@2> <@3> <@4>")
+        self.assertEqual(self.channel.send.call_args.kwargs["content"], "<@1> <@2> <@3> <@4> <@6> <@7>")
         self.assertEqual(self.channel.send.await_count, 2)
 
     async def test_source_edit_updates_same_message_and_deletion_withdraws(self):
@@ -253,7 +278,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher.sync(self.now)
         self.assertEqual(self.channel.send.await_count, 2)
         self.assertEqual({u.id for u in self.channel.send.call_args.kwargs["allowed_mentions"].users},
-                         {1, 2, 3, 4, 5})
+                         {1, 2, 3, 4, 5, 6, 7})
 
     async def test_celestial_to_eternity_post_is_removed_by_diamond_to_celestial_filter(self):
         self.feed.put({**self.source, "content": "Celestial to Eternity"})

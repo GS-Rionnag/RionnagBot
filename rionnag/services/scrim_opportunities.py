@@ -17,6 +17,7 @@ from rionnag.services.scrim_search import rank_matches
 from rionnag.ui.scrim_opportunities import OpportunityVotes, matched_offer_embed
 
 log = logging.getLogger(__name__)
+MIN_AVAILABLE_PLAYERS = 6
 ZONES = {
     "Eastern Time (ET)": "America/New_York",
     "Central Time (CT)": "America/Chicago",
@@ -156,7 +157,7 @@ class OpportunityPublisher:
         posts = self.store.opportunity_posts(self.channel_id)
         matched = {key: match_offer(offer, players, now) for key, offer in offers.items()}
         qualified = {key: offer for key, offer in offers.items()
-                     if len(matched[key]) >= 4 and rank_matches(offer, ranks)}
+                     if len(matched[key]) >= MIN_AVAILABLE_PLAYERS and rank_matches(offer, ranks)}
         selected = select_offers(qualified)
         # Keep a stable channel-message/button identity while its displayed source changes.
         anchors = {}
@@ -323,11 +324,12 @@ class OpportunityPublisher:
             members = match_offer(offer, players, time.time()) if offer else []
             ranks = self.store.scrim_rank_filter(self.channel_id)
             qualified = {k: o for k, o in offers.items()
-                         if len(match_offer(o, players, time.time())) >= 4 and rank_matches(o, ranks)}
+                         if len(match_offer(o, players, time.time())) >= MIN_AVAILABLE_PLAYERS
+                         and rank_matches(o, ranks)}
             selected = select_offers(qualified)
             current = selected.get(post_start(key, post, offers)) if post else None
             if (not post or post["status"] != "active" or post["message_id"] != interaction.message.id
-                    or len(members) < 4
+                    or len(members) < MIN_AVAILABLE_PLAYERS
                     or not rank_matches(offer, ranks) or not current or current[0] != source_key
                     or post["source_revision"] not in (None, revisions.get(source_key))):
                 await interaction.followup.send(
