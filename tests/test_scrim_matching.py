@@ -129,6 +129,9 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.publisher = OpportunityPublisher(self.bot, self.store, self.feed,
                                               {"marvel-rivals": self.form}, 1, 10)
         self.now = instant("2027-06-07T23:00:00+00:00")
+        summary = patch.object(OpportunityPublisher, "sync_vote_summary", new_callable=AsyncMock)
+        summary.start()
+        self.addCleanup(summary.stop)
 
     async def test_publishes_once_across_restart_and_updates_roster(self):
         await self.publisher.sync(self.now)

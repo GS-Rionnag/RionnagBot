@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - bottom-of-channel scrim vote summary
+
+- Maintain a silent Most voted scrim summary with the leading vote count and comma-separated links to every tied upcoming finder post, including zero-vote ties.
+- Edit it after votes and refreshes, and move it below new channel messages. Persist its identity, recover interrupted sends, and exclude expired/withdrawn posts.
+
 ## 2026-10-05 - expire finder posts at scrim start
 
 - Delete finder posts at their advertised start regardless of vote count, and reject late votes. Never publish already-started offers or revive expired slots.

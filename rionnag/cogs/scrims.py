@@ -60,6 +60,14 @@ class Scrims(commands.Cog):
         )
 
     @commands.Cog.listener()
+    async def on_message(self, message):
+        if (self.publisher and message.channel.id == self.publisher.channel_id
+                and not (message.author.id == self.bot.user.id and any(
+                    embed.footer.text == "Scrim finder vote summary" for embed in message.embeds))):
+            async with self.publisher.lock:
+                await self.publisher.sync_vote_summary(message.channel)
+
+    @commands.Cog.listener()
     async def on_ready(self):
         if not self.restored:
             await self.controller.restore()

@@ -253,6 +253,55 @@ class OpportunityPublisher:
                 )
             except discord.HTTPException:
                 log.warning("Scrim opportunity delivery failed; will retry", exc_info=False)
+        await self.sync_vote_summary(channel, now)
+
+    async def sync_vote_summary(self, channel, now=None):
+        now = time.time() if now is None else now
+        ranked = [(len(self.store.opportunity_votes(self.channel_id, key)), post)
+                  for key, post in self.store.opportunity_posts(self.channel_id).items()
+                  if post["status"] == "active" and post["message_id"]
+                  and post["start_time"] is not None and post["start_time"] > now]
+        maximum = max((votes for votes, _ in ranked), default=0)
+        leaders = sorted((post for votes, post in ranked if votes == maximum),
+                         key=lambda post: (post["start_time"], post["message_id"]))
+        links = ", ".join(
+            f"[<t:{post['start_time']}:f>](https://discord.com/channels/"
+            f"{self.guild_id}/{self.channel_id}/{post['message_id']})" for post in leaders
+        )
+        embed = discord.Embed(title="Most voted scrim", description=(
+            f"**{maximum}/6 votes**: {links}" if leaders else "No upcoming scrim posts."
+        ))
+        marker = "Scrim finder vote summary"
+        embed.set_footer(text=marker)
+        saved = self.store.vote_summary_message(self.channel_id)
+        message = None
+        try:
+            if saved:
+                try:
+                    message = await channel.fetch_message(saved)
+                except discord.NotFound:
+                    pass
+            latest = None
+            # Also recover a send acknowledged after a crash, and remove duplicates.
+            async for candidate in channel.history(limit=100):
+                if latest is None:
+                    latest = candidate.id
+                if candidate.author.id == self.bot.user.id and any(
+                        e.footer.text == marker for e in candidate.embeds):
+                    if message is None:
+                        message = candidate
+                    elif candidate.id != message.id:
+                        await candidate.delete()
+            if message is not None and message.id != latest:
+                await message.delete()
+                message = None
+            if message is None:
+                message = await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            elif not message.embeds or message.embeds[0].to_dict() != embed.to_dict():
+                await message.edit(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+            self.store.save_vote_summary_message(self.channel_id, message.id)
+        except discord.HTTPException:
+            log.warning("Scrim vote summary update failed; will retry", exc_info=False)
 
     async def vote(self, interaction, key, add):
         await interaction.response.defer(ephemeral=True)

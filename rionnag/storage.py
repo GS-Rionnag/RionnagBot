@@ -38,6 +38,8 @@ class Store:
                     PRIMARY KEY(channel_id,offer_key,member_id));
                 CREATE TABLE IF NOT EXISTS scrim_search_settings (
                     channel_id INTEGER PRIMARY KEY, min_rank TEXT NOT NULL, max_rank TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS scrim_vote_summaries (
+                    channel_id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL);
             """)
             columns = {row[1] for row in db.execute("PRAGMA table_info(scrim_opportunity_posts)")}
             for name, kind in (("start_time", "INTEGER"), ("source_key", "TEXT"),
@@ -216,6 +218,17 @@ class Store:
                 "SELECT member_id FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=? "
                 "ORDER BY member_id", (channel_id, offer_key),
             )]
+
+    def vote_summary_message(self, channel_id):
+        with self.connection() as db:
+            row = db.execute("SELECT message_id FROM scrim_vote_summaries WHERE channel_id=?",
+                             (channel_id,)).fetchone()
+        return row[0] if row else None
+
+    def save_vote_summary_message(self, channel_id, message_id):
+        with self.connection() as db:
+            db.execute("INSERT OR REPLACE INTO scrim_vote_summaries VALUES(?,?)",
+                       (channel_id, message_id))
 
     def vote_opportunity(self, channel_id, offer_key, member_id, add):
         with self.connection() as db:
