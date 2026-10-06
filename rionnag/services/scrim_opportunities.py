@@ -166,6 +166,9 @@ class OpportunityPublisher:
             start = post_start(key, post, offers)
             if start in selected:
                 anchors.setdefault(start, key)
+        # Finder posts stop accepting interest at their advertised start.
+        selected = {start: source for start, source in selected.items() if start > now}
+        anchors = {start: key for start, key in anchors.items() if start in selected}
         pending = [p for p in posts.values() if p["message_id"] is None and p["status"] == "pending"]
         recovered = {}
         if pending:
@@ -283,6 +286,13 @@ class OpportunityPublisher:
                 )
                 return
             self.store.clear_opportunity_votes(self.channel_id, key, {p["member_id"] for p in players})
+            start = post_start(key, post, offers)
+            if start <= time.time():
+                await self._sync()
+                await interaction.followup.send(
+                    "This scrim opportunity is no longer available.", ephemeral=True
+                )
+                return
             try:
                 self.store.vote_opportunity(self.channel_id, key, interaction.user.id, add)
             except ValueError as exc:

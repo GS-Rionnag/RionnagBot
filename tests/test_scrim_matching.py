@@ -187,15 +187,54 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.message.delete.assert_awaited_once()
         self.channel.send.assert_awaited_once()
 
-    async def test_ongoing_offers_remain_until_end_then_are_deleted(self):
+    async def test_full_post_is_deleted_at_start(self):
         await self.publisher.sync(self.now)
-        self.store.vote_opportunity(10, "3:0", 1, True)
+        self.fill_votes()
         await self.publisher.sync(instant(offer()["Start_Time_timestamp"]))
+        self.message.delete.assert_awaited_once()
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
+
+    def fill_votes(self):
+        self.store.update(6, status="accepted", game="marvel-rivals", version=1, answers=answers())
+        self.store.save_profile(1, 6, self.form, answers())
+        for mid in range(1, 7):
+            self.store.vote_opportunity(10, "3:0", mid, True)
+
+    async def test_underfilled_post_expires_at_start_and_cannot_reappear(self):
+        await self.publisher.sync(self.now)
+        for mid in range(1, 6):
+            self.store.vote_opportunity(10, "3:0", mid, True)
+        start = instant(offer()["Start_Time_timestamp"])
+        await self.publisher.sync(start - 1)
         self.message.delete.assert_not_awaited()
-        await self.publisher.sync(instant(offer()["Start_Time_timestamp"]) + 3600)
+        await self.publisher.sync(start)
+        self.message.delete.assert_awaited_once()
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
+        self.add_offer(9)
+        await self.publisher.sync(start + 1)
+        self.channel.send.assert_awaited_once()
+
+    async def test_late_offer_is_not_published(self):
+        await self.publisher.sync(instant(offer()["Start_Time_timestamp"]))
+        self.channel.send.assert_not_awaited()
+
+    async def test_sixth_vote_at_start_is_rejected_and_post_deleted(self):
+        await self.publisher.sync(self.now)
+        self.fill_votes()
+        self.store.vote_opportunity(10, "3:0", 6, False)
+        with patch("rionnag.services.scrim_opportunities.time.time",
+                   return_value=instant(offer()["Start_Time_timestamp"])):
+            interaction = self.interaction(6)
+            await self.publisher.vote(interaction, "3:0", True)
+        self.assertIn("no longer", interaction.followup.send.call_args.args[0])
         self.message.delete.assert_awaited_once()
 
-        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
+    async def test_ineligible_voter_causes_full_started_post_to_expire(self):
+        await self.publisher.sync(self.now)
+        self.fill_votes()
+        self.store.update(6, status="reset")
+        await self.publisher.sync(instant(offer()["Start_Time_timestamp"]))
+        self.message.delete.assert_awaited_once()
 
     async def test_saved_rank_filter_removes_out_of_range_posts_and_blocks_votes(self):
         await self.publisher.sync(self.now)
@@ -329,22 +368,6 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.message.edit.call_args.kwargs["embed"].fields[1].name, "Voted 1/6")
         self.assertEqual(self.store.opportunity_votes(10, "3:0"), [1])
         self.message.delete.assert_not_awaited()
-        self.channel.send.assert_awaited_once()
-
-    async def test_expired_newest_falls_back_to_longer_offer_then_slot_expires(self):
-        self.feed.put({**self.source, "content": "Two hours"})
-        self.feed.complete(self.feed.pending(), {"scrims": [
-            {**offer(end="2027-06-08T02:00:00Z"), "source_message_id": "3"}
-        ]})
-        self.add_offer(9)
-        await self.publisher.sync(self.now)
-        self.assertTrue(self.channel.send.call_args.kwargs["embed"].url.endswith("/9"))
-        await self.publisher.sync(instant("2027-06-08T01:00:00Z"))
-        self.assertTrue(self.message.edit.call_args.kwargs["embed"].url.endswith("/3"))
-        self.assertEqual(self.message.edit.call_args.kwargs["embed"].title, "Scrim Found!")
-        self.message.delete.assert_not_awaited()
-        await self.publisher.sync(instant("2027-06-08T02:00:00Z"))
-        self.message.delete.assert_awaited_once()
         self.channel.send.assert_awaited_once()
 
     async def test_failed_edit_retries_without_extra_message_and_blocks_old_votes(self):

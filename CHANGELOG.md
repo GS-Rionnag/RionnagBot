@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-05 - expire finder posts at scrim start
+
+- Delete finder posts at their advertised start regardless of vote count, and reject late votes. Never publish already-started offers or revive expired slots.
+- Retain the minute refresh interval, saved rank filters, and future-slot vote persistence.
+
 ## 2026-10-05 - supervise scrim collection with the main service
 
 - Start the configured collector automatically with the shared per-user service, using its own virtual environment and private settings. Expose collector status/PID/last exit alongside bot status.
