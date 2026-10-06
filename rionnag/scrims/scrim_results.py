@@ -16,6 +16,7 @@ from pathlib import Path
 import discord
 from rivals_api import Match, hero_class, hero_name
 
+from rionnag import config
 from rionnag.scrims.scrim_map_images import MAP_IMAGES
 from rionnag.scrims.scrim_rivals import basic_match, rows
 
@@ -333,6 +334,8 @@ class ScrimResultLogs:
         if guild is None:
             raise ValueError("Guild is unavailable")
         channel_id = os.getenv("SCRIM_LOG_CHANNEL_ID")
+        if not channel_id and guild.id == config.GUILD_ID:
+            channel_id = config.SCRIM_LOG_CHANNEL_ID
         channel = (
             guild.get_channel(int(channel_id))
             if channel_id

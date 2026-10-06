@@ -8,11 +8,20 @@ from unittest.mock import AsyncMock, MagicMock
 
 import test_scrim_queue
 
+from rionnag import config
 from rionnag.scrims.scrim_results import ScrimResultLogs, result_embeds, session_embed
 from rionnag.scrims.scrim_rivals import basic_match
 
 
 class ResultTests(unittest.IsolatedAsyncioTestCase):
+    def test_renamed_canonical_log_channel_uses_id(self):
+        self.guild.id = config.GUILD_ID
+        self.channel.name = "Renamed logs"
+        self.guild.get_channel = MagicMock(return_value=self.channel)
+        self.assertEqual(self.logs.log_channel({"guild_id": config.GUILD_ID}),
+                         (self.guild, self.channel))
+        self.guild.get_channel.assert_called_once_with(config.SCRIM_LOG_CHANNEL_ID)
+
     tearDown = test_scrim_queue.QueueTests.tearDown
     click = test_scrim_queue.QueueTests.click
     begin = test_scrim_queue.QueueTests.begin

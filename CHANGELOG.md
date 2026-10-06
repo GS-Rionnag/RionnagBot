@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-06 - renamed channels and mobile scrim summary links
+
+- Reuse saved scrim channel IDs and their category during setup after renames, avoiding duplicate channels. Deliver canonical server scrim results using the stable log-channel ID while retaining the environment override.
+- Show every tied most-voted scrim on its own line with its vote count, local timestamp, and separate Jump to message link for mobile use.
+
 ## 2026-10-05 - bottom-of-channel scrim vote summary
 
 - Maintain a silent Most voted scrim summary with the leading vote count and comma-separated links to every tied upcoming finder post, including zero-vote ties.

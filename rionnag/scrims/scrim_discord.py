@@ -1030,7 +1030,19 @@ class ScrimController:
         if any(s["guild_id"] == guild.id and s["game"] == game for s in self.store.active()):
             raise ValueError("End the active session before changing scrim channels.")
         channels = await guild.fetch_channels()
-        category = discord.utils.get(channels, name=game)
+        by_id = {channel.id: channel for channel in channels}
+        saved = (self.store.config(guild.id, game)
+                 if (guild.id, game) in self.store.configured() else {})
+        control = control or by_id.get(saved.get("control_id"))
+        waiting = waiting or by_id.get(saved.get("waiting_id"))
+        stage = stage or by_id.get(saved.get("stage_id"))
+        category = next((by_id.get(channel.category_id)
+                         for channel in (control, waiting, stage)
+                         if channel is not None and isinstance(
+                             by_id.get(channel.category_id), discord.CategoryChannel)), None)
+        if category is None and guild.id == config.GUILD_ID and game == "Marvel Rivals":
+            category = by_id.get(1555382746992353290)
+        category = category or discord.utils.get(channels, name=game)
         if not isinstance(category, discord.CategoryChannel):
             category = await guild.create_category(game)
 

@@ -20,6 +20,36 @@ from rionnag.storage import Store
 
 
 class QueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_setup_reuses_renamed_saved_channels_and_category(self):
+        category = MagicMock(spec=discord.CategoryChannel)
+        category.id, category.name = 200, "Renamed game category"
+        self.control.id = 100
+        self.guild.roles = []
+        self.guild.default_role = MagicMock(spec=discord.Role)
+        self.guild.me = MagicMock(spec=discord.Member)
+        self.guild.me.guild_permissions.administrator = True
+        self.guild.fetch_channels = AsyncMock(return_value=[
+            category, self.control, self.waiting, self.stage,
+        ])
+        self.guild.create_category = AsyncMock()
+        self.guild.create_text_channel = AsyncMock()
+        self.guild.create_voice_channel = AsyncMock()
+        for channel in (self.control, self.waiting, self.stage):
+            channel.name = "Renamed channel"
+            channel.category_id = category.id
+            channel.overwrites = {}
+            channel.overwrites_for = MagicMock(side_effect=lambda target: discord.PermissionOverwrite())
+            channel.set_permissions = AsyncMock()
+        result = await self.controller.setup_channels(self.guild, "Marvel Rivals")
+        self.assertEqual(result, (self.control, self.waiting, self.stage))
+        self.guild.create_category.assert_not_awaited()
+        self.guild.create_text_channel.assert_not_awaited()
+        self.guild.create_voice_channel.assert_not_awaited()
+        for channel in result:
+            channel.edit.assert_not_awaited()
+        self.assertEqual(self.store.config(10, "Marvel Rivals"),
+                         dict(control_id=100, waiting_id=101, stage_id=102))
+
     async def test_setup_recognizes_visitor_by_id_after_rename(self):
         category = MagicMock(spec=discord.CategoryChannel)
         category.id, category.name = 200, "Marvel Rivals"

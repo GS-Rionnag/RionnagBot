@@ -46,7 +46,10 @@ class VoteSummaryTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("1/6 votes", description)
         self.assertIn("/11)", description)
         self.assertIn("/12)", description)
-        self.assertIn(", ", description)
+        self.assertEqual(description.splitlines(), [
+            "**1/6 votes** · <t:200:f> · [Jump to message](https://discord.com/channels/1/10/11)",
+            "**1/6 votes** · <t:300:f> · [Jump to message](https://discord.com/channels/1/10/12)",
+        ])
         self.assertNotIn("/13)", description)
         self.store.vote_opportunity(10, "b", 2, True)
         await self.publisher.sync_vote_summary(self.channel, 100)

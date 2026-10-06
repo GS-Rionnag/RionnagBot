@@ -264,12 +264,12 @@ class OpportunityPublisher:
         maximum = max((votes for votes, _ in ranked), default=0)
         leaders = sorted((post for votes, post in ranked if votes == maximum),
                          key=lambda post: (post["start_time"], post["message_id"]))
-        links = ", ".join(
-            f"[<t:{post['start_time']}:f>](https://discord.com/channels/"
+        links = "\n".join(
+            f"**{maximum}/6 votes** · <t:{post['start_time']}:f> · [Jump to message](https://discord.com/channels/"
             f"{self.guild_id}/{self.channel_id}/{post['message_id']})" for post in leaders
         )
         embed = discord.Embed(title="Most voted scrim", description=(
-            f"**{maximum}/6 votes**: {links}" if leaders else "No upcoming scrim posts."
+            links if leaders else "No upcoming scrim posts."
         ))
         marker = "Scrim finder vote summary"
         embed.set_footer(text=marker)
