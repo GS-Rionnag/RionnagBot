@@ -30,6 +30,8 @@ Do not delete the database for routine form changes: it contains restoration sna
 
 ## Commands and recovery
 
+`/ping` privately reports Discord gateway latency and ERROR/CRITICAL entries from the bot log over the last 24 hours, including the latest five timestamps and logger sources in server log time. Counts can include duplicate reports of one failure. Raw messages, tracebacks, collector errors, and warnings are excluded. Missing/unreadable logs are reported as unavailable, rather than healthy.
+
 Member departure permanently deletes their saved onboarding/profile data and private ticket. Startup repair catches departures missed offline. Rejoining requires a fresh form; previous roles and answers are not restored.
 
 `/edit_form` is available to everyone and opens their own saved game form with prefilled answers. Finish every page and availability to save. Completed membership roles stay unchanged; pending applications update in place. Members without saved game data finish onboarding first.

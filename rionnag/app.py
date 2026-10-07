@@ -6,6 +6,7 @@ import discord
 from discord.ext import commands
 
 from rionnag import config
+from rionnag.cogs.health import Health
 from rionnag.cogs.onboarding import Onboarding
 from rionnag.cogs.profiles import Profiles
 from rionnag.cogs.scrims import Scrims
@@ -30,6 +31,7 @@ class RionnagBot(commands.Bot):
         store = Store(config.DATABASE)
         service = Applications(self, store, config.load_forms())
         self.tree.interaction_check = self.check_guild
+        await self.add_cog(Health(self))
         await self.add_cog(Onboarding(self, service))
         await self.add_cog(Profiles(service))
         publisher = OpportunityPublisher(

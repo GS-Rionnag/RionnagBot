@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-06 - private bot health command
+
+- Add `/ping` with Discord gateway latency and a restart-persistent 24-hour bot error count plus the latest five timestamps/sources. Replies are ephemeral and exclude raw log messages and tracebacks.
+
 ## 2026-10-06 - six-player scrim posting minimum
 
 - Require at least six distinct eligible players available for the full scrim interval before posting or accepting votes.
