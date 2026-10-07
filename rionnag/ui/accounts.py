@@ -4,7 +4,8 @@ import asyncio
 
 import discord
 
-from rionnag.integrations.rivals import queued_lookup, search_player_accounts
+from rionnag.integrations.accounts import queued_identity as queued_lookup
+from rionnag.integrations.rivals import search_player_accounts
 from rionnag.ui.availability import AvailabilityView
 from rionnag.ui.onboarding import SafeView
 

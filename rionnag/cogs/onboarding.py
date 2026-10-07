@@ -27,6 +27,7 @@ class Onboarding(commands.Cog):
 
     async def cog_unload(self):
         self.repair.cancel()
+        await self.service.shutdown()
 
     async def reconcile(self):
         async with self.reconcile_lock:

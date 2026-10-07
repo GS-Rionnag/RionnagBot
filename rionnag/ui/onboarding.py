@@ -24,10 +24,14 @@ async def report(interaction, error):
         if isinstance(error, ValueError)
         else "Something failed. Your progress is saved; try again."
     )
-    if interaction.response.is_done():
-        await interaction.followup.send(text, ephemeral=True)
-    else:
-        await interaction.response.send_message(text, ephemeral=True)
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(text, ephemeral=True)
+        else:
+            await interaction.response.send_message(text, ephemeral=True)
+    except discord.HTTPException as exc:
+        # A completed ticket or expired interaction cannot receive another reply.
+        log.warning("Could not deliver interaction feedback (Discord code %s)", exc.code)
 
 
 class SafeView(discord.ui.View):
@@ -90,11 +94,14 @@ class ReviewView(SafeView):
             button = discord.ui.Button(label=label, style=style, custom_id=f"rionnag:review:{accepted}")
 
             async def callback(interaction, accepted=accepted):
-                await interaction.response.defer(ephemeral=True)
-                await self.service.decide(interaction, accepted)
-                await interaction.followup.send(
-                    "Application accepted." if accepted else "Application rejected.", ephemeral=True
-                )
+                await interaction.response.defer(ephemeral=True, thinking=True)
+
+                async def confirm():
+                    await interaction.edit_original_response(
+                        content="Application accepted." if accepted else "Application rejected."
+                    )
+
+                await self.service.decide(interaction, accepted, on_complete=confirm)
 
             button.callback = callback
             self.add_item(button)

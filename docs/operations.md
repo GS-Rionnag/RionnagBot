@@ -30,6 +30,8 @@ Do not delete the database for routine form changes: it contains restoration sna
 
 ## Commands and recovery
 
+Applications become reviewable after required identity verification without waiting for optional Rivals stats. Stats load in the background (up to five minutes) and cannot block acceptance or overwrite a changed/decided application. Account search/verification uses a separate three-request limit from full stats reads while preserving SDK pacing/cooldowns. Decisions confirm saved roles/state before DM delivery and ticket cleanup; closed DMs still retain retry notifications.
+
 `/ping` privately reports Discord gateway latency and ERROR/CRITICAL entries from the bot log over the last 24 hours, including the latest five timestamps and logger sources in server log time. Counts can include duplicate reports of one failure. Raw messages, tracebacks, collector errors, and warnings are excluded. Missing/unreadable logs are reported as unavailable, rather than healthy.
 
 Member departure permanently deletes their saved onboarding/profile data and private ticket. Startup repair catches departures missed offline. Rejoining requires a fresh form; previous roles and answers are not restored.

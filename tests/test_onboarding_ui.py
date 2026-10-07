@@ -13,10 +13,34 @@ from rionnag.storage import Store
 from rionnag.ui.accounts import AccountPicker, continue_to_availability
 from rionnag.ui.availability import AvailabilityView, TimeWindow, schedule_text, validate_days
 from rionnag.ui.forms import FormPage
-from rionnag.ui.onboarding import GameButton
+from rionnag.ui.onboarding import GameButton, ReviewView, report
 
 
 class PickerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_review_confirmation_is_delivered_inside_decision_before_cleanup(self):
+        interaction = SimpleNamespace(
+            response=SimpleNamespace(defer=AsyncMock()),
+            edit_original_response=AsyncMock(), followup=SimpleNamespace(send=AsyncMock()),
+        )
+
+        async def decide(interaction, accepted, on_complete):
+            await on_complete()
+            interaction.edit_original_response.assert_awaited_once_with(content="Application accepted.")
+
+        service = SimpleNamespace(decide=AsyncMock(side_effect=decide))
+        await ReviewView(service).children[0].callback(interaction)
+        interaction.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
+        interaction.followup.send.assert_not_called()
+
+    async def test_error_feedback_to_deleted_channel_does_not_raise_again(self):
+        response = SimpleNamespace(status=400, reason="Bad Request")
+        error = discord.HTTPException(response, {"code": 10003, "message": "Unknown Channel"})
+        interaction = SimpleNamespace(
+            response=SimpleNamespace(is_done=lambda: True),
+            followup=SimpleNamespace(send=AsyncMock(side_effect=error)),
+        )
+        await report(interaction, ValueError("This ticket is no longer active."))
+
     def setUp(self):
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)

@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-06 - responsive application submission and decisions
+
+- Publish reviewable applications immediately after required account verification; enrich player stats in the background without holding the applicant lock. Discard results after decisions or form edits.
+- Keep short account search/verification requests separate from long stats reads, with three concurrent identity requests and SDK pacing/cooldowns retained.
+- Confirm decisions after roles/state are saved and before DM delivery and ticket deletion. Prevent failed feedback to deleted channels from causing cascading unhandled errors.
+
 ## 2026-10-06 - private bot health command
 
 - Add `/ping` with Discord gateway latency and a restart-persistent 24-hour bot error count plus the latest five timestamps/sources. Replies are ephemeral and exclude raw log messages and tracebacks.

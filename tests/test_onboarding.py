@@ -241,6 +241,29 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("accepted", self.member.send.call_args.args[0])
         self.assertIsNotNone(self.store.saved_profile(config.GUILD_ID, 42))
 
+    async def test_decision_confirmation_precedes_dm_and_ticket_deletion(self):
+        self.store.update(
+            42, status="deciding", game="marvel-rivals", answers=self.answers, restore_status="accepted"
+        )
+        events = []
+
+        async def confirm():
+            self.assertEqual(self.store.member(42)["status"], "accepted")
+            events.append("confirmed")
+
+        async def notify(member):
+            events.append("notified")
+
+        async def close(member):
+            events.append("deleted")
+
+        with (
+            patch.object(self.app, "notify", side_effect=notify),
+            patch.object(self.app, "close_ticket", side_effect=close),
+        ):
+            await self.app.finish_decision(self.member, on_complete=confirm)
+        self.assertEqual(events, ["confirmed", "notified", "deleted"])
+
     async def test_self_review_forbidden_even_for_manager(self):
         self.member.roles += [self.roles[self.form["manager_role"]]]
         self.store.update(42, status="pending", game="marvel-rivals", channel_id=100)

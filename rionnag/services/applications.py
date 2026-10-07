@@ -25,6 +25,13 @@ class Applications:
         self.bot, self.store, self.forms = bot, store, forms
         self.locks = {}
         self.account_lock = asyncio.Lock()
+        self.stats_tasks = {}
+
+    async def shutdown(self):
+        tasks = list(self.stats_tasks.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
     def lock(self, member_id):
         return self.locks.setdefault(member_id, asyncio.Lock())
@@ -287,15 +294,28 @@ class Applications:
         manager = member.guild.get_role(form["manager_role"])
         embeds = [embed]
         if row["game"] == "marvel-rivals":
-            from rionnag.ui.player_stats import player_stats_embed
+            from rionnag.ui.player_stats import STATS_VERSION
 
-            embeds.append(await player_stats_embed(row["answers"]))
-            self.store.update(member.id, answers=row["answers"])
+            answers = row["answers"]
+            if (
+                answers.get("rivals_stats_embed")
+                and answers.get("rivals_stats_uid") == str(answers.get("player_uid"))
+                and answers.get("rivals_stats_version") == STATS_VERSION
+            ):
+                embeds.append(discord.Embed.from_dict(answers["rivals_stats_embed"]))
+            else:
+                embeds.append(discord.Embed(
+                    title="Marvel Rivals player data",
+                    description="Loading player stats. This application is ready for review.",
+                    color=config.COLOR,
+                ))
         if row["message_id"]:
             try:
-                await (await channel.fetch_message(row["message_id"])).edit(
+                message = await channel.fetch_message(row["message_id"])
+                await message.edit(
                     embeds=embeds, attachments=[], view=ReviewView(self)
                 )
+                self.queue_stats(member.id, channel, message, embed, row)
                 return
             except discord.NotFound:
                 pass
@@ -306,8 +326,43 @@ class Applications:
             allowed_mentions=discord.AllowedMentions(roles=[manager], users=[member], everyone=False),
         )
         self.store.update(member.id, message_id=message.id)
+        self.queue_stats(member.id, channel, message, embed, self.store.member(member.id))
 
-    async def decide(self, interaction, accepted):
+    def queue_stats(self, member_id, channel, message, embed, row):
+        if row["game"] != "marvel-rivals":
+            return
+        task = self.stats_tasks.get(member_id)
+        if task and not task.done():
+            return
+        self.stats_tasks[member_id] = asyncio.create_task(
+            self.refresh_stats(member_id, channel, message, embed, row)
+        )
+
+    async def refresh_stats(self, member_id, channel, message, embed, snapshot):
+        from rionnag.ui.player_stats import player_stats_embed
+
+        answers = dict(snapshot["answers"])
+        try:
+            stats = await player_stats_embed(answers)
+            async with self.lock(member_id):
+                row = self.store.member(member_id)
+                if (
+                    row["status"] != "pending"
+                    or row["channel_id"] != channel.id
+                    or row["message_id"] != message.id
+                    or row["game"] != snapshot["game"]
+                    or row["version"] != snapshot["version"]
+                    or row["answers"] != snapshot["answers"]
+                ):
+                    return
+                await message.edit(embeds=[embed, stats])
+                self.store.update(member_id, answers=answers)
+        except discord.NotFound:
+            pass  # The application may have been decided/deleted during the lookup.
+        except Exception:
+            log.exception("Background application stats refresh failed")
+
+    async def decide(self, interaction, accepted, on_complete=None):
         member_id = next(
             (
                 mid
@@ -336,9 +391,9 @@ class Applications:
             # Record an outbox state BEFORE side effects. Startup retries interrupted decisions.
             status = "accepted" if accepted else "rejected"
             self.store.update(member_id, status="deciding", restore_status=status)
-            await self.finish_decision(member)
+            await self.finish_decision(member, on_complete=on_complete)
 
-    async def finish_decision(self, member, automatic=False):
+    async def finish_decision(self, member, automatic=False, on_complete=None):
         row = self.store.member(member.id)
         form = self.form_for(row)
         accepted = row["restore_status"] == "accepted"
@@ -370,6 +425,11 @@ class Applications:
                 + (" automatically." if automatic else ".")
             ),
         )
+        if on_complete:
+            try:
+                await on_complete()
+            except discord.HTTPException as exc:
+                log.warning("Decision confirmation unavailable (Discord code %s)", exc.code)
         await self.notify(member)
         await self.close_ticket(member)
 
