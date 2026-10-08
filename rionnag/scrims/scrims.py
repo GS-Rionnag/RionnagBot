@@ -7,6 +7,7 @@ import random
 import sqlite3
 import time
 from dataclasses import asdict, dataclass, replace
+from itertools import product
 
 ROLES = ("Tank", "DPS", "Support")
 ALIASES = {
@@ -173,10 +174,11 @@ def substitute_one(players, current, history, protected=()):
 
 
 def manual_lineup(players, current, history, operation, first, second=None):
-    """Manager override with a complete 2/2/2 roster and compatible saved roles.
+    """Manager override with a complete 2/2/2 roster and mandatory in/out choices.
 
-    Force in/out may select the other player automatically. Swap either exchanges
-    starter roles or exchanges a starter and substitute. Counts never change.
+    Force in/out may select the other player automatically and reshuffle roles,
+    including an off-role assignment when required. Swap still validates saved
+    role compatibility. Counts never change.
     """
     present = {p.member_id: p for p in players}
     roster = dict(current)
@@ -184,12 +186,30 @@ def manual_lineup(players, current, history, operation, first, second=None):
     def roles(mid):
         return present[mid].roles if mid in present else history.get(mid, {}).get("roles", ())
 
-    def replace_slot(outgoing, incoming):
+    def replace_slot(outgoing, incoming, *, force=False):
+        nonlocal roster
         if outgoing not in roster or incoming in roster or incoming not in present:
             raise ValueError("Choose an active player to take out and an available substitute to bring in.")
         role = roster[outgoing]
         if role not in roles(incoming):
-            raise ValueError(f"The incoming player must have {role} in their saved preferred roles.")
+            if not force:
+                raise ValueError(f"The incoming player must have {role} in their saved preferred roles.")
+            selected = [mid for mid in roster if mid != outgoing] + [incoming]
+            candidates = []
+            for assigned in product(ROLES, repeat=6):
+                if any(assigned.count(r) != 2 for r in ROLES):
+                    continue
+                score = (
+                    sum(r not in roles(mid) for mid, r in zip(selected, assigned, strict=True)),
+                    sum(mid in roster and roster[mid] != r
+                        for mid, r in zip(selected, assigned, strict=True)),
+                    sum(roles(mid).index(r) if r in roles(mid) else len(ROLES)
+                        for mid, r in zip(selected, assigned, strict=True)),
+                    assigned,
+                )
+                candidates.append((score, dict(zip(selected, assigned, strict=True))))
+            roster = min(candidates, key=lambda item: item[0])[1]
+            return
         del roster[outgoing]
         roster[incoming] = role
 
@@ -199,31 +219,31 @@ def manual_lineup(players, current, history, operation, first, second=None):
         if second is None:
             options = [mid for mid, role in roster.items() if role in roles(first)]
             if not options:
-                raise ValueError("This substitute cannot fill any current role.")
+                options = list(roster)
             second = min(
                 options,
                 key=lambda mid: (
-                    roles(first).index(roster[mid]),
+                    roles(first).index(roster[mid]) if roster[mid] in roles(first) else len(ROLES),
                     mid in present,
                     -history[mid]["played"],
                     -history[mid]["last_played"],
                     mid,
                 ),
             )
-        replace_slot(second, first)
+        replace_slot(second, first, force=True)
     elif operation == "out":
         if first not in roster:
             raise ValueError("Force out requires a player from the active lineup.")
         if second is None:
             options = [p for p in players if p.member_id not in roster and roster[first] in p.roles]
             if not options:
-                raise ValueError(
-                    "No compatible substitute can fill that slot. Add one before forcing this player out."
-                )
+                options = [p for p in players if p.member_id not in roster]
+            if not options:
+                raise ValueError("No substitute is available. Add one before forcing this player out.")
             second = min(
                 options,
                 key=lambda p: (
-                    p.roles.index(roster[first]),
+                    p.roles.index(roster[first]) if roster[first] in p.roles else len(ROLES),
                     p.played,
                     p.last_played,
                     p.benched_at,
@@ -231,7 +251,7 @@ def manual_lineup(players, current, history, operation, first, second=None):
                     p.member_id,
                 ),
             ).member_id
-        replace_slot(first, second)
+        replace_slot(first, second, force=True)
     elif operation == "swap":
         if second is None or first == second:
             raise ValueError("Choose two different players for a swap.")

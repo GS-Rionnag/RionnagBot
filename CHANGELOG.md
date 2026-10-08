@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-07 - mandatory manager force in/out selections
+
+- Honor explicit incoming/outgoing pairs even when their current roles differ. Reassign the other five starters using saved secondary roles first, with the fewest off-role overrides when required to preserve 2 Tank / 2 DPS / 2 Support.
+- Label off-role overrides in the confirmation and dashboard. Preserve the chosen players, counts, saved preferences, review confirmation, and running-game restrictions.
+
 ## 2026-10-07 - one scrim voice room with passive game tracking
 
 - Keep the former waiting room as the sole Scrim voice channel and remove the extra main room. Preserve session/game data and restore bot-applied mutes during the one-time consolidation.

@@ -91,9 +91,11 @@ class RotationTests(unittest.TestCase):
             self.assertNotIn(starter, after)
             self.assertEqual(Counter(after.values()), Counter(team.values()))
         incompatible = next(p for p in pool if p.member_id not in team and team[starter] not in p.roles)
-        with self.assertRaisesRegex(ValueError, "preferred roles"):
-            manual_lineup(pool, team, history, "in", incompatible.member_id, starter)
-        with self.assertRaisesRegex(ValueError, "No compatible"):
+        forced = manual_lineup(pool, team, history, "in", incompatible.member_id, starter)
+        self.assertIn(incompatible.member_id, forced)
+        self.assertNotIn(starter, forced)
+        self.assertEqual(Counter(forced.values()), Counter(team.values()))
+        with self.assertRaisesRegex(ValueError, "No substitute"):
             manual_lineup([p for p in pool if p.member_id in team], team, history, "out", starter)
         self.assertEqual(history[bench.member_id]["played"], 0)
         self.assertEqual(len(team), 6)
@@ -109,6 +111,34 @@ class RotationTests(unittest.TestCase):
         self.assertEqual(swapped[3], "Tank")
         with self.assertRaisesRegex(ValueError, "each other"):
             manual_lineup(pool, team, history, "swap", 2, 4)
+
+    def test_explicit_force_pair_reshuffles_secondary_roles_before_off_role(self):
+        pool = [Player(i, f"p{i}", role) for i, role in enumerate((
+            ("Tank",), ("Tank", "DPS"), ("DPS",), ("DPS",),
+            ("Support",), ("Support",), ("DPS",),
+        ), 1)]
+        current = dict(zip(range(1, 7), ("Tank", "Tank", "DPS", "DPS", "Support", "Support")))
+        history = {p.member_id: asdict(p) for p in pool}
+        pool[2].roles = ("DPS", "Tank")
+        for operation, first, second in (("in", 7, 1), ("out", 1, 7)):
+            after = manual_lineup(pool, current, history, operation, first, second)
+            self.assertEqual(set(after), {2, 3, 4, 5, 6, 7})
+            self.assertEqual(Counter(after.values()), Counter(current.values()))
+            self.assertEqual(after[3], "Tank")
+            self.assertEqual(after[7], "DPS")
+            self.assertTrue(all(role in pool[mid - 1].roles for mid, role in after.items()))
+
+    def test_explicit_force_pair_succeeds_even_when_an_off_role_is_required(self):
+        pool = [Player(i, f"p{i}", (role,)) for i, role in enumerate(
+            ("Tank", "Tank", "DPS", "DPS", "Support", "Support", "DPS"), 1)]
+        current = {p.member_id: p.roles[0] for p in pool[:6]}
+        history = {p.member_id: asdict(p) for p in pool}
+        for operation, first, second in (("in", 7, 1), ("out", 1, 7)):
+            after = manual_lineup(pool, current, history, operation, first, second)
+            self.assertEqual(set(after), {2, 3, 4, 5, 6, 7})
+            self.assertEqual(Counter(after.values()), Counter(current.values()))
+            self.assertEqual(sum(role not in pool[mid - 1].roles for mid, role in after.items()), 1)
+        self.assertEqual(history, {p.member_id: asdict(p) for p in pool})
 
     def test_required_real_host_is_in_initial_demo_lineup(self):
         pool = players()

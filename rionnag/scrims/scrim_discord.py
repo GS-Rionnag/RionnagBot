@@ -103,7 +103,7 @@ class LineupEditor(discord.ui.Modal, title="Edit scrim lineup"):
         self.add_item(
             discord.ui.Label(
                 text="Other player (optional for force in/out)",
-                description="Choose both for a swap. Leave blank for an automatic main-role replacement.",
+                description="Force in/out: select both to require that pair; roles reshuffle as needed.",
                 component=self.second,
             )
         )
@@ -309,6 +309,9 @@ class ScrimController:
         for mid in sorted(set(roster) & set(before)):
             if roster[mid] != before[mid]:
                 lines.append(f"{self.player_label(data, mid)}: {before[mid]} → {roster[mid]}")
+        for mid, role in roster.items():
+            if role not in data["players"][mid]["roles"]:
+                lines.append(f"Off-role override: {self.player_label(data, mid)} · {role}")
         return "\n".join(lines)
 
     async def preview_lineup_edit(self, interaction, lid, sid, revision, operation, first, second):
@@ -519,7 +522,8 @@ class ScrimController:
                 + (
                     " · Test flex roles"
                     if data["players"][mid].get("test_roles_inferred")
-                    else (" · Main role" if role == data["players"][mid]["roles"][0] else " · Secondary role")
+                    else (" · Off-role override" if role not in data["players"][mid]["roles"] else
+                          " · Main role" if role == data["players"][mid]["roles"][0] else " · Secondary role")
                 )
                 + (" · **not in voice**" if mid not in present else "")
                 for mid, assigned in data["roster"].items()

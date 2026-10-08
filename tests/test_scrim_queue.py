@@ -20,6 +20,25 @@ from rionnag.storage import Store
 
 
 class QueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_forced_in_out_pair_survives_preview_and_apply_with_off_role_label(self):
+        data = await self.begin(start=False)
+        outgoing = next(mid for mid, role in data["roster"].items() if role == "Tank")
+        incoming = next(p.member_id for p in self.pool
+                        if p.member_id not in data["roster"] and p.roles == ("DPS",))
+        args = (self.lobby["id"], data["id"], data["revision"], "in", incoming, outgoing)
+        interaction = self.interaction()
+        await self.controller.preview_lineup_edit(interaction, *args)
+        preview = interaction.followup.send.call_args.kwargs
+        self.assertIn("Off-role override", preview["embed"].description)
+        await self.controller.apply_lineup_edit(self.interaction(), *args, expected=preview["view"].roster)
+        saved = self.store.get(data["id"])
+        self.assertIn(incoming, saved["roster"])
+        self.assertNotIn(outgoing, saved["roster"])
+        self.assertEqual(Counter(saved["roster"].values()), Counter(data["roster"].values()))
+        self.assertTrue(any("Off-role override" in card.description
+                            for card in self.controller.embeds(self.lobby, self.guild, saved)[1:4]))
+        self.assertEqual(self.events, [])
+
     async def test_tracking_never_moves_mutes_or_changes_permissions_even_for_visitors(self):
         visitor = self.members[9]
         visitor.roles = [SimpleNamespace(id=config.VISITOR_ROLE_ID)]
