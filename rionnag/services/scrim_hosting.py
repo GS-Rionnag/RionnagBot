@@ -463,7 +463,7 @@ class HostingService:
                     value=(field.value + f"\nAdvert: {state}{link}")[:1024],
                     inline=False,
                 )
-        embed.set_footer(text=MARKER)
+        embed.set_footer(text="Use /edit_form to view more days")
         return embed
 
     def board_embeds(self, slots):
@@ -503,7 +503,9 @@ class HostingService:
                 # Recovery before sending prevents a duplicate after interrupted delivery.
                 async for candidate in channel.history(limit=100):
                     if candidate.author.id == self.bot.user.id and any(
-                        e.footer.text == MARKER for e in candidate.embeds
+                        e.footer.text == MARKER or (
+                            e.footer.text == "Use /edit_form to view more days" and e.title == "HOST SCRIMS"
+                        ) for e in candidate.embeds
                     ):
                         message = candidate
                         break

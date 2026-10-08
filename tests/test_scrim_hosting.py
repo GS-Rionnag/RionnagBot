@@ -11,7 +11,14 @@ from zoneinfo import ZoneInfo
 from rionnag import config
 from rionnag.services.scrim_hosting import HostingService, HostSlot, generate_slots, role_team
 from rionnag.storage import Store
-from rionnag.ui.scrim_hosting import DayPicker, HostingBoard, SessionCard, SlotPicker, day_groups
+from rionnag.ui.scrim_hosting import (
+    DayPicker,
+    HostApproval,
+    HostingBoard,
+    SessionCard,
+    SlotPicker,
+    day_groups,
+)
 from scrim_collector.hosting import invalid_request, process_bump, process_job
 
 
@@ -344,6 +351,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
             ["HOST SCRIMS", f"<t:{most.start}:F>", f"<t:{soon.start}:F>", f"<t:{later.start}:F>"],
         )
         self.assertTrue(all(card.footer.text is None for card in cards[1:]))
+        self.assertEqual(cards[0].footer.text, "Use /edit_form to view more days")
         self.assertEqual(len(cards[0].fields), 0)
         self.assertIn(f"<t:{most.start}:F>", cards[1].description)
 
@@ -491,6 +499,16 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(service.direct_join.call_args.kwargs, {"override": True})
         view.stop()
 
+    async def test_delivered_owner_panel_hides_send_and_no(self):
+        service, slot, dm = self.approval_fixture()
+        self.store.queue_host_advert(
+            service.channel_id, self.start, self.store.host_settings(service.channel_id), self.team, 99
+        )
+        self.store.update_host_advert(service.channel_id, self.start, "sent", message_id=77)
+        view = HostApproval(service, self.start, 1)
+        self.assertEqual([button.label for button in view.children], ["Bump post", "Confirm scrim"])
+        view.stop()
+
     async def test_outbound_accepts_explicit_schedule_override_only_for_exact_duration(self):
         self.queue()
         job = self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
@@ -616,7 +634,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         view = dm.send.call_args.kwargs["view"]
         self.assertTrue(view.is_persistent())
         self.assertEqual([button.label for button in view.children],
-                         ["Enter ranks & send", "No", "Bump post", "Confirm scrim"])
+                         ["Enter ranks & send", "Bump post", "Confirm scrim"])
         self.assertIn("Tank: <@1>, <@2>\nDPS: <@3>, <@4>\nSupport: <@5>, <@6>",
                       dm.send.call_args.kwargs["embed"].description)
         await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, False)

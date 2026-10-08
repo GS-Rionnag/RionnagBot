@@ -485,10 +485,11 @@ class HostApproval(HostingView):
     def __init__(self, service, start, generation):
         super().__init__(timeout=None)
         self.service, self.start, self.generation = service, start, generation
-        for label, send, style in (
+        advert = service.store.host_adverts(service.channel_id).get(start)
+        send_controls = [] if advert and advert["status"] == "sent" else [
             ("Enter ranks & send", True, discord.ButtonStyle.success),
-            ("No", False, discord.ButtonStyle.secondary),
-        ):
+        ]
+        for label, send, style in send_controls:
             button = discord.ui.Button(
                 label=label, style=style, custom_id=f"hosting-approval:{start}:{generation}:{int(send)}"
             )

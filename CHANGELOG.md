@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-08 - simplify owner scrim controls
+
+- Remove No from the six-player owner panel. Hide Enter ranks & send after the advert is delivered,
+  including refreshed panels and controls restored after restart; retain Bump post and Confirm scrim.
+- Set the Host Scrims introduction footer to Use /edit_form to view more days; retain recovery of existing boards.
+
 ## 2026-10-08 - owner roster, advert bump, and official confirmation
 
 - Six-player owner DMs list confirmed mentions grouped by saved best role in Tank / DPS / Support order.
