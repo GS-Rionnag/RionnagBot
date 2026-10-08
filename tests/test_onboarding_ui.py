@@ -79,6 +79,33 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([o.value for o in window.start.options if o.default], ["18"])
         self.assertEqual([o.value for o in window.end.options if o.default], ["22"])
 
+    async def test_remove_day_acknowledges_before_waiting_for_save_lock(self):
+        self.modal.answers["availability_days"] = {"Monday": {"start": 18, "end": 22}}
+        view = AvailabilityView(self.modal)
+        view.children[1]._values = ["Monday"]
+        async with self.app.lock(42):
+            task = asyncio.create_task(view.remove_day(self.interaction))
+            await asyncio.sleep(0)
+            self.interaction.response.defer.assert_awaited_once()
+            self.assertFalse(task.done())
+        await task
+        self.assertEqual(self.store.member(42)["answers"]["availability_days"], {})
+        updated = self.interaction.edit_original_response.call_args.kwargs["view"]
+        self.assertTrue(updated.children[-1].disabled)
+
+    async def test_save_day_acknowledges_before_waiting_for_save_lock(self):
+        window = TimeWindow(AvailabilityView(self.modal), "Friday", 18, 22)
+        async with self.app.lock(42):
+            task = asyncio.create_task(window.save_day(self.interaction))
+            await asyncio.sleep(0)
+            self.interaction.response.defer.assert_awaited_once()
+            self.assertFalse(task.done())
+        await task
+        self.assertEqual(
+            self.store.member(42)["answers"]["availability_days"],
+            {"Friday": {"start": 18, "end": 22}},
+        )
+
     async def test_double_finish_acknowledges_without_waiting_for_member_lock(self):
         view = AvailabilityView(self.modal)
         view.days = {"Monday": {"start": 18, "end": 22}}

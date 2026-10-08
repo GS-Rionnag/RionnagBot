@@ -134,11 +134,12 @@ class AvailabilityView(SafeView):
         await interaction.response.edit_message(embed=view.embed(), view=view)
 
     async def remove_day(self, interaction):
+        await interaction.response.defer()
         day = self.children[1].values[0]
-        self.days.pop(day)
+        self.days.pop(day, None)
         await self.save()
         view = AvailabilityView(self.modal)
-        await interaction.response.edit_message(embed=view.embed(), view=view)
+        await interaction.edit_original_response(embed=view.embed(), view=view)
 
     async def finish(self, interaction):
         if self.submitting or self.submitted:
@@ -259,10 +260,11 @@ class TimeWindow(SafeView):
     async def save_day(self, interaction):
         if self.start_hour is None or self.end_hour is None or self.end_hour - self.start_hour < 1:
             raise ValueError("Choose an end time at least one hour after the start.")
+        await interaction.response.defer()
         self.view.days[self.day] = {"start": self.start_hour, "end": self.end_hour}
         await self.view.save()
         view = AvailabilityView(self.view.modal)
-        await interaction.response.edit_message(embed=view.embed(), view=view)
+        await interaction.edit_original_response(embed=view.embed(), view=view)
 
     async def back(self, interaction):
         await interaction.response.edit_message(embed=self.view.embed(), view=self.view)

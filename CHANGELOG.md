@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-07 - availability day save/remove timeout
+
+- Acknowledge Save day and Remove a saved day before waiting for the member save lock. Refresh the
+  private availability form through the acknowledged response, preserving draft and submission rules.
+
 ## 2026-10-07 - hosting selector interaction recovery
 
 - Acknowledge day selection and return-to-days clicks before recalculating schedules, preventing slow
