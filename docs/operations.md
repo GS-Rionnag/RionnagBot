@@ -50,8 +50,11 @@ The public board shows no suggested sessions before the first confirmation. Once
 exact interval, that session appears publicly with confirmed/available counts and member mentions followed
 by their saved best roles. These are preferred roles, not promises of final lineup assignments. Existing
 votes survive deployment, so previously confirmed sessions remain visible. Mentions do not send notifications.
-Public confirmed sessions show only the highest confirmed-player count, then highest available-player count.
-At most three sessions tied on both counts appear, ordered by soonest start. Private selectors retain all choices.
+HOST SCRIMS remains a separate introduction/control embed. Up to three confirmed sessions appear as
+First place, Second place, and Third place embeds in the same persistent message. Rank by confirmed-player
+count descending, then soonest start, regardless of available-player count or whether counts tie.
+Each session title is its Discord date/time timestamp; its footer indicates First, Second, or Third place.
+Private selectors retain all choices.
 The public available-player section lists member mentions instead of just an available-player count.
 Confirmed-player mentions group by saved best role as `Tank: @mentions`, `DPS: @mentions`, then `Support: @mentions`.
 

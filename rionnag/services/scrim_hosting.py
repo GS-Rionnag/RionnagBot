@@ -251,9 +251,7 @@ class HostingService:
         confirmed_slots = sorted(
             (s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start)
         )
-        if confirmed_slots:
-            best = max((len(s.confirmed), len(s.available)) for s in confirmed_slots)
-            confirmed_slots = [s for s in confirmed_slots if (len(s.confirmed), len(s.available)) == best][:3]
+        confirmed_slots = confirmed_slots[:3]
         for slot in confirmed_slots:
             names = [
                 f"{role}: "
@@ -325,6 +323,18 @@ class HostingService:
         embed.set_footer(text=MARKER)
         return embed
 
+    def board_embeds(self, slots):
+        summary = self.board_embed(slots)
+        fields = list(summary.fields)
+        summary.clear_fields()
+        embeds = [summary]
+        ranked = sorted((s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start))[:3]
+        for place, field, slot in zip(("First place", "Second place", "Third place"), fields, ranked):
+            embed = discord.Embed(title=f"<t:{slot.start}:F>", color=config.COLOR, description=field.value)
+            embed.set_footer(text=f"{place} · {field.name}")
+            embeds.append(embed)
+        return embeds
+
     async def sync(self):
         from rionnag.ui.scrim_hosting import HostingBoard
 
@@ -337,8 +347,8 @@ class HostingService:
             if channel is None:
                 log.warning("Hosting board channel unavailable")
                 return
-            embed = self.board_embed(slots)
-            fingerprint = json.dumps(embed.to_dict(), sort_keys=True)
+            embeds = self.board_embeds(slots)
+            fingerprint = json.dumps([embed.to_dict() for embed in embeds], sort_keys=True)
             if fingerprint == self.fingerprint and settings["message_id"]:
                 return
             message = None
@@ -357,11 +367,11 @@ class HostingService:
                         break
             if message:
                 await message.edit(
-                    embed=embed, view=HostingBoard(self), allowed_mentions=discord.AllowedMentions.none()
+                    embeds=embeds, view=HostingBoard(self), allowed_mentions=discord.AllowedMentions.none()
                 )
             else:
                 message = await channel.send(
-                    embed=embed, view=HostingBoard(self), allowed_mentions=discord.AllowedMentions.none()
+                    embeds=embeds, view=HostingBoard(self), allowed_mentions=discord.AllowedMentions.none()
                 )
             self.store.configure_host(self.channel_id, message_id=message.id)
             self.fingerprint = fingerprint

@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-07 - separate top-three scrim cards
+
+- Keep HOST SCRIMS as an introduction/control embed and display First place, Second place, and Third place
+  as separate embeds in the same persistent message. Rank all confirmed sessions by most confirmed players,
+  then soonest start; counts do not need to tie. Show no more than three session cards.
+- Use each scrim's Discord timestamp as its card title; place labels appear in the footer.
+
 ## 2026-10-07 - show only the best tied hosting sessions
 
 - Public confirmed sessions show only the highest confirmed-player count, then highest available-player

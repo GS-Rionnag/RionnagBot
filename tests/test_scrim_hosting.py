@@ -305,10 +305,22 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         later = HostSlot(self.start + 86400, self.start + 93600, set(range(1, 10)), {2}, {}, 0, False)
         most = HostSlot(self.start + 172800, self.start + 180000, set(range(1, 7)), {1, 2}, {}, 2, False)
         embed = service.board_embed([later, most, soon])
-        self.assertEqual(len(embed.fields), 1)
+        self.assertEqual(len(embed.fields), 3)
         self.assertIn(f"<t:{most.start}:F>", embed.fields[0].value)
+        self.assertIn(f"<t:{soon.start}:F>", embed.fields[1].value)
+        self.assertIn(f"<t:{later.start}:F>", embed.fields[2].value)
+        cards = service.board_embeds([later, most, soon])
+        self.assertEqual(
+            [card.title for card in cards],
+            ["HOST SCRIMS", f"<t:{most.start}:F>", f"<t:{soon.start}:F>", f"<t:{later.start}:F>"],
+        )
+        self.assertTrue(cards[1].footer.text.startswith("First place"))
+        self.assertTrue(cards[2].footer.text.startswith("Second place"))
+        self.assertTrue(cards[3].footer.text.startswith("Third place"))
+        self.assertEqual(len(cards[0].fields), 0)
+        self.assertIn(f"<t:{most.start}:F>", cards[1].description)
 
-    async def test_board_shows_up_to_three_best_attendance_ties_only(self):
+    async def test_board_shows_top_three_sessions_even_without_attendance_ties(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
         service.players = roster
         tied = [
@@ -329,10 +341,13 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         less_confirmed = HostSlot(self.start - 7200, self.start, set(range(1, 20)), {1}, {}, 0, False)
         embed = service.board_embed([less_available, less_confirmed, *reversed(tied)])
         self.assertEqual(len(embed.fields), 3)
-        for index in range(3):
-            self.assertIn(f"<t:{tied[index].start}:F>", embed.fields[index].value)
+        self.assertIn(f"<t:{less_available.start}:F>", embed.fields[0].value)
+        self.assertIn(f"<t:{tied[0].start}:F>", embed.fields[1].value)
+        self.assertIn(f"<t:{tied[1].start}:F>", embed.fields[2].value)
         embed = service.board_embed(tied[:2])
         self.assertEqual(len(embed.fields), 2)
+        self.assertEqual(len(service.board_embeds([])), 1)
+        self.assertEqual(len(service.board_embeds(tied[:2])), 3)
 
     async def test_time_selection_confirms_only_the_exact_chosen_session(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)

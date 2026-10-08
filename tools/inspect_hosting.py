@@ -31,7 +31,7 @@ async def main():
                 )
             )
             if message.embeds:
-                print(f"Public session fields: {len(message.embeds[0].fields)}")
+                print(f"Public session cards: {len(message.embeds)-1}")
             print(f"Board link: {message.jump_url}")
         else:
             print("Hosting board has not been delivered yet")
