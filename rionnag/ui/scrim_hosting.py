@@ -457,12 +457,36 @@ class SlotPicker(HostingView):
             await interaction.followup.send(str(exc), ephemeral=True)
 
 
+class AdvertRanks(discord.ui.Modal, title="Scrim advert ranks"):
+    minimum = discord.ui.TextInput(label="Minimum rank", default="Grandmaster", max_length=30)
+    maximum = discord.ui.TextInput(label="Maximum rank", default="Celestial", max_length=30)
+
+    def __init__(self, service, start, generation):
+        super().__init__()
+        self.service, self.start, self.generation = service, start, generation
+
+    async def on_submit(self, interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            await self.service.decide_notice(
+                interaction, self.start, self.generation, True,
+                f"{self.minimum.value} - {self.maximum.value}",
+            )
+        except ValueError as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+        await interaction.followup.send("Advert queued with your rank range.", ephemeral=True)
+
+    async def on_error(self, interaction, error):
+        await HostingView().on_error(interaction, error, self)
+
+
 class HostApproval(HostingView):
     def __init__(self, service, start, generation):
         super().__init__(timeout=None)
         self.service, self.start, self.generation = service, start, generation
         for label, send, style in (
-            ("Yes, send advert", True, discord.ButtonStyle.success),
+            ("Enter ranks & send", True, discord.ButtonStyle.success),
             ("No", False, discord.ButtonStyle.secondary),
         ):
             button = discord.ui.Button(
@@ -470,6 +494,16 @@ class HostApproval(HostingView):
             )
 
             async def decide(interaction, send=send):
+                if send:
+                    guild = self.service.bot.get_guild(config.GUILD_ID)
+                    if not guild or interaction.user.id != guild.owner_id:
+                        await interaction.response.send_message("Only the server owner can set advert ranks.",
+                                                                ephemeral=True)
+                        return
+                    await interaction.response.send_modal(
+                        AdvertRanks(self.service, self.start, self.generation)
+                    )
+                    return
                 await interaction.response.defer(thinking=True)
                 try:
                     await self.service.decide_notice(interaction, self.start, self.generation, send)

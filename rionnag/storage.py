@@ -295,19 +295,14 @@ class Store:
                 (status, message_id, channel_id, start, generation),
             )
 
-    def queue_host_advert(self, channel_id, start, settings, lineup, requester, rank_lines=()):
-        content = f"LFS at <t:{start}:F>"
-        if rank_lines:
-            from rionnag.scrims.scrim_offer_rules import canonical_rank
+    def queue_host_advert(self, channel_id, start, settings, lineup, requester,
+                         rank_range="Grandmaster - Celestial"):
+        from rionnag.scrims.scrim_offer_rules import canonical_rank
 
-            if len(rank_lines) != 6:
-                raise ValueError("An advert needs exactly six anonymous player rank entries.")
-            lines = []
-            for index, (current, peak) in enumerate(rank_lines, 1):
-                current = canonical_rank(current) or "Unavailable"
-                peak = canonical_rank(peak) or "Unavailable"
-                lines.append(f"Player{index} - {current}; {peak} Peak")
-            content += "\n\n" + "\n".join(lines)
+        ranks = [canonical_rank(rank.strip()) for rank in rank_range.split("-")]
+        if len(ranks) != 2 or not all(ranks):
+            raise ValueError("Enter two valid ranks, for example Grandmaster - Celestial.")
+        content = f"LFS {' - '.join(ranks)} at <t:{start}:F>"
         with self.connection() as db:
             # One publication per session, including after restart or repeated clicks.
             cursor = db.execute(

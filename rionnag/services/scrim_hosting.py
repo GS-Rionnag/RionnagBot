@@ -150,7 +150,7 @@ class HostingService:
                     description=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
                     f"**{len(slot.confirmed)} players confirmed** · Valid 2 Tank / 2 DPS / 2 Support\n\n"
                     "Would you like to send a message to the scrim advertisement area?\n"
-                    "The advert includes anonymous Player1–Player6 current and peak ranks.",
+                    "Open the rank form, enter the rank range, and submit to send the advert.",
                 )
                 embed.set_footer(text=marker)
                 if recovered:
@@ -223,7 +223,8 @@ class HostingService:
                 self.channel_id, start, member_id, duration, "accepted" if accept else "declined"
             )
 
-    async def decide_notice(self, interaction, start, generation, send):
+    async def decide_notice(self, interaction, start, generation, send,
+                            rank_range="Grandmaster - Celestial"):
         guild = self.bot.get_guild(config.GUILD_ID)
         if not guild or interaction.user.id != guild.owner_id:
             raise ValueError("Only the server owner can answer this scrim approval.")
@@ -242,10 +243,9 @@ class HostingService:
                 )
             settings = self.store.host_settings(self.channel_id)
             token = self.preview_token(slot, settings)
-            ranks = await self.advert_ranks(slot)
             # Reuse the validated queue path, supplying the owner's guild context for a DM interaction.
             request = SimpleNamespace(user=interaction.user, guild=guild, guild_id=config.GUILD_ID)
-            await self.publish(request, start, token, ranks)
+            await self.publish(request, start, token, rank_range)
             self.store.update_host_notice(self.channel_id, start, generation, "accepted")
 
     async def advert_ranks(self, slot):
@@ -521,7 +521,7 @@ class HostingService:
                 self.store.set_host_vote(self.channel_id, start, member_id, False)
         await self.sync()
 
-    async def publish(self, interaction, start, expected, rank_lines=()):
+    async def publish(self, interaction, start, expected, rank_range="Grandmaster - Celestial"):
         if not self.manager(interaction):
             raise ValueError("Only the owner or Marvel Rivals Managers can publish adverts.")
         async with self.lock:
@@ -546,10 +546,10 @@ class HostingService:
             elif previous and previous["status"] == "failed":
                 self.store.retry_failed_host_advert(self.channel_id, start)
                 self.store.queue_host_advert(
-                    self.channel_id, start, settings, slot.lineup, interaction.user.id, rank_lines
+                    self.channel_id, start, settings, slot.lineup, interaction.user.id, rank_range
                 )
             elif not self.store.queue_host_advert(
-                self.channel_id, start, settings, slot.lineup, interaction.user.id, rank_lines
+                self.channel_id, start, settings, slot.lineup, interaction.user.id, rank_range
             ):
                 raise ValueError(
                     "This session already has a publication request. Check its status on the board."

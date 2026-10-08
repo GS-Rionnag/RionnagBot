@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import time
 from datetime import UTC, datetime
 
@@ -22,11 +23,13 @@ def invalid_request(store, job, players, live_members, owner_id, manager_role):
     if job["start"] <= time.time():
         return "Session already started"
     settings = store.host_settings(job["channel_id"])
-    expected_content = f"LFS at <t:{job['start']}:F>"
+    content_matches = bool(re.fullmatch(
+        rf"LFS [A-Za-z0-9 ]+ - [A-Za-z0-9 ]+ at <t:{job['start']}:F>", job["content"]
+    )) or job["content"].splitlines()[0] == f"LFS at <t:{job['start']}:F>"
     if (
         settings["duration"] != job["duration"]
         or settings["destination"] != job["destination"]
-        or expected_content != job["content"].splitlines()[0]
+        or not content_matches
     ):
         return "Hosting settings changed; review a new session"
     requester = live_members.get(job["requested_by"])

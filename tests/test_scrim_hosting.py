@@ -122,7 +122,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.queue())
         self.assertFalse(self.queue())
         job = Store(self.store.path).host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
-        self.assertEqual(job["content"], f"LFS at <t:{self.start}:F>")
+        self.assertEqual(job["content"], f"LFS Grandmaster - Celestial at <t:{self.start}:F>")
         self.store.set_host_vote(config.SCRIM_HOST_CHANNEL_ID, self.start, 1, True)
         self.store.delete_member(config.GUILD_ID, 1)
         self.assertEqual(self.store.host_votes(config.SCRIM_HOST_CHANNEL_ID), {})
@@ -613,7 +613,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         dm.send.assert_awaited_once()
         view = dm.send.call_args.kwargs["view"]
         self.assertTrue(view.is_persistent())
-        self.assertEqual([button.label for button in view.children], ["Yes, send advert", "No"])
+        self.assertEqual([button.label for button in view.children], ["Enter ranks & send", "No"])
         await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, False)
         await service.notify_ready()
         dm.send.assert_awaited_once()
@@ -632,12 +632,42 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         interaction = SimpleNamespace(user=SimpleNamespace(id=99))
         await service.decide_notice(interaction, self.start, 1, True)
         job = self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
-        self.assertIn("Player6 - Grandmaster; Celestial Peak", job["content"])
+        self.assertEqual(job["content"], f"LFS Grandmaster - Celestial at <t:{self.start}:F>")
+        service.advert_ranks.assert_not_awaited()
         self.assertEqual(job["requested_by"], 99)
         with self.assertRaisesRegex(ValueError, "already answered"):
             await service.decide_notice(interaction, self.start, 1, True)
         await service.notify_ready()
         dm.send.assert_awaited_once()
+
+    async def test_owner_button_opens_prefilled_rank_form_and_submit_uses_entered_range(self):
+        service, slot, dm = self.approval_fixture()
+        await service.notify_ready()
+        view = dm.send.call_args.kwargs["view"]
+        interaction = SimpleNamespace(
+            user=SimpleNamespace(id=99), response=SimpleNamespace(send_modal=AsyncMock(), defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()),
+        )
+        await view.children[0].callback(interaction)
+        modal = interaction.response.send_modal.call_args.args[0]
+        self.assertEqual(modal.minimum.default, "Grandmaster")
+        self.assertEqual(modal.maximum.default, "Celestial")
+        self.assertEqual(self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID), {})
+        modal.minimum._value = "Diamond"
+        modal.maximum._value = "Grandmaster"
+        await modal.on_submit(interaction)
+        job = self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
+        self.assertEqual(job["content"], f"LFS Diamond - Grandmaster at <t:{self.start}:F>")
+        self.assertNotIn("Player", job["content"])
+        view.stop()
+
+    async def test_invalid_advert_ranks_do_not_queue(self):
+        with self.assertRaises(ValueError):
+            self.store.queue_host_advert(
+                config.SCRIM_HOST_CHANNEL_ID, self.start, self.settings, self.team, 99,
+                "@everyone - Celestial"
+            )
+        self.assertEqual(self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID), {})
 
     async def test_approval_expires_when_team_breaks_and_rearms_with_new_generation(self):
         service, slot, dm = self.approval_fixture()
@@ -694,15 +724,13 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         views[0][0].stop()
 
     async def test_anonymous_rank_content_never_contains_identity(self):
-        ranks = [("Grandmaster", "Celestial")] * 6
         self.store.queue_host_advert(
-            config.SCRIM_HOST_CHANNEL_ID, self.start, self.settings, self.team, 99, ranks
+            config.SCRIM_HOST_CHANNEL_ID, self.start, self.settings, self.team, 99, "Grandmaster - Celestial"
         )
         job = self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
-        self.assertIn("Player1 - Grandmaster; Celestial Peak", job["content"])
-        self.assertIn("Player6 - Grandmaster; Celestial Peak", job["content"])
+        self.assertEqual(job["content"], f"LFS Grandmaster - Celestial at <t:{self.start}:F>")
         self.assertNotIn("<@", job["content"])
-        self.assertEqual(len(job["content"].splitlines()), 8)
+        self.assertEqual(len(job["content"].splitlines()), 1)
 
     async def test_rank_preview_uses_uid_and_strips_points(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)

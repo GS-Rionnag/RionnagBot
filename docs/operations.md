@@ -74,9 +74,10 @@ and advert destination, defaulting to two hours and the sole configured collecto
 There are no opponent rank limits. `/scrim_host` points members to the board.
 
 A separate ten-second loop checks for six confirmed players forming a valid 2–2–2 lineup at an exact
-interval. It DMs the server owner with that date/time and **Yes, send advert** / **No** buttons. Only the
-owner can answer. Yes revalidates the current lineup, fetches anonymous current/peak ranks, and queues
-the advert; No publishes nothing. The DM is independent of the public board. The owner's DMs must permit
+interval. It DMs the server owner with that date/time and **Enter ranks & send** / **No** buttons. Only the
+owner can answer. Enter ranks & send opens a minimum/maximum rank form, prefilled Grandmaster / Celestial.
+Submitting revalidates the current lineup and queues the rank-range advert; No publishes nothing.
+The DM is independent of the public board. The owner's DMs must permit
 bot messages; failed deliveries remain pending for retry. Declining suppresses repeated prompts while
 the interval stays ready. If readiness is lost and later regained, a fresh request invalidates old buttons.
 
@@ -88,10 +89,9 @@ survive restarts, interrupted deliveries recover from DM history, and closed DMs
 Approval messages/decisions persist and their buttons restore after restart. Interrupted sends recover
 through the owner's bot DM history using a stable marker. An expired or broken lineup cannot publish.
 
-Rank-only profile reads use linked UIDs and existing provider pacing; results cache for ten minutes.
-Missing/unavailable ranks say Unavailable rather than guessing. The external text contains
-`LFS at <t:UNIX:F>` and Player1–Player6 current/peak ranks. It contains no usernames, account UIDs, mentions,
-or profile links. You handle opponent conversations yourself.
+The external text is `LFS Grandmaster - Celestial at <t:UNIX:F>` using the owner's entered rank range.
+It contains no individual player lists, ranks, usernames, account UIDs, mentions, or profile links.
+No automatic profile-rank lookup runs when approving the advert. You handle opponent conversations yourself.
 
 The shared collector handles an outbound queue in the private main database every ten seconds, separately
 from offer extraction. It must be logged into this server owner's account. `SCRIM_HOST_CHANNEL_IDS` in

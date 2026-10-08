@@ -1,5 +1,13 @@
 # Change timeline
 
+## 2026-10-08 - owner-entered advert rank range
+
+- Replace the six-player approval's send button with Enter ranks & send. Open an owner-only rank form
+  prefilled with Grandmaster and Celestial; submission revalidates readiness and queues a single-line
+  LFS rank-range/timestamp advert. Do not fetch or publish individual players' current/peak ranks.
+- Add a scoped HTTP-only utility for explicitly selected own advert edits, preserving their timestamp
+  and synchronizing the delivered-content record after verification.
+
 ## 2026-10-08 - invite available players after three confirmations
 
 - At three or more confirmations for an exact scrim interval, DM remaining available players with
