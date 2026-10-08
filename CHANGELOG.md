@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-08 - day chooser mention spacing
+
+- Separate available-player mentions with spaces instead of commas in Choose a day.
+
 ## 2026-10-08 - remove top scrim card footers
 
 - Remove footers from the three top scrim session embeds; the message labels identify their ranking.

@@ -216,7 +216,7 @@ class DayPicker(HostingView):
         for day, slots in self.groups.items():
             confirmed_ids = set().union(*(s.confirmed for s in slots))
             available_ids = set().union(*(s.available for s in slots)) - confirmed_ids
-            mentions = ", ".join(f"<@{mid}>" for mid in sorted(available_ids)) or "None remaining."
+            mentions = " ".join(f"<@{mid}>" for mid in sorted(available_ids)) or "None remaining."
             embed.add_field(
                 name=datetime.strptime(day, "%Y-%m-%d").strftime("%A, %B %d"),
                 value=(f"**{len(confirmed_ids)} confirmed**\n"
