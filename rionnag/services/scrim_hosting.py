@@ -251,6 +251,9 @@ class HostingService:
         confirmed_slots = sorted(
             (s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start)
         )
+        if confirmed_slots:
+            best = max((len(s.confirmed), len(s.available)) for s in confirmed_slots)
+            confirmed_slots = [s for s in confirmed_slots if (len(s.confirmed), len(s.available)) == best][:3]
         for slot in confirmed_slots:
             names = [
                 f"{role}: "
@@ -267,7 +270,10 @@ class HostingService:
             ]
             value = (
                 f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
-                f"**{len(slot.confirmed)} confirmed** · {len(slot.available)} available\n" + "\n".join(names)
+                f"**{len(slot.confirmed)} confirmed**\n"
+                + "\n".join(names)
+                + "\n**Available players**\n"
+                + " ".join(f"<@{mid}>" for mid in sorted(slot.available))
             )
             if len(embed.fields) >= 18 or len(embed) + len(value) > 5500:
                 break
@@ -276,7 +282,7 @@ class HostingService:
             )
         adverts = self.store.host_adverts(self.channel_id)
         for start, advert in sorted(adverts.items()):
-            if start <= time.time() or len(embed.fields) >= 8:
+            if start <= time.time() or start not in {s.start for s in confirmed_slots}:
                 continue
             slot = next((s for s in slots if s.start == start and s.end - start == advert["duration"]), None)
             roster = {int(mid): role for mid, role in json.loads(advert["lineup"]).items()}
@@ -307,7 +313,15 @@ class HostingService:
                 if advert["message_id"]
                 else ""
             )
-            embed.add_field(name="Selected session", value=f"<t:{start}:F> · {state}{link}", inline=False)
+            index = next(i for i, s in enumerate(confirmed_slots) if s.start == start)
+            if index < len(embed.fields):
+                field = embed.fields[index]
+                embed.set_field_at(
+                    index,
+                    name=field.name,
+                    value=(field.value + f"\nAdvert: {state}{link}")[:1024],
+                    inline=False,
+                )
         embed.set_footer(text=MARKER)
         return embed
 

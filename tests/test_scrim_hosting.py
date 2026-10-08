@@ -287,6 +287,8 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(embed.fields), 1)
         self.assertIn("1 confirmed", embed.fields[0].value)
         self.assertIn("Tank: <@1>", embed.fields[0].value)
+        self.assertIn("**Available players**\n<@1> <@2> <@3> <@4> <@5> <@6>", embed.fields[0].value)
+        self.assertNotIn("6 available", embed.fields[0].value)
 
     async def test_confirmed_players_group_by_best_role_in_tank_dps_support_order(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
@@ -303,9 +305,34 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         later = HostSlot(self.start + 86400, self.start + 93600, set(range(1, 10)), {2}, {}, 0, False)
         most = HostSlot(self.start + 172800, self.start + 180000, set(range(1, 7)), {1, 2}, {}, 2, False)
         embed = service.board_embed([later, most, soon])
+        self.assertEqual(len(embed.fields), 1)
         self.assertIn(f"<t:{most.start}:F>", embed.fields[0].value)
-        self.assertIn(f"<t:{soon.start}:F>", embed.fields[1].value)
-        self.assertIn(f"<t:{later.start}:F>", embed.fields[2].value)
+
+    async def test_board_shows_up_to_three_best_attendance_ties_only(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        service.players = roster
+        tied = [
+            HostSlot(
+                self.start + i * 86400,
+                self.start + i * 86400 + 7200,
+                set(range(1, 10)),
+                {1, 2},
+                {},
+                i % 3,
+                False,
+            )
+            for i in range(5)
+        ]
+        less_available = HostSlot(
+            self.start - 3600, self.start + 3600, set(range(1, 7)), {1, 2}, {}, 0, False
+        )
+        less_confirmed = HostSlot(self.start - 7200, self.start, set(range(1, 20)), {1}, {}, 0, False)
+        embed = service.board_embed([less_available, less_confirmed, *reversed(tied)])
+        self.assertEqual(len(embed.fields), 3)
+        for index in range(3):
+            self.assertIn(f"<t:{tied[index].start}:F>", embed.fields[index].value)
+        embed = service.board_embed(tied[:2])
+        self.assertEqual(len(embed.fields), 2)
 
     async def test_time_selection_confirms_only_the_exact_chosen_session(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
@@ -327,9 +354,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_public_board_has_only_player_controls(self):
         board = HostingBoard(SimpleNamespace())
-        self.assertEqual(
-            [item.label for item in board.children], ["Choose a day", "My selections"]
-        )
+        self.assertEqual([item.label for item in board.children], ["Choose a day", "My selections"])
         board.stop()
 
     def approval_fixture(self):

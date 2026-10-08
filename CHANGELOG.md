@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-07 - show only the best tied hosting sessions
+
+- Public confirmed sessions show only the highest confirmed-player count, then highest available-player
+  count. Show up to three equally ranked sessions, ordered soonest first; hide lower-ranked sessions.
+- Replace the public available-player count with mentions of everyone available for that full interval.
+
 ## 2026-10-07 - simplify player hosting controls
 
 - Remove View lineups from the hosting board; retain Choose a day and My selections.
