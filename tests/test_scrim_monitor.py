@@ -287,6 +287,8 @@ class AdapterTests(unittest.TestCase):
         started_at = int(time.time() - 120)
         for status in (
             {"game_play_mode_id": 300, "state": 6, "battle_id": "opaque-custom-id", "start_time": started_at},
+            {"game_play_mode_id": 301, "state": 6, "battle_id": "opaque-custom-id", "start_time": started_at},
+            {"game_play_mode_id": "301", "state": 6, "battle_id": "opaque-custom-id"},
             "In game (Custom Room)-   ",
         ):
             with (
@@ -298,7 +300,7 @@ class AdapterTests(unittest.TestCase):
                 result = scrim_rivals.check_live({"uid": "1", "username": "p1"}, scrim_rivals.RequestBudget())
             self.assertTrue(result["custom"])
             request.assert_called_once_with("/player", {"uid": 1})
-            if isinstance(status, dict):
+            if isinstance(status, dict) and "start_time" in status:
                 self.assertEqual(result["started_at"], started_at)
 
     def test_explicit_idle_statuses_include_post_game_state_but_missing_status_remains_unknown(self):
@@ -306,6 +308,7 @@ class AdapterTests(unittest.TestCase):
             ({"uid": 1, "status": None}, False),
             ({"uid": 1, "status": {"state": 4, "team_member_count": 1}}, False),
             ({"uid": 1, "status": {"state": 4, "game_play_mode_id": 300}}, False),
+            ({"uid": 1, "status": {"state": 4, "game_play_mode_id": 301}}, False),
             ({"uid": 1, "status": {"state": 5}}, False),
             ({"uid": 1, "status": {"state": 6}}, None),
             ({"uid": 1}, None),

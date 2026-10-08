@@ -105,7 +105,7 @@ def custom_game(*sources):
     for source in sources:
         if not isinstance(source, dict):
             continue
-        if source.get("game_play_mode_id") in (300, "300"):
+        if source.get("game_play_mode_id") in (300, "300", 301, "301"):
             return True
         for key in ("game_mode_id", "mode_id", "game_mode", "mode", "status"):
             value = source.get(key)
@@ -138,7 +138,8 @@ def check_live(person, budget):
             }
         battle_id = status.get("battle_id")
         custom = custom_game(status)
-        if status.get("game_play_mode_id") in (300, "300") and not battle_id and status.get("state") != 6:
+        if (status.get("game_play_mode_id") in (300, "300", 301, "301")
+                and not battle_id and status.get("state") != 6):
             custom = False
         payload = {"status": status}
         # Explicit custom status suffices even when /live cannot supply custom rosters.

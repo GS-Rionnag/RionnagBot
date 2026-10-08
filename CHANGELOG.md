@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-07 - detect active Custom Room mode 301
+
+- Recognize live player status mode 301 as Custom Room alongside mode 300. Start detection no longer falls through to the unsupported custom-game live-roster endpoint for this mode; idle rooms remain excluded.
+
 ## 2026-10-07 - exclude Visitors from scrim composition
 
 - Ignore the stable Visitor role in the waiting queue, lineup, and substitute eligibility, including saved profiles and test sessions. Visitors in voice do not count toward team composition.
