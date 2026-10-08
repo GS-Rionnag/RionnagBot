@@ -223,6 +223,7 @@ class SlotPicker(HostingView):
                     label=f"{'✓ ' if self.owner in slot.confirmed else ''}"
                     f"{index}. {local:%I:%M %p} – {end:%I:%M %p %Z}",
                     value=str(slot.start),
+                    default=self.mode == "add" and self.owner in slot.confirmed,
                     description=f"{len(slot.confirmed)} confirmed · {len(slot.available)} available · "
                     f"{6 - slot.secondary} best roles · {'Ready' if slot.ready else 'Needs confirmations'}",
                 )
@@ -235,7 +236,7 @@ class SlotPicker(HostingView):
                 "publish": "Choose a session to preview",
             }[self.mode],
             options=options,
-            min_values=1,
+            min_values=0 if self.mode == "add" else 1,
             max_values=len(options) if self.mode in {"add", "remove"} else 1,
         )
         select.callback = self.selected
@@ -285,7 +286,10 @@ class SlotPicker(HostingView):
             title=title,
             color=config.COLOR,
             description=f"Times below display locally. Dropdown labels use {self.zone.key}.\n"
-            "Selections apply immediately. You may confirm multiple sessions and withdraw later.",
+            "Selections apply immediately. Check times to confirm; uncheck them to withdraw. "
+            "Other pages stay saved." if self.mode == "add" else
+            f"Times below display locally. Dropdown labels use {self.zone.key}.\n"
+            "Select the confirmed times you want to withdraw from.",
         )
         slots = self.filtered()
         for index, slot in enumerate(slots[self.page * 10 : (self.page + 1) * 10], self.page * 10 + 1):
@@ -305,9 +309,28 @@ class SlotPicker(HostingView):
         await interaction.response.defer(ephemeral=True, thinking=True)
         try:
             if self.mode in {"add", "remove"}:
-                await self.service.change_votes(self.owner, starts, self.mode == "add", self.duration)
+                if self.mode == "add":
+                    page = self.filtered()[self.page * self.PAGE : (self.page + 1) * self.PAGE]
+                    withdrawn = [s.start for s in page if self.owner in s.confirmed and s.start not in starts]
+                    await self.service.change_votes(
+                        self.owner, starts, True, self.duration, withdraw_starts=withdrawn
+                    )
+                    for slot in page:
+                        if slot.start in starts:
+                            slot.confirmed.add(self.owner)
+                        else:
+                            slot.confirmed.discard(self.owner)
+                    self.build()
+                    await interaction.message.edit(embed=self.embed(), view=self)
+                else:
+                    await self.service.change_votes(self.owner, starts, False, self.duration)
+                    await interaction.message.edit(
+                        content="Selected confirmations withdrawn.", embed=None, view=None
+                    )
+                    self.stop()
+                action = "Saved selections for" if self.mode == "add" else "Withdrew from"
                 await interaction.followup.send(
-                    f"{'Confirmed' if self.mode == 'add' else 'Withdrew from'} {len(starts)} session(s). "
+                    f"{action} {len(starts)} session(s). "
                     "Other selections stay saved. Use the board to refresh your list.",
                     ephemeral=True,
                 )

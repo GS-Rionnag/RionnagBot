@@ -37,7 +37,10 @@ day selector with no time windows yet. Days use the player's saved time zone and
 and available players across qualifying sessions (overlapping slots never double-count a player). Selecting
 a day opens exact start/end windows with counts for each time; only intervals the player can fully attend
 appear. Both stages rank confirmed attendance first, available attendance second, then best-role fit.
-**My selections** uses the same day-first flow to withdraw commitments. Times in embeds render in each viewer's
+**My selections** uses the same day-first flow to withdraw commitments.
+In Choose a day's time dropdown, confirmed times are checked; uncheck to withdraw, including
+clearing all choices on that page. Other pages remain saved. My selections closes after a withdrawal.
+Times in embeds render in each viewer's
 local zone; dropdown labels use the saved time zone. Saved schedules determine
 availability for the full session. Suggestions span fourteen days at thirty-minute starts, defaulting to
 two-hour sessions. Missing schedules or impossible 2 Tank / 2 DPS / 2 Support compositions are excluded.

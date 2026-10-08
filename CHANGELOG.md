@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-07 - uncheck scrim confirmations
+
+- Preselect confirmed times in Choose a day's time dropdown. Unchecking a time now withdraws that
+  confirmation, including clearing every choice on the current page, without changing other pages.
+- Refresh checkbox states after saving and close completed My selections withdrawals so stale selections
+  cannot appear confirmed after removal. Validate additions before saving withdrawals together.
+
 ## 2026-10-07 - availability day save/remove timeout
 
 - Acknowledge Save day and Remove a saved day before waiting for the member save lock. Refresh the

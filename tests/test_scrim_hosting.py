@@ -366,11 +366,51 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
             data={"values": [str(chosen)]},
             response=SimpleNamespace(defer=AsyncMock()),
             followup=SimpleNamespace(send=AsyncMock()),
+            message=SimpleNamespace(edit=AsyncMock()),
         )
         await picker.selected(interaction)
         interaction.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
         self.assertEqual(self.store.host_votes(config.SCRIM_HOST_CHANNEL_ID), {chosen: {1}})
         service.sync.assert_awaited_once()
+        picker.stop()
+
+    async def test_unchecking_confirmed_time_withdraws_without_touching_other_pages(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        now = datetime(2026, 10, 8, 20, tzinfo=UTC).timestamp()
+        slots = generate_slots(roster(), {}, now)
+        first, other_page = slots[0], slots[10]
+        for slot in (first, other_page):
+            slot.confirmed.add(1)
+            self.store.set_host_vote(service.channel_id, slot.start, 1, True)
+        service.snapshot = lambda: slots
+        service.sync = AsyncMock()
+        picker = SlotPicker(service, 1, slots, "add")
+        self.assertTrue(picker.children[0].options[0].default)
+        self.assertEqual(picker.children[0].min_values, 0)
+        interaction = SimpleNamespace(
+            data={"values": []}, response=SimpleNamespace(defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()), message=SimpleNamespace(edit=AsyncMock()),
+        )
+        await picker.selected(interaction)
+        self.assertEqual(self.store.host_votes(service.channel_id), {other_page.start: {1}})
+        self.assertFalse(picker.children[0].options[0].default)
+        interaction.message.edit.assert_awaited_once()
+        picker.stop()
+
+    async def test_my_selections_withdraws_confirmed_time_and_closes_stale_picker(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        slot = HostSlot(self.start, self.start + 7200, {1}, {1}, {}, 0, False)
+        self.store.set_host_vote(service.channel_id, slot.start, 1, True)
+        service.snapshot = lambda: [slot]
+        service.sync = AsyncMock()
+        picker = SlotPicker(service, 1, [slot], "remove")
+        interaction = SimpleNamespace(
+            data={"values": [str(slot.start)]}, response=SimpleNamespace(defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()), message=SimpleNamespace(edit=AsyncMock()),
+        )
+        await picker.selected(interaction)
+        self.assertEqual(self.store.host_votes(service.channel_id), {})
+        self.assertIsNone(interaction.message.edit.call_args.kwargs["view"])
         picker.stop()
 
     async def test_public_board_has_only_player_controls(self):

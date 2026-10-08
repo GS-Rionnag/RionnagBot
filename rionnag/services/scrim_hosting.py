@@ -376,7 +376,7 @@ class HostingService:
             self.store.configure_host(self.channel_id, message_id=message.id)
             self.fingerprint = fingerprint
 
-    async def change_votes(self, member_id, starts, add, expected_duration=None):
+    async def change_votes(self, member_id, starts, add, expected_duration=None, *, withdraw_starts=()):
         async with self.lock:
             if (
                 add
@@ -391,6 +391,8 @@ class HostingService:
                 )
             for start in starts:
                 self.store.set_host_vote(self.channel_id, start, member_id, add)
+            for start in withdraw_starts:
+                self.store.set_host_vote(self.channel_id, start, member_id, False)
         await self.sync()
 
     async def publish(self, interaction, start, expected, rank_lines=()):
