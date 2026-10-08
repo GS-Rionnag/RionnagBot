@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-08 - remove top scrim card footers
+
+- Remove footers from the three top scrim session embeds; the message labels identify their ranking.
+
 ## 2026-10-08 - top scrim message labels
 
 - Rename the three public message labels to Top scrim option 1, 2, and 3.

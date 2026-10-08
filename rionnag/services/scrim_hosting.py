@@ -338,11 +338,8 @@ class HostingService:
         summary.clear_fields()
         embeds = [summary]
         ranked = sorted((s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start))[:3]
-        for place, field, slot in zip(
-            ("First place", "Second place", "Third place"), fields, ranked
-        ):
+        for field, slot in zip(fields, ranked):
             embed = discord.Embed(title=f"<t:{slot.start}:F>", color=config.COLOR, description=field.value)
-            embed.set_footer(text=f"{place} · {field.name}")
             embeds.append(embed)
         return embeds
 

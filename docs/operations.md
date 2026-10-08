@@ -57,7 +57,7 @@ votes survive deployment, so previously confirmed sessions remain visible. Menti
 HOST SCRIMS remains the first introduction/control message. Three separate session messages show
 the top confirmed sessions, with disabled placeholders for unused positions. Rank by confirmed-player
 count descending, then soonest start, regardless of available-player count or whether counts tie.
-Each session title is its Discord date/time timestamp; its footer indicates its place.
+Each session title is its Discord date/time timestamp; message labels indicate its place without embed footers.
 Each session message has persistent Join scrim and Withdraw buttons. An eligible player whose saved
 schedule does not cover the interval receives a private warning with Yes, join this scrim and Cancel.
 Only Yes stores an explicit schedule override for that exact start and session duration. The commitment

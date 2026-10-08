@@ -342,9 +342,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
             [card.title for card in cards],
             ["HOST SCRIMS", f"<t:{most.start}:F>", f"<t:{soon.start}:F>", f"<t:{later.start}:F>"],
         )
-        self.assertTrue(cards[1].footer.text.startswith("First place"))
-        self.assertTrue(cards[2].footer.text.startswith("Second place"))
-        self.assertTrue(cards[3].footer.text.startswith("Third place"))
+        self.assertTrue(all(card.footer.text is None for card in cards[1:]))
         self.assertEqual(len(cards[0].fields), 0)
         self.assertIn(f"<t:{most.start}:F>", cards[1].description)
 
