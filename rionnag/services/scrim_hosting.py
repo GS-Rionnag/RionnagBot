@@ -123,6 +123,14 @@ class HostingService:
             + ("**Officially confirmed**\n" if booked else "")
             + "Enter ranks to send an advert, bump its existing post, or officially confirm the scrim.",
         )
+        advert = self.store.host_adverts(self.channel_id).get(slot.start)
+        if advert and advert["status"] == "sent" and advert["message_id"]:
+            embed.add_field(
+                name="Advert sent",
+                value=f"[View message](https://discord.com/channels/@me/{advert['destination']}/"
+                      f"{advert['message_id']})",
+                inline=False,
+            )
         embed.set_footer(text=f"Scrim host approval · {slot.start} · {generation}")
         return embed
 

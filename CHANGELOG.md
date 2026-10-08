@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-08 - link delivered adverts in owner DMs
+
+- Show a View message link in the owner scrim panel after delivery. Refresh it to the replacement
+  message after a successful bump.
+
 ## 2026-10-08 - simplify owner scrim controls
 
 - Remove No from the six-player owner panel. Hide Enter ranks & send after the advert is delivered,

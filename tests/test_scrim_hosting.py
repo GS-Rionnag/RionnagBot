@@ -507,6 +507,11 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.store.update_host_advert(service.channel_id, self.start, "sent", message_id=77)
         view = HostApproval(service, self.start, 1)
         self.assertEqual([button.label for button in view.children], ["Bump post", "Confirm scrim"])
+        advert = self.store.host_adverts(service.channel_id)[self.start]
+        panel = service.owner_panel(slot, 1)
+        self.assertIn(f"/{advert['destination']}/77)", panel.fields[0].value)
+        self.store.update_host_advert(service.channel_id, self.start, "sent", message_id=88)
+        self.assertIn(f"/{advert['destination']}/88)", service.owner_panel(slot, 1).fields[0].value)
         view.stop()
 
     async def test_outbound_accepts_explicit_schedule_override_only_for_exact_duration(self):
