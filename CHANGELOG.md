@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-07 - exclude Visitors from scrim composition
+
+- Ignore the stable Visitor role in the waiting queue, lineup, and substitute eligibility, including saved profiles and test sessions. Visitors in voice do not count toward team composition.
+- Allow Visitors to stay in either scrim voice room, with speaking disabled in the main scrim room. Preserve this access during permission repair and restore tracked voice mute state in waiting.
+
 ## 2026-10-06 - responsive application submission and decisions
 
 - Publish reviewable applications immediately after required account verification; enrich player stats in the background without holding the applicant lock. Discard results after decisions or form edits.

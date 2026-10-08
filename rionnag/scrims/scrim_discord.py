@@ -369,20 +369,27 @@ class ScrimController:
             raise ValueError("The waiting room or scrim VC is missing. Run /scrim setup to repair it.")
         return waiting, play
 
+    @staticmethod
+    def participant(member):
+        return not member.bot and not any(
+            role.id == config.VISITOR_ROLE_ID for role in getattr(member, "roles", ())
+        )
+
     def queue(self, guild, lobby):
         waiting = guild.get_channel(lobby["waiting_id"])
         if not isinstance(waiting, discord.VoiceChannel):
             raise ValueError("The waiting room is missing. Run /scrim setup to repair it.")
-        members = [m for m in waiting.members if not m.bot]
+        members = [m for m in waiting.members if self.participant(m)]
         reconcile_lobby(lobby, [m.id for m in members])
         lobby["test_owner_id"] = guild.owner_id
         return members
 
     def eligible(self, guild, data, *, include_stage=True):
         waiting, stage = self.channels(guild, data)
-        people = {m.id: m for m in waiting.members if not m.bot}
+        people = {m.id: m for m in waiting.members if self.participant(m)}
         if include_stage:
-            people.update({m.id: m for m in stage.members if m.id in data.get("players", {}) and not m.bot})
+            people.update({m.id: m for m in stage.members
+                           if m.id in data.get("players", {}) and self.participant(m)})
         result, excluded = [], []
         if data.get("test_mode"):
             result = [
@@ -500,7 +507,7 @@ class ScrimController:
             header.add_field(name=f"Game {match['number']}", value=result, inline=True)
         cards = [header]
         waiting, stage = self.channels(guild, data)
-        present = {m.id for m in waiting.members + stage.members}
+        present = {m.id for m in waiting.members + stage.members if self.participant(m)}
         if data.get("test_mode"):
             present.update(mid for mid, item in data["players"].items() if item.get("simulated"))
         for role, color in zip(ROLES, (0x3498DB, 0xED4245, 0x2ECC71), strict=True):
@@ -620,6 +627,9 @@ class ScrimController:
                 "Move Members and Mute Members on the scrim VC."
             )
         players, _ = self.eligible(guild, data)
+        for member in play.members:
+            if not member.bot and not self.participant(member):
+                await self.set_voice_mute(member, True, data)
         present = {p.member_id for p in players}
         missing = set(data["roster"]) - present
         if missing:
@@ -961,13 +971,16 @@ class ScrimController:
                                 mute=original, reason="Restore voice state in scrim waiting room"
                             )
                     if after.channel and after.channel.id == lobby["stage_id"]:
-                        if data["status"] != "playing" or member.id not in data["players"]:
+                        if not self.participant(member):
+                            await self.set_voice_mute(member, True, data)
+                        elif data["status"] != "playing" or member.id not in data["players"]:
                             waiting = member.guild.get_channel(lobby["waiting_id"])
                             await member.move_to(waiting, reason="Wait for manager-controlled game admission")
                         elif after.mute != (member.id not in data["roster"]):
                             await self.set_voice_mute(member, member.id not in data["roster"], data)
                 elif before.channel != after.channel:
-                    if after.channel and after.channel.id == lobby["stage_id"]:
+                    if (after.channel and after.channel.id == lobby["stage_id"]
+                            and self.participant(member)):
                         waiting = member.guild.get_channel(lobby["waiting_id"])
                         await member.move_to(waiting, reason="Scrim VC admission is managed by the bot")
                     if before.channel and before.channel.id == lobby["waiting_id"]:
@@ -1091,14 +1104,18 @@ class ScrimController:
                 access = channel.overwrites_for(role)
                 access.view_channel = access.read_message_history = True
                 access.send_messages = False
-                access.connect = access.speak = game_role and channel == waiting
+                access.connect = (game_role and channel == waiting) or (
+                    visitor and channel in (waiting, stage)
+                )
+                access.speak = (game_role or visitor) and channel == waiting
                 if access != channel.overwrites_for(role):
                     await channel.set_permissions(
                         role, overwrite=access, reason="Visitor and game-specific scrim access"
                     )
             if channel == stage:
                 for target, original in list(channel.overwrites.items()):
-                    if target == me or target == guild.default_role:
+                    if (target == me or target == guild.default_role
+                            or target.id == config.VISITOR_ROLE_ID):
                         continue
                     original.connect = False
                     await channel.set_permissions(

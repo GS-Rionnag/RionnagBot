@@ -20,6 +20,42 @@ from rionnag.storage import Store
 
 
 class QueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_visitor_stays_in_stage_muted_and_waiting_restores_voice(self):
+        visitor = self.members[1]
+        visitor.roles = [SimpleNamespace(id=config.VISITOR_ROLE_ID)]
+        self.waiting.members.remove(visitor)
+        self.stage.members = [visitor]
+        visitor.voice = SimpleNamespace(channel=self.stage, mute=False)
+        before = SimpleNamespace(channel=self.waiting, mute=False)
+        await self.controller.voice_update(visitor, before, visitor.voice)
+        visitor.move_to.assert_not_awaited()
+        data = self.store.create(10, "Marvel Rivals", self.store.config(10, "Marvel Rivals"),
+                                 self.pool, random_team(self.pool), 999)
+        self.lobby["session_id"] = data["id"]
+        self.store.save_lobby(self.lobby)
+        await self.controller.voice_update(visitor, before, visitor.voice)
+        visitor.move_to.assert_not_awaited()
+        self.assertTrue(visitor.voice.mute)
+        visitor.voice = SimpleNamespace(channel=self.waiting, mute=True)
+        await self.controller.voice_update(visitor, SimpleNamespace(channel=self.stage), visitor.voice)
+        self.assertFalse(visitor.voice.mute)
+
+    async def test_visitors_never_enter_queue_or_composition_even_with_saved_profile(self):
+        visitor = self.members[1]
+        visitor.roles = [SimpleNamespace(id=config.VISITOR_ROLE_ID)]
+        lobby = self.store.lobby(10, "Marvel Rivals")
+        lobby["queue_ids"] = [visitor.id]
+        self.assertNotIn(visitor, self.controller.queue(self.guild, lobby))
+        self.assertNotIn(visitor.id, lobby["queue_ids"])
+        for test_mode in (False, True):
+            for in_stage in (False, True):
+                self.waiting.members = [] if in_stage else [visitor]
+                self.stage.members = [visitor] if in_stage else []
+                data = dict(game="Marvel Rivals", waiting_id=101, stage_id=102,
+                            players={1: asdict(self.pool[0])}, test_mode=test_mode)
+                players, _ = self.controller.eligible(self.guild, data)
+                self.assertEqual(players, [])
+
     async def test_setup_reuses_renamed_saved_channels_and_category(self):
         category = MagicMock(spec=discord.CategoryChannel)
         category.id, category.name = 200, "Renamed game category"
@@ -76,8 +112,8 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(access.view_channel)
             self.assertTrue(access.read_message_history)
             self.assertFalse(access.send_messages)
-            self.assertFalse(access.connect)
-            self.assertFalse(access.speak)
+            self.assertEqual(access.connect, channel in (self.waiting, self.stage))
+            self.assertEqual(access.speak, channel == self.waiting)
             self.assertFalse(any(c.args[0] is legacy for c in channel.set_permissions.call_args_list))
 
     async def test_new_profile_store_supplies_uid_without_legacy_claims_table(self):

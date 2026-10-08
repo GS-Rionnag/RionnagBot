@@ -55,6 +55,13 @@ async def apply_server_policy(guild, forms, store):
     """Overwrite visibility only; preserve unrelated channel capabilities."""
     entry = guild.get_channel(config.ENTRY_CHANNEL_ID)
     category = guild.get_channel(config.APPLICATIONS_CATEGORY_ID)
+    with store.connection() as db:
+        configured = db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='scrim_config'"
+        ).fetchone()
+        voice_rooms = dict(db.execute(
+            "SELECT waiting_id, stage_id FROM scrim_config WHERE guild_id=?", (guild.id,)
+        )) if configured else {}
     for channel in guild.channels:
         # The owner controls finder visibility, including hiding it during testing.
         if channel.id == config.SCRIM_OPPORTUNITIES_CHANNEL_ID:
@@ -100,6 +107,9 @@ async def apply_server_policy(guild, forms, store):
                     overwrite.create_private_threads = False
                     overwrite.connect = False
                     overwrite.speak = False
+                    if channel.id in voice_rooms or channel.id in voice_rooms.values():
+                        overwrite.connect = True
+                        overwrite.speak = channel.id in voice_rooms
             elif any(
                 role.id in (f["team_role"], f["tryout_role"], f["manager_role"]) for f in forms.values()
             ):
