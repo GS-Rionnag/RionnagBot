@@ -274,6 +274,25 @@ class ScrimController:
                     except (ValueError, discord.HTTPException):
                         logger.exception("Could not end empty scrim %s; cleanup will retry", data["id"])
 
+    async def end_session(self, interaction, game):
+        self.permission(interaction, game)
+        async with self.lock(interaction.guild.id):
+            lobby = self.store.lobby(interaction.guild.id, game)
+            if not lobby["session_id"]:
+                raise ValueError("There is no active scrim session.")
+            data = self.store.get(lobby["session_id"])
+            if data.get("test_mode") and interaction.user.id != data["test_host"]:
+                raise ValueError("This example scrim is reserved for its tester.")
+            await self.cleanup_stage(interaction.guild, data)
+            data["revision"] = data.get("revision", 0) + 1
+            if data["status"] == "playing":
+                self.store.finish(data, interaction.user.id, aborted=True)
+            self.store.end(data, interaction.user.id)
+            lobby.update(session_id=None, ready_ids=[], revision=lobby["revision"] + 1)
+            self.queue(interaction.guild, lobby)
+            self.store.save_lobby(lobby)
+            await self.panel(lobby, interaction.guild)
+
     def edit_context(self, interaction, lid, sid, revision):
         lobby = self.store.get_lobby(lid)
         if not interaction.guild or interaction.guild.id != lobby["guild_id"] or lobby["session_id"] != sid:
@@ -1228,6 +1247,18 @@ class ScrimController:
                 await self.action(interaction, lobby["id"], 0, lobby["revision"], "begin")
             except ValueError as exc:
                 await interaction.response.send_message(str(exc), ephemeral=True)
+
+        @group.command(name="end", description="Managers: fully close the scrim session and restore voice")
+        async def end(interaction: discord.Interaction, game: str | None = None):
+            await interaction.response.defer(ephemeral=True)
+            try:
+                await self.end_session(interaction, game or self.games[0])
+                await interaction.followup.send(
+                    "Scrim session ended. Completed games are saved; any running game is marked unfinished.",
+                    ephemeral=True,
+                )
+            except (ValueError, discord.HTTPException) as exc:
+                await interaction.followup.send(str(exc)[:1800], ephemeral=True)
 
         @group.command(
             name="log", description="Managers: export local rosters, games and substitution history"

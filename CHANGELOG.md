@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-07 - explicit scrim session end command
+
+- Add manager-only `/scrim end` to close the entire session, restore voice state, preserve completed games, and return the dashboard to its waiting lobby. Any still-running game is marked unfinished without awarding completion.
+
 ## 2026-10-07 - end scrims when one starter leaves the tracked game
 
 - Complete a running game on the first explicit idle/non-custom or changed-battle response from any recorded starter. Unknown status, substitutes, and failed API requests do not confirm completion.

@@ -20,6 +20,20 @@ from rionnag.storage import Store
 
 
 class QueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_end_session_requires_manager_and_closes_without_counting_running_game(self):
+        data = await self.begin()
+        with self.assertRaises(ValueError):
+            await self.controller.end_session(self.interaction(2), "Marvel Rivals")
+        self.assertEqual(self.store.get(data["id"])["status"], "playing")
+        await self.controller.end_session(self.interaction(), "Marvel Rivals")
+        self.assertEqual(self.store.get(data["id"])["status"], "ended")
+        self.assertIsNone(self.store.get_lobby(self.lobby["id"])["session_id"])
+        self.assertEqual(self.store.export(data["id"])["matches"][0]["status"], "aborted")
+        self.assertEqual(sum(p["played"] for p in self.store.get(data["id"])["players"].values()), 0)
+        self.assertEqual(self.stage.members, [])
+        with self.assertRaises(ValueError):
+            await self.controller.end_session(self.interaction(), "Marvel Rivals")
+
     async def test_force_controls_require_manager_and_stale_click_cannot_finish_twice(self):
         data = await self.begin(start=False)
         await self.click("force_start", user=2)
