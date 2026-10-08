@@ -20,6 +20,27 @@ from rionnag.storage import Store
 
 
 class QueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_tracking_never_moves_mutes_or_changes_permissions_even_for_visitors(self):
+        visitor = self.members[9]
+        visitor.roles = [SimpleNamespace(id=config.VISITOR_ROLE_ID)]
+        self.controller.queue(self.guild, self.lobby)
+        self.store.save_lobby(self.lobby)
+        self.members[1].voice.mute = True
+        data = await self.begin()
+        self.assertNotIn(visitor.id, data["players"])
+        await self.controller.voice_update(visitor, SimpleNamespace(channel=None), visitor.voice)
+        await self.controller.refresh_queue(self.lobby["id"])
+        await self.controller.restore()
+        await self.click("finish")
+        await self.controller.end_session(self.interaction(), "Marvel Rivals")
+        self.assertEqual(len(self.waiting.members), 9)
+        self.assertTrue(self.members[1].voice.mute)
+        self.assertEqual(self.events, [])
+        for member in self.members.values():
+            member.move_to.assert_not_awaited()
+            member.edit.assert_not_awaited()
+        self.stage.set_permissions.assert_not_awaited()
+
     async def test_end_session_requires_manager_and_closes_without_counting_running_game(self):
         data = await self.begin()
         with self.assertRaises(ValueError):
@@ -53,25 +74,6 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sum(p["played"] for p in finished["players"].values()), 6)
         self.assertIsNone(self.store.export(data["id"])["matches"][0]["external_id"])
 
-    async def test_visitor_stays_in_stage_muted_and_waiting_restores_voice(self):
-        visitor = self.members[1]
-        visitor.roles = [SimpleNamespace(id=config.VISITOR_ROLE_ID)]
-        self.waiting.members.remove(visitor)
-        self.stage.members = [visitor]
-        visitor.voice = SimpleNamespace(channel=self.stage, mute=False)
-        before = SimpleNamespace(channel=self.waiting, mute=False)
-        await self.controller.voice_update(visitor, before, visitor.voice)
-        visitor.move_to.assert_not_awaited()
-        data = self.store.create(10, "Marvel Rivals", self.store.config(10, "Marvel Rivals"),
-                                 self.pool, random_team(self.pool), 999)
-        self.lobby["session_id"] = data["id"]
-        self.store.save_lobby(self.lobby)
-        await self.controller.voice_update(visitor, before, visitor.voice)
-        visitor.move_to.assert_not_awaited()
-        self.assertTrue(visitor.voice.mute)
-        visitor.voice = SimpleNamespace(channel=self.waiting, mute=True)
-        await self.controller.voice_update(visitor, SimpleNamespace(channel=self.stage), visitor.voice)
-        self.assertFalse(visitor.voice.mute)
 
     async def test_visitors_never_enter_queue_or_composition_even_with_saved_profile(self):
         visitor = self.members[1]
@@ -110,14 +112,14 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
             channel.overwrites_for = MagicMock(side_effect=lambda target: discord.PermissionOverwrite())
             channel.set_permissions = AsyncMock()
         result = await self.controller.setup_channels(self.guild, "Marvel Rivals")
-        self.assertEqual(result, (self.control, self.waiting, self.stage))
+        self.assertEqual(result, (self.control, self.waiting, self.waiting))
         self.guild.create_category.assert_not_awaited()
         self.guild.create_text_channel.assert_not_awaited()
         self.guild.create_voice_channel.assert_not_awaited()
         for channel in result:
             channel.edit.assert_not_awaited()
         self.assertEqual(self.store.config(10, "Marvel Rivals"),
-                         dict(control_id=100, waiting_id=101, stage_id=102))
+                         dict(control_id=100, waiting_id=101, stage_id=101))
 
     async def test_setup_recognizes_visitor_by_id_after_rename(self):
         category = MagicMock(spec=discord.CategoryChannel)
@@ -138,14 +140,14 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         await self.controller.setup_channels(
             self.guild, "Marvel Rivals", self.control, self.waiting, self.stage
         )
-        for channel in (self.control, self.waiting, self.stage):
+        for channel in (self.control, self.waiting):
             calls = [c for c in channel.set_permissions.call_args_list if c.args[0] is visitor]
             self.assertEqual(len(calls), 1)
             access = calls[0].kwargs["overwrite"]
             self.assertTrue(access.view_channel)
             self.assertTrue(access.read_message_history)
             self.assertFalse(access.send_messages)
-            self.assertEqual(access.connect, channel in (self.waiting, self.stage))
+            self.assertEqual(access.connect, channel == self.waiting)
             self.assertEqual(access.speak, channel == self.waiting)
             self.assertFalse(any(c.args[0] is legacy for c in channel.set_permissions.call_args_list))
 
@@ -387,7 +389,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         rejected = await self.click("edit", user=999)
         rejected.response.send_modal.assert_not_awaited()
 
-    async def test_late_arrivals_stay_waiting_through_refresh_sync_and_restore(self):
+    async def test_late_arrivals_stay_in_shared_room_through_refresh_and_restore(self):
         late = self.members[9]
         self.waiting.members.remove(late)
         late.voice.channel = None
@@ -404,7 +406,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(9, saved["roster"])
         self.assertEqual(late.voice.channel, self.waiting)
         self.assertFalse(late.voice.mute)
-        self.assertIn("Waiting for next game", self.message.edit.call_args.kwargs["embeds"][-1].description)
+        self.assertIn("Substitute", self.message.edit.call_args.kwargs["embeds"][-1].description)
         await self.click("sync")
         await self.controller.restore()
         self.assertEqual(late.voice.channel, self.waiting)
@@ -418,13 +420,13 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
                 break
         self.assertIn(9, self.store.get(data["id"])["roster"])
         await self.click("start")
-        self.assertEqual(late.voice.channel, self.stage)
+        self.assertEqual(late.voice.channel, self.waiting)
         self.assertFalse(late.voice.mute)
 
     async def test_selected_starter_can_rejoin_but_newcomer_without_roles_stays_waiting(self):
         data = await self.begin()
         starter = self.members[next(iter(data["roster"]))]
-        self.stage.members.remove(starter)
+        self.waiting.members.remove(starter)
         self.waiting.members.append(starter)
         starter.voice.channel = self.waiting
         unknown = MagicMock(spec=discord.Member)
@@ -433,7 +435,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         unknown.move_to, unknown.edit = AsyncMock(), AsyncMock()
         self.waiting.members.append(unknown)
         await self.controller.refresh_queue(self.lobby["id"])
-        self.assertEqual(starter.voice.channel, self.stage)
+        self.assertEqual(starter.voice.channel, self.waiting)
         self.assertEqual(unknown.voice.channel, self.waiting)
         unknown.move_to.assert_not_awaited()
         unknown.edit.assert_not_awaited()
@@ -511,7 +513,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         data = self.store.get(data["id"])
         self.assertTrue(real_ids <= set(data["roster"]))
         await self.click("start", user=1)
-        self.assertEqual({m.id for m in self.stage.members}, real_ids)
+        self.assertEqual({m.id for m in self.waiting.members}, real_ids)
         await self.click("finish", user=1)
         self.assertEqual({m.id for m in self.waiting.members}, real_ids)
 
@@ -578,7 +580,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         await self.click("finish", user=1)
         await self.click("sub", user=1)
         await self.click("start", user=1)
-        self.stage.members = []
+        self.waiting.members = []
         self.members[1].voice.channel = None
         await self.controller.end_empty_sessions()
         self.assertEqual(self.store.active(), [])
@@ -602,36 +604,6 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         await self.click("finish", user=999)
         self.assertEqual(self.store.get(data["id"])["status"], "playing")
 
-    async def test_begin_moves_everyone_and_only_six_speak(self):
-        data = await self.begin()
-        self.assertEqual(Counter(data["roster"].values()), {"Tank": 2, "DPS": 2, "Support": 2})
-        self.assertEqual(data["status"], "playing")
-        self.assertEqual(len(self.stage.members), 9)
-        self.assertEqual(self.waiting.members, [])
-        for mid, member in self.members.items():
-            self.assertEqual(member.voice.mute, mid not in data["roster"])
-            self.assertEqual(self.stage.overwrites[member].speak, mid in data["roster"])
-            member.move_to.assert_awaited_once_with(
-                self.stage, reason=member.move_to.call_args.kwargs["reason"]
-            )
-        cards = self.controller.embeds(self.lobby, self.guild, data)
-        self.assertEqual([c.title for c in cards][1:4], ["Tank", "DPS", "Support"])
-        self.assertEqual(len(cards), 5)
-
-    async def test_substitute_is_muted_after_arrival_and_unmuted_on_return_to_waiting(self):
-        data = await self.begin()
-        mid = next(mid for mid in self.members if mid not in data["roster"])
-        member = self.members[mid]
-        self.assertLess(
-            self.events.index(("move", mid, self.stage.id)), self.events.index(("mute", mid, True))
-        )
-        await member.move_to(self.waiting)
-        await self.controller.voice_update(
-            member,
-            SimpleNamespace(channel=self.stage, mute=True),
-            SimpleNamespace(channel=self.waiting, mute=True),
-        )
-        self.assertFalse(member.voice.mute)
 
     async def test_finish_counts_once_and_makes_no_history_or_live_requests(self):
         with patch.object(scrim_rivals, "RivalsClient", side_effect=AssertionError("API disabled")):
@@ -670,13 +642,13 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.get(data["id"])["roster"], after["roster"])
         self.assertIn(incoming, after["protected_in"])
         await self.click("start")
-        self.assertEqual(self.members[incoming].voice.channel, self.stage)
+        self.assertEqual(self.members[incoming].voice.channel, self.waiting)
         self.assertFalse(self.members[incoming].voice.mute)
-        self.assertTrue(self.members[outgoing].voice.mute)
+        self.assertFalse(self.members[outgoing].voice.mute)
         await self.click("finish")
         self.assertEqual(self.store.get(data["id"])["protected_in"], [])
 
-    async def test_match_end_returns_everyone_and_stays_waiting_until_manager_start(self):
+    async def test_match_end_keeps_everyone_in_shared_room(self):
         data = await self.begin()
         await self.click("finish")
         self.assertEqual(len(self.waiting.members), 9)
@@ -685,55 +657,22 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         await self.controller.refresh_queue(self.lobby["id"])
         self.assertEqual(len(self.waiting.members), 9)
         await self.click("start")
-        self.assertEqual(len(self.stage.members), 9)
+        self.assertEqual(len(self.waiting.members), 9)
         self.assertEqual(self.store.get(data["id"])["status"], "playing")
 
-    async def test_player_connect_permission_remains_denied_after_bot_admission(self):
-        await self.begin()
-        for member in self.members.values():
-            self.assertFalse(self.stage.overwrites[member].connect)
 
-    async def test_preexisting_server_mute_restored_after_each_game(self):
+    async def test_preexisting_server_mute_is_untouched_by_tracking(self):
         self.members[1].voice.mute = True
         await self.begin()
         await self.click("finish")
         self.assertTrue(self.members[1].voice.mute)
 
-    async def test_failed_return_keeps_completed_count_and_sync_retries_waiting(self):
-        data = await self.begin()
-        member = self.members[1]
-        original_move = member.move_to.side_effect
-        member.move_to.side_effect = discord.HTTPException(
-            SimpleNamespace(status=500, reason="Server error"), {"code": 0, "message": "Temporary failure"}
-        )
-        await self.click("finish")
-        saved = self.store.get(data["id"])
-        self.assertEqual(saved["status"], "prepared")
-        self.assertEqual(sum(p["played"] for p in saved["players"].values()), 6)
-        self.assertIn("sync_error", saved)
-        member.move_to.side_effect = original_move
-        await self.click("sync")
-        self.assertEqual(self.stage.members, [])
-        self.assertEqual(len(self.waiting.members), 9)
-        self.assertEqual(sum(p["played"] for p in self.store.get(data["id"])["players"].values()), 6)
-
-    async def test_direct_idle_arrival_is_returned_to_waiting(self):
-        member = self.members[2]
-        self.waiting.members.remove(member)
-        self.stage.members.append(member)
-        member.voice.channel = self.stage
-        await self.controller.voice_update(
-            member,
-            SimpleNamespace(channel=self.waiting, mute=False),
-            SimpleNamespace(channel=self.stage, mute=False),
-        )
-        self.assertEqual(member.voice.channel, self.waiting)
 
     async def test_empty_rooms_end_session_without_counting_unfinished_game_and_restore_on_rejoin(self):
         data = await self.begin()
         await self.controller.end_empty_sessions()
         self.assertEqual(self.store.get(data["id"])["status"], "playing")
-        self.stage.members = []
+        self.waiting.members = []
         for member in self.members.values():
             member.voice.channel = None
         await self.controller.end_empty_sessions()
@@ -765,14 +704,6 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreater(self.message.edit.await_count, 1)
         self.assertEqual(len(self.message.edit.call_args.kwargs["embeds"]), 5)
 
-    async def test_failed_stage_sync_saves_actual_game_start_and_can_retry(self):
-        self.controller.sync_stage = AsyncMock(side_effect=ValueError("Stage unavailable"))
-        data = await self.begin()
-        self.assertEqual(data["status"], "playing")
-        self.assertEqual(data["sync_error"], "Stage unavailable")
-        self.assertEqual(len(self.store.export(data["id"])["matches"]), 1)
-        await self.click("start")
-        self.assertEqual(self.store.get(data["id"])["status"], "playing")
 
     async def test_restore_disables_old_solo_mode_without_api_requests(self):
         self.store.arm_test(10, "Marvel Rivals", 1, [])
@@ -811,7 +742,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Waiting", self.controller.embeds(self.lobby, self.guild, data)[0].title)
         await self.click("start")
         self.assertEqual(len(self.store.export(data["id"])["matches"]), 1)
-        self.assertEqual(len(self.stage.members), 9)
+        self.assertEqual(len(self.waiting.members), 9)
 
     async def test_full_reroll_includes_bench_ignores_counts_and_rejects_duplicate_click(self):
         data = await self.begin(start=False)

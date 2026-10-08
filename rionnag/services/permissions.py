@@ -109,9 +109,9 @@ async def apply_server_policy(guild, forms, store):
                     overwrite.create_private_threads = False
                     overwrite.connect = False
                     overwrite.speak = False
-                    if channel.id in voice_rooms or channel.id in voice_rooms.values():
+                    if channel.id in voice_rooms:
                         overwrite.connect = True
-                        overwrite.speak = channel.id in voice_rooms
+                        overwrite.speak = True
             elif any(
                 role.id in (f["team_role"], f["tryout_role"], f["manager_role"]) for f in forms.values()
             ):

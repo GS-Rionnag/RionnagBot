@@ -60,7 +60,7 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         await self.live(monitor, True)
         playing = self.store.get(data["id"])
         self.assertEqual(playing["status"], "playing")
-        self.assertEqual(len(self.stage.members), 9)
+        self.assertEqual(len(self.waiting.members), 9)
         self.assertIn("Game Started", playing["note"])
         self.assertEqual(len(self.store.match(playing["match_id"])["roster"]), 6)
         await self.live(monitor, False)

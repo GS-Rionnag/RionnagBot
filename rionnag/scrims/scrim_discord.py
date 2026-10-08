@@ -45,8 +45,6 @@ class ScrimPanel(discord.ui.View):
                 ("Force start game", "force_start", discord.ButtonStyle.success, playing),
                 ("Force end game", "force_finish", discord.ButtonStyle.danger, not playing),
             ]
-            if session.get("sync_error"):
-                controls.append(("Sync voice", "sync", discord.ButtonStyle.secondary, False))
             pages = max(1, (len(controller.store.session_matches(session["id"])) + 24) // 25)
             page = min(session.get("history_page", 0), pages - 1)
             if page < pages - 1:
@@ -201,16 +199,9 @@ class ScrimController:
         }
         data["note"] = ("Game Started · Forced by a scrim manager." if actor is not None else
                         "Game Started · Custom game detected automatically by Rivals Data.")
-        data["admission_ids"] = [
-            m.id
-            for cid in (data["waiting_id"], data["stage_id"])
-            for m in getattr(guild.get_channel(cid), "members", [])
-            if m.id in data["players"] and not m.bot
-        ]
         # A Discord failure must not erase the actual game start or change its recorded roster.
         self.store.start(data, actor, started_at=evidence.get("started_at"))
         self.store.snapshot(data["match_id"], "live", evidence["payload"])
-        await self.try_sync(guild, data)
         lobby = self.store.lobby(guild.id, data["game"])
         await self.panel(lobby, guild, data, mention_ids=data["roster"])
 
@@ -223,17 +214,11 @@ class ScrimController:
             data.setdefault("finished_live_ids", []).append(battle_id)
         data["revision"] = data.get("revision", 0) + 1
         data["detection"] = {}
-        data.pop("admission_ids", None)
         data["protected_in"] = []
         data["note"] = "Game Ended · Recorded locally; verifying the latest custom match for statistics."
         if actor is not None:
             data["note"] = "Game Ended · Forced by a scrim manager; verifying match statistics."
         self.store.finish(data, actor)
-        try:
-            await self.return_waiting(guild, data)
-        except (ValueError, discord.HTTPException) as exc:
-            data["sync_error"] = str(exc)
-            self.store.save(data)
         lobby = self.store.lobby(guild.id, data["game"])
         self.queue(guild, lobby)
         await self.panel(lobby, guild, data)
@@ -248,7 +233,6 @@ class ScrimController:
         waiting, play = self.channels(guild, data)
         if any(not member.bot for member in waiting.members + play.members):
             return False
-        await self.cleanup_stage(guild, data)
         data["revision"] = data.get("revision", 0) + 1
         if data["status"] == "playing":
             self.store.finish(data, None, aborted=True)
@@ -283,7 +267,6 @@ class ScrimController:
             data = self.store.get(lobby["session_id"])
             if data.get("test_mode") and interaction.user.id != data["test_host"]:
                 raise ValueError("This example scrim is reserved for its tester.")
-            await self.cleanup_stage(interaction.guild, data)
             data["revision"] = data.get("revision", 0) + 1
             if data["status"] == "playing":
                 self.store.finish(data, interaction.user.id, aborted=True)
@@ -337,7 +320,7 @@ class ScrimController:
                 roster = manual_lineup(players, data["roster"], data["players"], operation, first, second)
                 description = (
                     self.lineup_change_text(data, roster)
-                    + "\n\nEveryone stays in waiting until a custom game is detected."
+                    + "\n\nEveryone stays in the scrim voice room."
                 )
                 embed = discord.Embed(title="Review lineup change", description=description, color=self.color)
                 args = (lid, sid, revision, operation, first, second)
@@ -387,11 +370,10 @@ class ScrimController:
             raise ValueError("Choose a configured game.")
 
     def channels(self, guild, data):
-        waiting = guild.get_channel(data["waiting_id"])
-        play = guild.get_channel(data["stage_id"])
-        if not isinstance(waiting, discord.VoiceChannel) or not isinstance(play, discord.VoiceChannel):
-            raise ValueError("The waiting room or scrim VC is missing. Run /scrim setup to repair it.")
-        return waiting, play
+        voice = guild.get_channel(data["waiting_id"])
+        if not isinstance(voice, discord.VoiceChannel):
+            raise ValueError("The scrim voice room is missing. Run /scrim setup to repair it.")
+        return voice, voice
 
     @staticmethod
     def participant(member):
@@ -409,11 +391,8 @@ class ScrimController:
         return members
 
     def eligible(self, guild, data, *, include_stage=True):
-        waiting, stage = self.channels(guild, data)
+        waiting, _ = self.channels(guild, data)
         people = {m.id: m for m in waiting.members if self.participant(m)}
-        if include_stage:
-            people.update({m.id: m for m in stage.members
-                           if m.id in data.get("players", {}) and self.participant(m)})
         result, excluded = [], []
         if data.get("test_mode"):
             result = [
@@ -485,7 +464,7 @@ class ScrimController:
                 description += f"\n\n**{count}/6 players** · {6 - count} more needed."
             else:
                 title = "Ready for a manager"
-                description += f"\n\n**{count}/6 players** in the waiting room."
+                description += f"\n\n**{count}/6 players** in the scrim voice room."
                 description += "\nA manager can press **Start scrim**."
             embed = discord.Embed(title=title, description=description, color=self.color)
             if lobby.get("test_owner_id") in lobby["queue_ids"]:
@@ -554,7 +533,7 @@ class ScrimController:
         rows = [
             f"{self.player_label(data, p['member_id'])} · {' / '.join(p['roles'])} · {p['played']} completed"
             + (" · Test flex roles" if p.get("test_roles_inferred") else "")
-            + (" · Waiting for next game" if playing and p["member_id"] in lobby["queue_ids"] else "")
+            + (" · Substitute" if playing and p["member_id"] in lobby["queue_ids"] else "")
             for p in bench
         ]
         cards.append(
@@ -564,8 +543,6 @@ class ScrimController:
                 description=self.lines(rows, 2400) or "No substitutes currently in voice.",
             )
         )
-        if data.get("sync_error"):
-            cards[-1].description += "\n\nVoice needs attention. Use **Sync voice**."
         if lobby.get("notice"):
             cards[-1].description += "\n\n" + lobby["notice"][:700]
         return cards
@@ -605,145 +582,13 @@ class ScrimController:
         self.bot.add_view(view, message_id=message.id)
         self.views[lobby["id"]] = view
 
-    async def set_speaker_permission(self, play, member, selected, data):
-        before = data.setdefault("overwrites_before", {})
-        key = str(member.id)
-        overwrite = play.overwrites_for(member)
-        if key not in before:
-            before[key] = [p.value for p in overwrite.pair()] if member in play.overwrites else None
-            self.store.save(data)
-        overwrite.view_channel = True
-        overwrite.connect = False  # Bot admission never unlocks direct joining.
-        overwrite.speak = selected
-        await play.set_permissions(member, overwrite=overwrite, reason="Scrim lineup access")
-
-    async def set_voice_mute(self, member, muted, data):
-        before = data.setdefault("voice_mutes_before", {})
-        key = str(member.id)
-        if key not in before:
-            before[key] = bool(member.voice and member.voice.mute)
-            self.store.save(data)
-        if member.voice and member.voice.mute != muted:
-            await member.edit(mute=muted, reason="Scrim active lineup and substitutes")
-
-    async def move_to_stage(self, member, play):
-        if not member.voice or not member.voice.channel:
-            raise ValueError(f"<@{member.id}> disconnected. Bring them back before starting.")
-        if member.voice.channel.id == play.id:
-            return
-        await member.move_to(play, reason="Bot admission to locked scrim VC")
-        try:
-            async with asyncio.timeout(8):
-                while not member.voice or not member.voice.channel or member.voice.channel.id != play.id:
-                    await asyncio.sleep(0.05)
-        except TimeoutError as exc:
-            raise ValueError(f"Waiting for <@{member.id}> to arrive in scrim VC. Try Sync voice.") from exc
-
-    async def sync_stage(self, guild, data):
-        waiting, play = self.channels(guild, data)
-        access = play.permissions_for(guild.me)
-        if not all(
-            getattr(access, flag)
-            for flag in ("manage_channels", "manage_roles", "move_members", "mute_members", "connect")
-        ):
-            raise ValueError(
-                "The bot needs Connect, Manage Channels, Manage Roles, "
-                "Move Members and Mute Members on the scrim VC."
-            )
-        players, _ = self.eligible(guild, data)
-        for member in play.members:
-            if not member.bot and not self.participant(member):
-                await self.set_voice_mute(member, True, data)
-        present = {p.member_id for p in players}
-        missing = set(data["roster"]) - present
-        if missing:
-            raise ValueError(
-                "Selected players left voice: "
-                + ", ".join(f"<@{mid}>" for mid in missing)
-                + ". Bring them back or use Sub in between games."
-            )
-        self.store.save(data)
-        real_ids = {mid for mid in present if not data["players"][mid].get("simulated")}
-        if data["status"] == "playing":
-            # Reconnecting starters and admitted spectators can be repaired.
-            # Late substitutes stay in waiting until the next detected game.
-            admitted = {int(mid) for mid in data.get("voice_mutes_before", {})}
-            admitted.update(data.get("admission_ids", []))
-            admitted.update(m.id for m in play.members)
-            real_ids &= admitted | set(data["roster"])
-        # Mute outgoing players before enabling the new lineup.
-        for mid in real_ids - set(data["roster"]):
-            member = guild.get_member(mid)
-            await self.set_speaker_permission(play, member, False, data)
-            await self.move_to_stage(member, play)
-            await self.set_voice_mute(member, True, data)
-        for mid in set(data["roster"]) & real_ids:
-            member = guild.get_member(mid)
-            await self.set_speaker_permission(play, member, True, data)
-            await self.move_to_stage(member, play)
-            await self.set_voice_mute(member, False, data)
-        data.pop("sync_error", None)
-        self.store.save(data)
-
-    async def return_waiting(self, guild, data):
-        waiting = guild.get_channel(data["waiting_id"])
-        play = guild.get_channel(data["stage_id"])
-        if not isinstance(waiting, discord.VoiceChannel):
-            raise ValueError("Restore the waiting VC before returning participants.")
-        if play:
-            for member in list(play.members):
-                if member.id in data["players"] and not member.bot:
-                    await member.move_to(waiting, reason="Game ended; wait for next custom game")
-        for mid, muted in list(data.get("voice_mutes_before", {}).items()):
-            member = guild.get_member(int(mid))
-            if member and member.voice and member.voice.channel:
-                await member.edit(mute=muted, reason="Restore pre-game voice state")
-                del data["voice_mutes_before"][mid]
-                self.store.save(data)
-        data.pop("sync_error", None)
-        self.store.save(data)
-
-    async def cleanup_stage(self, guild, data):
-        await self.return_waiting(guild, data)
-        play = guild.get_channel(data["stage_id"])
-        if play is None:
-            return
-        for mid, values in data.get("overwrites_before", {}).items():
-            target = guild.get_member(int(mid))
-            if target is None:
-                try:
-                    target = await guild.fetch_member(int(mid))
-                except discord.NotFound:
-                    continue
-            overwrite = (
-                None
-                if values is None
-                else discord.PermissionOverwrite.from_pair(
-                    discord.Permissions(values[0]), discord.Permissions(values[1])
-                )
-            )
-            if overwrite is not None:
-                overwrite.connect = False
-            await play.set_permissions(
-                target, overwrite=overwrite, reason="Restore pre-scrim speaker permissions"
-            )
-
-    async def try_sync(self, guild, data):
-        try:
-            await self.sync_stage(guild, data)
-        except (ValueError, discord.HTTPException) as exc:
-            data["sync_error"] = str(exc)
-            self.store.save(data)
-            return False
-        return True
-
     async def action(self, interaction, lid, sid, revision, action):
         if action == "edit":
             await self.open_lineup_editor(interaction, lid, sid, revision)
             return
         await interaction.response.defer(ephemeral=True, thinking=True)
         try:
-            if action in {"start", "finish"}:
+            if action in {"start", "finish", "sync"}:
                 raise ValueError("Game starts and ends are detected automatically. Use the current panel.")
             if action == "end":
                 raise ValueError("Sessions end automatically when everyone leaves the scrim voice rooms.")
@@ -857,17 +702,7 @@ class ScrimController:
                         )
                         self.store.lineup(data, roster, interaction.user.id, action="rerolled")
                         mention = tuple(roster)
-                        reply = "Teams rerolled. Everyone stays in waiting until a custom game is detected."
-                    elif action == "sync":
-                        if data["status"] == "playing":
-                            await self.try_sync(interaction.guild, data)
-                        else:
-                            await self.return_waiting(interaction.guild, data)
-                        reply = (
-                            "Voice synchronized."
-                            if not data.get("sync_error")
-                            else "Voice still needs attention; see the panel."
-                        )
+                        reply = "Teams rerolled. Everyone stays in the scrim voice room."
                     elif action in {"older", "newer"}:
                         pages = max(1, (len(self.store.session_matches(data["id"])) + 24) // 25)
                         data["history_page"] = max(
@@ -962,14 +797,6 @@ class ScrimController:
                         if active.get("test_mode"):
                             self.eligible(guild, active)
                             self.store.save(active)
-                        if active["status"] == "playing":
-                            await self.try_sync(guild, active)
-                        else:
-                            try:
-                                await self.return_waiting(guild, active)
-                            except (ValueError, discord.HTTPException) as exc:
-                                active["sync_error"] = str(exc)
-                                self.store.save(active)
                     else:
                         # Reconnect cannot prove continuous voice presence: re-check in.
                         lobby["ready_ids"] = []
@@ -981,53 +808,19 @@ class ScrimController:
         self.start_monitor()
 
     async def voice_update(self, member, before, after):
-        if member.bot:
+        if member.bot or before.channel == after.channel:
             return
-        if after.channel and before.channel != after.channel:
-            async with self.lock(member.guild.id):
-                pending = self.store.pending_mute_restores(member.guild.id, member.id)
-                if pending:
-                    original = pending[0]["voice_mutes_before"][str(member.id)]
-                    await member.edit(mute=original, reason="Restore voice state after leaving the scrim")
-                    for ended in pending:
-                        ended["voice_mutes_before"].pop(str(member.id), None)
-                        self.store.save(ended)
         for guild_id, game in self.store.configured():
             if guild_id != member.guild.id:
                 continue
             lobby = self.store.lobby(guild_id, game)
             ids = {c.id for c in (before.channel, after.channel) if c}
-            if not ids & {lobby["waiting_id"], lobby["stage_id"]}:
+            if lobby["waiting_id"] not in ids:
                 continue
             async with self.lock(guild_id):
                 lobby = self.store.get_lobby(lobby["id"])
-                if lobby["session_id"]:
-                    data = self.store.get(lobby["session_id"])
-                    if after.channel and after.channel.id == lobby["waiting_id"]:
-                        original = data.get("voice_mutes_before", {}).get(str(member.id))
-                        if original is not None and after.mute != original:
-                            await member.edit(
-                                mute=original, reason="Restore voice state in scrim waiting room"
-                            )
-                    if after.channel and after.channel.id == lobby["stage_id"]:
-                        if not self.participant(member):
-                            await self.set_voice_mute(member, True, data)
-                        elif data["status"] != "playing" or member.id not in data["players"]:
-                            waiting = member.guild.get_channel(lobby["waiting_id"])
-                            await member.move_to(waiting, reason="Wait for manager-controlled game admission")
-                        elif after.mute != (member.id not in data["roster"]):
-                            await self.set_voice_mute(member, member.id not in data["roster"], data)
-                elif before.channel != after.channel:
-                    if (after.channel and after.channel.id == lobby["stage_id"]
-                            and self.participant(member)):
-                        waiting = member.guild.get_channel(lobby["waiting_id"])
-                        await member.move_to(waiting, reason="Scrim VC admission is managed by the bot")
-                    if before.channel and before.channel.id == lobby["waiting_id"]:
-                        lobby["revision"] += 1
-                    self.queue(member.guild, lobby)
-                    self.store.save_lobby(lobby)
-            if before.channel == after.channel:
-                continue
+                self.queue(member.guild, lobby)
+                self.store.save_lobby(lobby)
             task = self.queue_tasks.get(lobby["id"])
             if task is None or task.done():
                 self.queue_tasks[lobby["id"]] = asyncio.create_task(self.refresh_queue(lobby["id"]))
@@ -1047,25 +840,10 @@ class ScrimController:
                 if data:
                     self.queue(guild, lobby)
                     previous = set(data["players"])
-                    eligible, excluded = self.eligible(guild, data)
+                    _, excluded = self.eligible(guild, data)
                     self.store.save(data)
                     if set(data["players"]) != previous:
                         self.store.event(data, None, "queue_joined", sorted(set(data["players"]) - previous))
-                    if data["status"] == "playing":
-                        waiting, play = self.channels(guild, data)
-                        for p in eligible:
-                            if p.simulated:
-                                continue
-                            member = guild.get_member(p.member_id)
-                            if (
-                                p.member_id in data["roster"]
-                                and member.voice
-                                and member.voice.channel == waiting
-                            ):
-                                selected = p.member_id in data["roster"]
-                                await self.set_speaker_permission(play, member, selected, data)
-                                await self.move_to_stage(member, play)
-                                await self.set_voice_mute(member, not selected, data)
                     lobby["notice"] = (
                         "Save preferred roles with /edit_profile to join the substitute queue: "
                         + ", ".join(f"<@{mid}>" for mid in excluded)
@@ -1115,18 +893,14 @@ class ScrimController:
         )
         waiting = (
             waiting
-            or existing("Scrim Waiting Room", discord.VoiceChannel)
-            or await guild.create_voice_channel("Scrim Waiting Room", category=category)
-        )
-        stage = (
-            stage
             or existing("Scrim", discord.VoiceChannel)
             or await guild.create_voice_channel("Scrim", category=category)
         )
-        if not isinstance(stage, discord.VoiceChannel):
+        stage = waiting  # Legacy storage keys both refer to the one voice room.
+        if not isinstance(waiting, discord.VoiceChannel):
             raise ValueError("Select a regular voice channel for scrims.")
         me = guild.me or await guild.fetch_member(self.bot.user.id)
-        for channel in (control, waiting, stage):
+        for channel in (control, waiting):
             if channel.category_id != category.id:
                 await channel.edit(category=category, sync_permissions=False)
             overwrite = channel.overwrites_for(guild.default_role)
@@ -1151,15 +925,6 @@ class ScrimController:
                     await channel.set_permissions(
                         role, overwrite=access, reason="Visitor and game-specific scrim access"
                     )
-            if channel == stage:
-                for target, original in list(channel.overwrites.items()):
-                    if (target == me or target == guild.default_role
-                            or target.id == config.VISITOR_ROLE_ID):
-                        continue
-                    original.connect = False
-                    await channel.set_permissions(
-                        target, overwrite=original, reason="Lock direct scrim VC entry"
-                    )
             if me.guild_permissions.administrator:
                 continue
             bot_access = channel.overwrites_for(me)
@@ -1172,8 +937,6 @@ class ScrimController:
                 "speak",
                 "manage_channels",
                 "manage_roles",
-                "mute_members",
-                "move_members",
             ):
                 setattr(bot_access, flag, True)
             await channel.set_permissions(me, overwrite=bot_access)
@@ -1204,7 +967,6 @@ class ScrimController:
             interaction: discord.Interaction,
             control: discord.TextChannel | None = None,
             waiting: discord.VoiceChannel | None = None,
-            stage: discord.VoiceChannel | None = None,
             game: str | None = None,
         ):
             await interaction.response.defer(ephemeral=True, thinking=True)
@@ -1212,7 +974,7 @@ class ScrimController:
                 game = game or self.games[0]
                 self.permission(interaction, game)
                 async with self.lock(interaction.guild.id):
-                    await self.setup_channels(interaction.guild, game, control, waiting, stage)
+                    await self.setup_channels(interaction.guild, game, control, waiting)
                     lobby = self.store.lobby(interaction.guild.id, game)
                     self.queue(interaction.guild, lobby)
                     await self.panel(lobby, interaction.guild)
@@ -1248,7 +1010,7 @@ class ScrimController:
             except ValueError as exc:
                 await interaction.response.send_message(str(exc), ephemeral=True)
 
-        @group.command(name="end", description="Managers: fully close the scrim session and restore voice")
+        @group.command(name="end", description="Managers: fully close the scrim tracking session")
         async def end(interaction: discord.Interaction, game: str | None = None):
             await interaction.response.defer(ephemeral=True)
             try:

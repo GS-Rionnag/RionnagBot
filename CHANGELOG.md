@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-07 - one scrim voice room with passive game tracking
+
+- Keep the former waiting room as the sole Scrim voice channel and remove the extra main room. Preserve session/game data and restore bot-applied mutes during the one-time consolidation.
+- Remove automatic voice admission, channel transfers, speaker overwrites, muting, and Sync voice controls. Everyone stays in the shared room and may speak, including Visitors and substitutes; Visitors still do not enter the team composition.
+- Retain automatic Custom Room start/end detection, manual game/session controls, lineup management, and match statistics/results collection.
+
 ## 2026-10-07 - explicit scrim session end command
 
 - Add manager-only `/scrim end` to close the entire session, restore voice state, preserve completed games, and return the dashboard to its waiting lobby. Any still-running game is marked unfinished without awarding completion.

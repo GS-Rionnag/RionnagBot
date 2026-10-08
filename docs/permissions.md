@@ -29,3 +29,5 @@ Marvel roles: team 1554272432309797015, tryout 1554275227901632512, manager 1554
 Future resets cache every removable role, including managers and unrelated assignable roles. Completion restores exact surviving IDs without needing managers who temporarily lost their role. Deleted roles require owner repair. After the initial wipe, existing game members' live Discord roles become fresh restoration metadata. Their old stored answers remain deleted; they must fill the form again. People without existing game membership need normal manager review.
 
 Visitors may join and remain in both configured scrim voice rooms. They can speak in waiting, but cannot speak in the main scrim room and never enter its queue, lineup, or substitute pool. This exception survives onboarding permission repair.
+
+Current single-room scrim policy supersedes the previous two-room voice policy: Visitors and game members may connect and speak in the retained Scrim room. Visitors remain excluded from queue/team/substitute composition. Tracking does not change anyone's mute state or per-member voice permissions.
