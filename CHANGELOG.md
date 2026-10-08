@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-08 - exclude own adverts and silence opportunities
+
+- Ignore the collector account's hosted scrim adverts as source offers, including previously collected
+  copies on reconnect. Opportunity messages still show available players but no longer notify them.
+
 ## 2026-10-08 - link delivered adverts in owner DMs
 
 - Show a View message link in the owner scrim panel after delivery. Refresh it to the replacement

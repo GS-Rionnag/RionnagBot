@@ -192,10 +192,7 @@ class OpportunityPublisher:
                                                    revisions[source_key], author)
                     message = await channel.send(
                         content=content, embed=embed, view=OpportunityVotes(self, key),
-                        allowed_mentions=discord.AllowedMentions(
-                            users=[discord.Object(mid) for mid in members],
-                            roles=False, everyone=False,
-                        ),
+                        allowed_mentions=discord.AllowedMentions.none(),
                     )
                 self.store.save_opportunity(
                     self.channel_id, key, message.id, fingerprint, "active", start, source_key,

@@ -137,7 +137,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher.sync(self.now)
         self.channel.send.assert_awaited_once()
         sent = self.channel.send.call_args.kwargs
-        self.assertEqual({u.id for u in sent["allowed_mentions"].users}, {1, 2, 3, 4, 5, 6, 7})
+        self.assertFalse(sent["allowed_mentions"].users)
         self.assertEqual(sent["content"], "<@1> <@2> <@3> <@4> <@5> <@6> <@7>")
         self.assertEqual(self.channel.send.call_args.kwargs["embed"].title,
                          "Scrim Found!")
@@ -277,8 +277,7 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.store.set_scrim_rank_filter(10, ("Diamond", "Celestial"))
         await self.publisher.sync(self.now)
         self.assertEqual(self.channel.send.await_count, 2)
-        self.assertEqual({u.id for u in self.channel.send.call_args.kwargs["allowed_mentions"].users},
-                         {1, 2, 3, 4, 5, 6, 7})
+        self.assertFalse(self.channel.send.call_args.kwargs["allowed_mentions"].users)
 
     async def test_celestial_to_eternity_post_is_removed_by_diamond_to_celestial_filter(self):
         self.feed.put({**self.source, "content": "Celestial to Eternity"})

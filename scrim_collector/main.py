@@ -138,7 +138,18 @@ class Collector(discord.Client):
     async def on_ready(self):
         log.info("Collector connected; watching %d channels", len(self.channels))
         async with self.history_lock:
+            self.store.delete_author(self.user.id)
             await self.catch_up()
+
+    def cache_message(self, message, *, history=False):
+        if self.user is not None and message.author.id == self.user.id:
+            if history:
+                self.store.cache_history(snapshot(message))
+            self.store.delete(str(message.id))
+            return False
+        self.store.cache_history(snapshot(message)) if history else self.store.put(snapshot(message))
+        self.inbox_ready.set()
+        return True
 
     async def catch_up(self):
         for cid in self.channels:
@@ -155,8 +166,7 @@ class Collector(discord.Client):
                     options["after"] = discord.Object(id=cursor)
                 count = 0
                 async for message in channel.history(**options):
-                    self.store.cache_history(snapshot(message))
-                    self.inbox_ready.set()
+                    self.cache_message(message, history=True)
                     count += 1
                     if count % 100 == 0:
                         log.info("Channel %s: cached %d history messages", cid, count)
@@ -165,7 +175,7 @@ class Collector(discord.Client):
                     limit=max(1, int(os.getenv("SCRIM_HISTORY_LIMIT", "200"))),
                     after=cutoff,
                 ):
-                    self.store.put(snapshot(message))
+                    self.cache_message(message)
                 log.info("Channel %s: history caught up (%d messages)", cid, count)
             except discord.HTTPException:
                 log.warning("Could not read channel %s", cid)
@@ -173,15 +183,13 @@ class Collector(discord.Client):
 
     async def on_message(self, message):
         if message.channel.id in self.channels:
-            self.store.put(snapshot(message))
-            self.inbox_ready.set()
+            self.cache_message(message)
 
     async def on_raw_message_edit(self, event):
         if event.channel_id in self.channels:
             try:
                 channel = self.get_channel(event.channel_id) or await self.fetch_channel(event.channel_id)
-                self.store.put(snapshot(await channel.fetch_message(event.message_id)))
-                self.inbox_ready.set()
+                self.cache_message(await channel.fetch_message(event.message_id))
             except discord.NotFound:
                 self.store.delete(str(event.message_id))
             except discord.HTTPException:

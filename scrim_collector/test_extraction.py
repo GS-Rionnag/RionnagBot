@@ -5,7 +5,7 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 import main
 
@@ -38,6 +38,21 @@ class ExtractionTests(unittest.TestCase):
 
 
 class CollectorEventTests(unittest.IsolatedAsyncioTestCase):
+    async def test_own_advert_is_removed_from_feed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = main.FeedStore(Path(directory) / "feed.db")
+            collector = main.Collector(store, {2})
+            message = SimpleNamespace(id=3, channel=SimpleNamespace(id=2), guild=SimpleNamespace(id=1),
+                                      author=SimpleNamespace(id=4), created_at=datetime.now(UTC),
+                                      content="LFS Diamond-GM <t:1800000000:F>", embeds=[],
+                                      jump_url="https://discord.com/channels/1/2/3")
+            store.put(main.snapshot(message))
+            with patch.object(type(collector), "user", new_callable=PropertyMock,
+                              return_value=SimpleNamespace(id=4)):
+                await collector.on_message(message)
+            self.assertEqual(store.pending(), [])
+            await collector.close()
+
     async def test_new_message_is_cached_and_wakes_extraction_only_in_watched_channels(self):
         with tempfile.TemporaryDirectory() as directory:
             store = main.FeedStore(Path(directory) / "feed.db")

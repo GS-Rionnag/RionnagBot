@@ -87,6 +87,15 @@ class FeedStore:
             db.execute("DELETE FROM feed_offers WHERE message_id=?", (message_id,))
             db.execute("DELETE FROM feed_messages WHERE id=?", (message_id,))
 
+    def delete_author(self, author_id: int):
+        """Remove collected offers and inbox entries posted by the collector account."""
+        with self.connect() as db:
+            ids = [mid for mid, payload in db.execute("SELECT id,payload FROM feed_messages")
+                   if json.loads(payload).get("author_id") == str(author_id)]
+            db.executemany("DELETE FROM feed_offers WHERE message_id=?", ((mid,) for mid in ids))
+            db.executemany("DELETE FROM feed_messages WHERE id=?", ((mid,) for mid in ids))
+        return len(ids)
+
     def pending(self, limit=100):
         with self.connect() as db:
             return [
