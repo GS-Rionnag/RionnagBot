@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-08 - concise chronological day chooser
+
+- Choose a day shows only the five soonest qualifying days, ordered by date before confirmed and
+  available attendance. Each day lists unconfirmed available-player mentions and their count.
+- My selections retains every confirmed date so commitments beyond the shortened chooser can be withdrawn.
+
 ## 2026-10-08 - five scrim messages and direct joining
 
 - Keep the HOST SCRIMS controls in their existing message and publish five separate ranked session

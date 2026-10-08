@@ -44,7 +44,7 @@ class HostingRulesTests(unittest.TestCase):
         confirmed = HostSlot(5, 6, set(range(6)), {1}, {}, 2, False)
         self.assertEqual(sorted([six, nine, confirmed], key=lambda s: s.order), [confirmed, nine, six])
 
-    def test_days_rank_confirmed_then_distinct_available_without_double_counting(self):
+    def test_days_rank_soonest_first_without_double_counting(self):
         day1 = int(datetime(2026, 10, 8, 20, tzinfo=UTC).timestamp())
         day2 = day1 + 86400
         day3 = day2 + 86400
@@ -55,7 +55,7 @@ class HostingRulesTests(unittest.TestCase):
             HostSlot(day3, day3 + 7200, set(range(6)), set(), {}, 0, False),
         ]
         groups = day_groups(slots, ZoneInfo("America/New_York"))
-        self.assertEqual(list(groups), ["2026-10-09", "2026-10-08", "2026-10-10"])
+        self.assertEqual(list(groups), ["2026-10-08", "2026-10-09", "2026-10-10"])
         self.assertEqual(DayPicker.counts(groups["2026-10-08"]), (0, 9))
 
     def test_never_assign_worst_role_and_reject_impossible_six(self):
@@ -269,6 +269,15 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         )
         view = DayPicker(service, 1, slots, "add")
         self.assertEqual(len(view.children), 1)
+        self.assertEqual(len(view.groups), 5)
+        self.assertEqual(list(view.groups), sorted(view.groups))
+        day_slots = next(iter(view.groups.values()))
+        day_slots[0].confirmed.add(1)
+        day_text = view.embed().fields[0].value
+        self.assertIn("**Available players** (5)", day_text)
+        self.assertIn("<@2>", day_text)
+        self.assertNotIn("<@1>", day_text)
+        self.assertGreater(len(DayPicker(service, 1, slots, "remove").groups), 5)
         self.assertNotIn(":F>", json.dumps(view.embed().to_dict()))
         self.assertIn("available", view.children[0].options[0].description)
         day = view.children[0].options[0].value

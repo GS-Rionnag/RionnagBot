@@ -97,7 +97,7 @@ def day_groups(slots, zone):
         day, candidates = item
         confirmed = set().union(*(s.confirmed for s in candidates))
         available = set().union(*(s.available for s in candidates))
-        return (-len(confirmed), -len(available), min(s.secondary for s in candidates), day)
+        return (day, -len(confirmed), -len(available), min(s.secondary for s in candidates))
 
     return dict(sorted(groups.items(), key=order))
 
@@ -173,6 +173,8 @@ class DayPicker(HostingView):
             zone = ZONES.get(player["answers"].get("time_zone")) if player else None
         self.zone = ZoneInfo(zone or "America/New_York")
         self.groups = day_groups(slots, self.zone)
+        if mode == "add":
+            self.groups = dict(list(self.groups.items())[:5])
         options = []
         for day, candidates in self.groups.items():
             confirmed, available = self.counts(candidates)
@@ -189,9 +191,10 @@ class DayPicker(HostingView):
 
     @staticmethod
     def counts(slots):
+        confirmed = set().union(*(s.confirmed for s in slots))
         return (
-            len(set().union(*(s.confirmed for s in slots))),
-            len(set().union(*(s.available for s in slots))),
+            len(confirmed),
+            len(set().union(*(s.available for s in slots)) - confirmed),
         )
 
     async def interaction_check(self, interaction):
@@ -205,15 +208,19 @@ class DayPicker(HostingView):
             title="Choose a scrim day",
             color=config.COLOR,
             description=f"Days use your saved time zone: {self.zone.key}.\n"
-            "Most confirmed players first, then most available, then role fit.\n"
+            "Soonest days first, then confirmed players, then available players.\n"
+            + ("Showing the next five matching days.\n" if self.mode == "add" else "") +
             "Counts are distinct players across qualifying times that day. "
             "Choose a day to see exact time-by-time counts.",
         )
         for day, slots in self.groups.items():
-            confirmed, available = self.counts(slots)
+            confirmed_ids = set().union(*(s.confirmed for s in slots))
+            available_ids = set().union(*(s.available for s in slots)) - confirmed_ids
+            mentions = ", ".join(f"<@{mid}>" for mid in sorted(available_ids)) or "None remaining."
             embed.add_field(
                 name=datetime.strptime(day, "%Y-%m-%d").strftime("%A, %B %d"),
-                value=f"**{confirmed} confirmed** · **{available} available**",
+                value=(f"**{len(confirmed_ids)} confirmed**\n"
+                       f"**Available players** ({len(available_ids)})\n{mentions}")[:1024],
                 inline=False,
             )
         return embed

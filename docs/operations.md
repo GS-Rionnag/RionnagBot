@@ -33,10 +33,11 @@ Do not delete the database for routine form changes: it contains restoration sna
 ### Hosting scrims
 
 Channel 1557583583143526460 contains the persistent **HOST SCRIMS** board. **Choose a day** opens a private
-day selector with no time windows yet. Days use the player's saved time zone and show distinct confirmed
-and available players across qualifying sessions (overlapping slots never double-count a player). Selecting
+day selector with no time windows yet, limited to the five soonest qualifying days. Days use the player's
+saved time zone, ordered soonest first, then confirmed and available attendance. Each day lists distinct
+unconfirmed available-player mentions with a count; overlapping slots never double-count a player. Selecting
 a day opens exact start/end windows with counts for each time; only intervals the player can fully attend
-appear. Both stages rank confirmed attendance first, available attendance second, then best-role fit.
+appear. Exact time choices rank confirmed attendance first, available attendance second, then best-role fit.
 **My selections** uses the same day-first flow to withdraw commitments.
 In Choose a day's time dropdown, confirmed times are checked; uncheck to withdraw, including
 clearing all choices on that page. Other pages remain saved. My selections closes after a withdrawal.
