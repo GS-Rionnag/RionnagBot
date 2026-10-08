@@ -47,9 +47,6 @@ class RionnagBot(commands.Bot):
         await self.add_cog(Scrims(self, service, publisher))
         hosting = store.host_settings(config.SCRIM_HOST_CHANNEL_ID)
         destinations = posting_channels()
-        ranks = store.scrim_rank_filter(config.SCRIM_OPPORTUNITIES_CHANNEL_ID)
-        if hosting["min_rank"] is None and ranks:
-            store.configure_host(config.SCRIM_HOST_CHANNEL_ID, min_rank=ranks[0], max_rank=ranks[1])
         if hosting["destination"] is None and len(destinations) == 1:
             store.configure_host(config.SCRIM_HOST_CHANNEL_ID, destination=next(iter(destinations)))
         await self.add_cog(ScrimHosting(HostingService(self, service, publisher.eligible_players)))

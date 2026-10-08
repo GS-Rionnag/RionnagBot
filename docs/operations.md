@@ -32,25 +32,34 @@ Do not delete the database for routine form changes: it contains restoration sna
 
 ### Hosting scrims
 
-Channel 1557583583143526460 contains the persistent **HOST SCRIMS** board. **Choose times** opens private,
-date-filtered choices; **My selections** withdraws commitments. Times in embeds render in each viewer's
-local zone; date filters and dropdown labels explicitly use Eastern Time. Saved schedules determine
+Channel 1557583583143526460 contains the persistent **HOST SCRIMS** board. **Choose a day** opens a private
+day selector with no time windows yet. Days use the player's saved time zone and show distinct confirmed
+and available players across qualifying sessions (overlapping slots never double-count a player). Selecting
+a day opens exact start/end windows with counts for each time; only intervals the player can fully attend
+appear. Both stages rank confirmed attendance first, available attendance second, then best-role fit.
+**My selections** uses the same day-first flow to withdraw commitments. Times in embeds render in each viewer's
+local zone; dropdown labels use the saved time zone. Saved schedules determine
 availability for the full session. Suggestions span fourteen days at thirty-minute starts, defaulting to
 two-hour sessions. Missing schedules or impossible 2 Tank / 2 DPS / 2 Support compositions are excluded.
 Only current accepted Marvel members with restored profiles and live game roles count; Visitors never count.
-Best-role assignments outrank secondary assignments; third/worst roles are never used. Confirmations are
+Attendance outranks best-role fit; third/worst roles are never used. Confirmations are
 uncapped so extra players can be substitutes. A slot needs a valid composition among confirmed players
 before it is Ready; six votes alone are insufficient.
 
-The owner or Marvel managers use **Host settings** (or `/scrim_host_settings`) for opponent ranks,
-duration (60–240 minutes), and the external advert channel ID. A changed duration clears commitments;
-stale private selectors cannot confirm a different duration. On first setup, existing finder ranks and
-the sole configured source channel are reused when available. No advert posts automatically.
+The public board shows no suggested sessions before the first confirmation. Once a player confirms an
+exact interval, that session appears publicly with confirmed/available counts and member mentions followed
+by their saved best roles. These are preferred roles, not promises of final lineup assignments. Existing
+votes survive deployment, so previously confirmed sessions remain visible. Mentions do not send notifications.
+
+The owner or Marvel managers use **Host settings** (or `/scrim_host_settings`) for session
+duration (60–240 minutes) and the external advert channel ID. There are no opponent rank limits in hosting.
+A changed duration clears commitments; stale private selectors cannot confirm a different duration.
+On first setup, the sole configured source channel is reused when available. No advert posts automatically.
 `/scrim_host` points members to the board.
 
 **Host a session** shows the proposed lineup and an exact anonymous advert preview. Rank-only profile
 reads use linked UIDs and existing provider pacing; results cache for ten minutes. Missing/unavailable
-ranks say Unavailable rather than guessing. The external text contains the LFS rank range/start timestamp
+ranks say Unavailable rather than guessing. The external text contains `LFS at <t:UNIX:F>`
 and Player1–Player6 current/peak ranks. It contains no usernames, account UIDs, mentions, or profile links.
 The manager must press **Publish LFS advert**. You handle opponent conversations yourself.
 

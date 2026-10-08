@@ -8,7 +8,6 @@ from discord.ext import commands, tasks
 from dotenv import dotenv_values
 
 from rionnag import config
-from rionnag.services.scrim_search import rank_suggestions
 from rionnag.ui.scrim_hosting import HostingBoard
 
 
@@ -48,7 +47,7 @@ class ScrimHosting(commands.Cog):
         )
 
     @app_commands.command(
-        name="scrim_host_settings", description="Managers: set hosting duration, ranks and destination"
+        name="scrim_host_settings", description="Managers: set hosting duration and advert destination"
     )
     @app_commands.describe(
         destination="Advert channel ID in a scrim server; omit to keep the saved destination",
@@ -57,8 +56,6 @@ class ScrimHosting(commands.Cog):
     async def settings(
         self,
         interaction: discord.Interaction,
-        min_rank: str,
-        max_rank: str | None = None,
         destination: str | None = None,
         duration_minutes: app_commands.Range[int, 60, 240] = 120,
     ):
@@ -69,7 +66,7 @@ class ScrimHosting(commands.Cog):
             return
         await interaction.response.defer(ephemeral=True)
         try:
-            await self.service.configure(min_rank, max_rank, destination, duration_minutes)
+            await self.service.configure(destination, duration_minutes)
         except ValueError as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
             return
@@ -78,10 +75,3 @@ class ScrimHosting(commands.Cog):
             "Nothing is published until you confirm a preview.",
             ephemeral=True,
         )
-
-    @settings.autocomplete("min_rank")
-    @settings.autocomplete("max_rank")
-    async def rank_autocomplete(self, interaction: discord.Interaction, current: str):
-        return [
-            app_commands.Choice(name=rank, value=rank) for rank in rank_suggestions(current) if rank != "Any"
-        ]

@@ -1,5 +1,16 @@
 # Change timeline
 
+## 2026-10-07 - day-first hosting and attendance-first recommendations
+
+- Keep the public hosting board free of suggested dates/times until a player confirms. Confirmed sessions
+  display their exact interval, attendance counts, and member mentions with each player's saved best role.
+- Replace the initial time list with a private day selector in the player's saved time zone. Show distinct
+  confirmed/available player counts per day, then exact start/end windows and counts for the selected day.
+- Rank days and times by confirmed players, then available players, then best-role fit. Keep the existing
+  full-duration six-player, 2–2–2, best/secondary-only eligibility requirement and uncapped confirmations.
+- Remove opponent min/max rank inputs and rank-range advert headers from hosting. Anonymous Player1–Player6
+  current/peak rank lines remain. The independent finder rank filter is unchanged.
+
 ## 2026-10-07 - role-safe scrim hosting and anonymous roster adverts
 
 - Add a persistent hosting board in channel 1557583583143526460 with private date-filtered confirmations,

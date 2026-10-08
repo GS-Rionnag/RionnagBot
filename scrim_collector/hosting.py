@@ -22,7 +22,7 @@ def invalid_request(store, job, players, live_members, owner_id, manager_role):
     if job["start"] <= time.time():
         return "Session already started"
     settings = store.host_settings(job["channel_id"])
-    expected_content = f"LFS {settings['min_rank']} - {settings['max_rank']} at <t:{job['start']}:F>"
+    expected_content = f"LFS at <t:{job['start']}:F>"
     if (
         settings["duration"] != job["duration"]
         or settings["destination"] != job["destination"]

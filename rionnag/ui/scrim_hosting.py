@@ -7,6 +7,23 @@ from zoneinfo import ZoneInfo
 import discord
 
 from rionnag import config
+from rionnag.services.scrim_availability import ZONES
+
+
+def day_groups(slots, zone):
+    """Distinct day counts across qualifying sessions, never sum overlapping slots."""
+    groups = {}
+    for slot in slots:
+        day = datetime.fromtimestamp(slot.start, zone).strftime("%Y-%m-%d")
+        groups.setdefault(day, []).append(slot)
+
+    def order(item):
+        day, candidates = item
+        confirmed = set().union(*(s.confirmed for s in candidates))
+        available = set().union(*(s.available for s in candidates))
+        return (-len(confirmed), -len(available), min(s.secondary for s in candidates), day)
+
+    return dict(sorted(groups.items(), key=order))
 
 
 def lineup_text(slot):
@@ -59,10 +76,10 @@ class HostingBoard(discord.ui.View):
                 "No sessions match this view yet. Check /edit_form for your schedule.", ephemeral=True
             )
             return
-        view = SlotPicker(self.service, interaction.user.id, slots, mode)
+        view = DayPicker(self.service, interaction.user.id, slots, mode)
         await interaction.followup.send(embed=view.embed(), view=view, ephemeral=True)
 
-    @discord.ui.button(label="Choose times", style=discord.ButtonStyle.success, custom_id="hosting:choose")
+    @discord.ui.button(label="Choose a day", style=discord.ButtonStyle.success, custom_id="hosting:choose")
     async def choose(self, interaction, button):
         await self.open(interaction, "add")
 
@@ -90,12 +107,92 @@ class HostingBoard(discord.ui.View):
         await interaction.response.send_modal(HostingSettings(self.service))
 
 
+class DayPicker(discord.ui.View):
+    def __init__(self, service, owner, slots, mode, zone=None):
+        super().__init__(timeout=600)
+        self.service, self.owner, self.mode = service, owner, mode
+        if zone is None:
+            player = next((p for p in service.players() if p["member_id"] == owner), None)
+            zone = ZONES.get(player["answers"].get("time_zone")) if player else None
+        self.zone = ZoneInfo(zone or "America/New_York")
+        self.groups = day_groups(slots, self.zone)
+        options = []
+        for day, candidates in self.groups.items():
+            confirmed, available = self.counts(candidates)
+            options.append(
+                discord.SelectOption(
+                    label=datetime.strptime(day, "%Y-%m-%d").strftime("%A, %B %d"),
+                    value=day,
+                    description=f"{confirmed} confirmed · {available} available",
+                )
+            )
+        select = discord.ui.Select(placeholder="Choose your best day", options=options)
+        select.callback = self.selected
+        self.add_item(select)
+
+    @staticmethod
+    def counts(slots):
+        return (
+            len(set().union(*(s.confirmed for s in slots))),
+            len(set().union(*(s.available for s in slots))),
+        )
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id == self.owner:
+            return True
+        await interaction.response.send_message("Open your own day selector from the board.", ephemeral=True)
+        return False
+
+    def embed(self):
+        embed = discord.Embed(
+            title="Choose a scrim day",
+            color=config.COLOR,
+            description=f"Days use your saved time zone: {self.zone.key}.\n"
+            "Most confirmed players first, then most available, then role fit.\n"
+            "Counts are distinct players across qualifying times that day. "
+            "Choose a day to see exact time-by-time counts.",
+        )
+        for day, slots in self.groups.items():
+            confirmed, available = self.counts(slots)
+            embed.add_field(
+                name=datetime.strptime(day, "%Y-%m-%d").strftime("%A, %B %d"),
+                value=f"**{confirmed} confirmed** · **{available} available**",
+                inline=False,
+            )
+        return embed
+
+    async def selected(self, interaction):
+        day = interaction.data["values"][0]
+        # Refresh counts and eligibility when advancing, before showing time choices.
+        slots = self.service.snapshot()
+        if self.mode in {"add", "remove"}:
+            slots = [s for s in slots if self.owner in (s.available if self.mode == "add" else s.confirmed)]
+        if self.mode == "publish":
+            if not self.service.manager(interaction):
+                await interaction.response.send_message(
+                    "Only managers or the owner can host.", ephemeral=True
+                )
+                return
+            slots = [s for s in slots if s.ready]
+        slots = day_groups(slots, self.zone).get(day, [])
+        if not slots:
+            await interaction.response.send_message(
+                "This day no longer has matching sessions. Reopen Choose a day.", ephemeral=True
+            )
+            return
+        view = SlotPicker(
+            self.service, self.owner, sorted(slots, key=lambda s: s.order), self.mode, self.zone.key
+        )
+        await interaction.response.edit_message(embed=view.embed(), view=view)
+
+
 class SlotPicker(discord.ui.View):
     PAGE = 10
 
-    def __init__(self, service, owner, slots, mode):
+    def __init__(self, service, owner, slots, mode, zone="America/New_York"):
         super().__init__(timeout=600)
         self.service, self.owner, self.slots, self.mode = service, owner, slots, mode
+        self.zone = ZoneInfo(zone)
         self.page = 0
         self.day = "all"
         self.duration = service.store.host_settings(service.channel_id)["duration"]
@@ -106,9 +203,8 @@ class SlotPicker(discord.ui.View):
             return self.slots
         return [s for s in self.slots if self.date_key(s) == self.day]
 
-    @staticmethod
-    def date_key(slot):
-        return datetime.fromtimestamp(slot.start, ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+    def date_key(self, slot):
+        return datetime.fromtimestamp(slot.start, self.zone).strftime("%Y-%m-%d")
 
     async def interaction_check(self, interaction):
         if interaction.user.id == self.owner:
@@ -122,13 +218,14 @@ class SlotPicker(discord.ui.View):
         section = slots[self.page * self.PAGE : (self.page + 1) * self.PAGE]
         options = []
         for index, slot in enumerate(section, self.page * self.PAGE + 1):
-            local = datetime.fromtimestamp(slot.start, ZoneInfo("America/New_York"))
+            local = datetime.fromtimestamp(slot.start, self.zone)
+            end = datetime.fromtimestamp(slot.end, self.zone)
             options.append(
                 discord.SelectOption(
                     label=f"{'✓ ' if self.owner in slot.confirmed else ''}"
-                    f"{index}. {local:%a %b %d, %I:%M %p %Z}",
+                    f"{index}. {local:%I:%M %p} – {end:%I:%M %p %Z}",
                     value=str(slot.start),
-                    description=f"{len(slot.confirmed)} confirmed · "
+                    description=f"{len(slot.confirmed)} confirmed · {len(slot.available)} available · "
                     f"{6 - slot.secondary} best roles · {'Ready' if slot.ready else 'Needs confirmations'}",
                 )
             )
@@ -145,36 +242,9 @@ class SlotPicker(discord.ui.View):
         )
         select.callback = self.selected
         self.add_item(select)
-        dates = sorted({self.date_key(s) for s in self.slots})
-        day_select = discord.ui.Select(
-            placeholder="Filter by date (Eastern Time)",
-            row=1,
-            options=[
-                discord.SelectOption(
-                    label="All dates · best composition first", value="all", default=self.day == "all"
-                ),
-                *[
-                    discord.SelectOption(
-                        label=datetime.strptime(day, "%Y-%m-%d").strftime("%A, %B %d"),
-                        value=day,
-                        default=self.day == day,
-                    )
-                    for day in dates
-                ],
-            ],
-        )
-
-        async def change_day(interaction):
-            self.day = interaction.data["values"][0]
-            self.page = 0
-            self.build()
-            await interaction.response.edit_message(embed=self.embed(), view=self)
-
-        day_select.callback = change_day
-        self.add_item(day_select)
         for label, delta in (("Previous", -1), ("Next", 1)):
             button = discord.ui.Button(
-                label=label, row=2, disabled=not 0 <= self.page + delta < (len(slots) + 9) // 10
+                label=label, row=1, disabled=not 0 <= self.page + delta < (len(slots) + 9) // 10
             )
 
             async def turn(interaction, delta=delta):
@@ -184,6 +254,26 @@ class SlotPicker(discord.ui.View):
 
             button.callback = turn
             self.add_item(button)
+        back = discord.ui.Button(label="Back to days", row=1)
+
+        async def back_to_days(interaction):
+            slots = self.service.snapshot()
+            if self.mode in {"add", "remove"}:
+                slots = [
+                    s for s in slots if self.owner in (s.available if self.mode == "add" else s.confirmed)
+                ]
+            if self.mode == "publish":
+                slots = [s for s in slots if s.ready]
+            if not slots:
+                await interaction.response.send_message(
+                    "No matching sessions remain. Reopen the board.", ephemeral=True
+                )
+                return
+            view = DayPicker(self.service, self.owner, slots, self.mode, self.zone.key)
+            await interaction.response.edit_message(embed=view.embed(), view=view)
+
+        back.callback = back_to_days
+        self.add_item(back)
 
     def embed(self):
         title = {
@@ -195,7 +285,7 @@ class SlotPicker(discord.ui.View):
         embed = discord.Embed(
             title=title,
             color=config.COLOR,
-            description="Times below display in your local time zone. Dropdown labels use Eastern Time.\n"
+            description=f"Times below display locally. Dropdown labels use {self.zone.key}.\n"
             "Selections apply immediately. You may confirm multiple sessions and withdraw later.",
         )
         slots = self.filtered()
@@ -206,7 +296,9 @@ class SlotPicker(discord.ui.View):
                 value=f"<t:{slot.start}:F> – <t:{slot.end}:t> · **{len(slot.confirmed)} confirmed**\n"
                 f"{6 - slot.secondary} best / {slot.secondary} secondary · {len(slot.available)} available",
             )
-        embed.set_footer(text=f"Page {self.page + 1}/{(len(slots) + 9) // 10} · Best composition first")
+        embed.set_footer(
+            text=f"Page {self.page + 1}/{(len(slots) + 9) // 10} · Confirmed, available, then best roles"
+        )
         return embed
 
     async def selected(self, interaction):
@@ -244,10 +336,8 @@ class SlotPicker(discord.ui.View):
                 if not self.service.manager(interaction) or not slot.ready:
                     raise ValueError("A manager and six confirmed players forming 2–2–2 are required.")
                 settings = self.service.store.host_settings(self.service.channel_id)
-                if not settings["destination"] or not settings["min_rank"]:
-                    raise ValueError(
-                        "Configure ranks and an advert destination with /scrim_host_settings first."
-                    )
+                if not settings["destination"]:
+                    raise ValueError("Set an advert destination in Host settings first.")
                 rank_lines = await self.service.advert_ranks(slot)
                 anonymous = "\n".join(
                     f"Player{index} - {current}; {peak} Peak"
@@ -255,7 +345,7 @@ class SlotPicker(discord.ui.View):
                 )
                 text += (
                     f"\n\n**Post as the owner in <#{settings['destination']}>**\n"
-                    f"LFS {settings['min_rank']} - {settings['max_rank']} at <t:{slot.start}:F>\n"
+                    f"LFS at <t:{slot.start}:F>\n"
                     f"{anonymous}\n"
                     "Publishing freezes this lineup. You handle opponent conversations."
                 )
@@ -306,15 +396,13 @@ class HostingSettings(discord.ui.Modal, title="Scrim hosting settings"):
         super().__init__()
         self.service = service
         settings = service.store.host_settings(service.channel_id)
-        self.minimum = discord.ui.TextInput(label="Minimum opponent rank", default=settings["min_rank"] or "")
-        self.maximum = discord.ui.TextInput(label="Maximum opponent rank", default=settings["max_rank"] or "")
         self.destination = discord.ui.TextInput(
             label="Advert destination channel ID", default=str(settings["destination"] or "")
         )
         self.duration = discord.ui.TextInput(
             label="Session length in minutes (60–240)", default=str(settings["duration"] // 60)
         )
-        for field in (self.minimum, self.maximum, self.destination, self.duration):
+        for field in (self.destination, self.duration):
             self.add_item(field)
 
     async def on_submit(self, interaction):
@@ -325,9 +413,7 @@ class HostingSettings(discord.ui.Modal, title="Scrim hosting settings"):
             return
         await interaction.response.defer(ephemeral=True)
         try:
-            await self.service.configure(
-                str(self.minimum), str(self.maximum), str(self.destination), int(str(self.duration))
-            )
+            await self.service.configure(str(self.destination), int(str(self.duration)))
         except ValueError as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
             return

@@ -192,7 +192,7 @@ class Store:
             }
 
     def queue_host_advert(self, channel_id, start, settings, lineup, requester, rank_lines=()):
-        content = f"LFS {settings['min_rank']} - {settings['max_rank']} at <t:{start}:F>"
+        content = f"LFS at <t:{start}:F>"
         if rank_lines:
             from rionnag.scrims.scrim_offer_rules import canonical_rank
 

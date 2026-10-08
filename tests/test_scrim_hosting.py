@@ -6,11 +6,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+from zoneinfo import ZoneInfo
 
 from rionnag import config
-from rionnag.services.scrim_hosting import HostingService, generate_slots, role_team
+from rionnag.services.scrim_hosting import HostingService, HostSlot, generate_slots, role_team
 from rionnag.storage import Store
-from rionnag.ui.scrim_hosting import HostingBoard, SlotPicker
+from rionnag.ui.scrim_hosting import DayPicker, HostingBoard, HostingSettings, SlotPicker, day_groups
 from scrim_collector.hosting import invalid_request, process_job
 
 
@@ -37,6 +38,26 @@ def roster():
 
 
 class HostingRulesTests(unittest.TestCase):
+    def test_attendance_ranks_before_role_fit(self):
+        six = HostSlot(1, 2, set(range(6)), set(), {}, 0, False)
+        nine = HostSlot(3, 4, set(range(9)), set(), {}, 1, False)
+        confirmed = HostSlot(5, 6, set(range(6)), {1}, {}, 2, False)
+        self.assertEqual(sorted([six, nine, confirmed], key=lambda s: s.order), [confirmed, nine, six])
+
+    def test_days_rank_confirmed_then_distinct_available_without_double_counting(self):
+        day1 = int(datetime(2026, 10, 8, 20, tzinfo=UTC).timestamp())
+        day2 = day1 + 86400
+        day3 = day2 + 86400
+        slots = [
+            HostSlot(day1, day1 + 7200, set(range(9)), set(), {}, 0, False),
+            HostSlot(day1 + 1800, day1 + 9000, set(range(9)), set(), {}, 0, False),
+            HostSlot(day2, day2 + 7200, set(range(6)), {1}, {}, 1, False),
+            HostSlot(day3, day3 + 7200, set(range(6)), set(), {}, 0, False),
+        ]
+        groups = day_groups(slots, ZoneInfo("America/New_York"))
+        self.assertEqual(list(groups), ["2026-10-09", "2026-10-08", "2026-10-10"])
+        self.assertEqual(DayPicker.counts(groups["2026-10-08"]), (0, 9))
+
     def test_never_assign_worst_role_and_reject_impossible_six(self):
         players = [player(i, "Tank", "DPS") for i in range(8)]
         self.assertEqual(role_team(players)[0], {})
@@ -101,7 +122,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.queue())
         self.assertFalse(self.queue())
         job = Store(self.store.path).host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
-        self.assertEqual(job["content"], f"LFS Diamond - Grandmaster at <t:{self.start}:F>")
+        self.assertEqual(job["content"], f"LFS at <t:{self.start}:F>")
         self.store.set_host_vote(config.SCRIM_HOST_CHANNEL_ID, self.start, 1, True)
         self.store.delete_member(config.GUILD_ID, 1)
         self.assertEqual(self.store.host_votes(config.SCRIM_HOST_CHANNEL_ID), {})
@@ -230,6 +251,67 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertLessEqual(len(json.dumps(view.embed().to_dict())), 6000)
         board.stop()
         view.stop()
+
+    async def test_day_first_ui_has_no_time_choices_until_day_selected(self):
+        now = datetime(2026, 10, 8, 20, tzinfo=UTC).timestamp()
+        slots = generate_slots(roster(), {}, now)
+        service = SimpleNamespace(
+            store=self.store, channel_id=config.SCRIM_HOST_CHANNEL_ID, players=roster, snapshot=lambda: slots
+        )
+        view = DayPicker(service, 1, slots, "add")
+        self.assertEqual(len(view.children), 1)
+        self.assertNotIn(":F>", json.dumps(view.embed().to_dict()))
+        self.assertIn("available", view.children[0].options[0].description)
+        day = view.children[0].options[0].value
+        interaction = SimpleNamespace(
+            data={"values": [day]}, response=SimpleNamespace(edit_message=AsyncMock())
+        )
+        await view.selected(interaction)
+        picker = interaction.response.edit_message.call_args.kwargs["view"]
+        self.assertIsInstance(picker, SlotPicker)
+        self.assertEqual({picker.date_key(s) for s in picker.slots}, {day})
+        self.assertIn("available", picker.children[0].options[0].description)
+        picker.stop()
+        view.stop()
+
+    async def test_board_empty_until_first_confirmation_then_mentions_best_role(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        service.players = roster
+        now = datetime(2026, 10, 8, 20, tzinfo=UTC).timestamp()
+        slots = generate_slots(roster(), {}, now)
+        embed = service.board_embed(slots)
+        self.assertEqual(len(embed.fields), 0)
+        self.assertNotIn("<t:", embed.description)
+        slots[0].confirmed.add(1)
+        embed = service.board_embed(slots)
+        self.assertEqual(len(embed.fields), 1)
+        self.assertIn("1 confirmed", embed.fields[0].value)
+        self.assertIn("<@1> · Best role: Tank", embed.fields[0].value)
+
+    async def test_time_selection_confirms_only_the_exact_chosen_session(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        now = datetime(2026, 10, 8, 20, tzinfo=UTC).timestamp()
+        slots = generate_slots(roster(), {}, now)
+        service.snapshot = lambda: slots
+        service.sync = AsyncMock()
+        picker = SlotPicker(service, 1, slots, "add")
+        chosen = slots[0].start
+        interaction = SimpleNamespace(
+            data={"values": [str(chosen)]},
+            response=SimpleNamespace(defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()),
+        )
+        await picker.selected(interaction)
+        self.assertEqual(self.store.host_votes(config.SCRIM_HOST_CHANNEL_ID), {chosen: {1}})
+        service.sync.assert_awaited_once()
+        picker.stop()
+
+    async def test_settings_have_no_opponent_rank_inputs(self):
+        service = SimpleNamespace(store=self.store, channel_id=config.SCRIM_HOST_CHANNEL_ID)
+        modal = HostingSettings(service)
+        self.assertEqual(len(modal.children), 2)
+        self.assertFalse(any("rank" in child.label.casefold() for child in modal.children))
+        modal.stop()
 
     async def test_anonymous_rank_content_never_contains_identity(self):
         ranks = [("Grandmaster", "Celestial")] * 6

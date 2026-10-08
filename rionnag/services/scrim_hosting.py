@@ -28,7 +28,7 @@ class HostSlot:
 
     @property
     def order(self):
-        return (not self.ready, self.secondary, -len(self.confirmed), self.start)
+        return (-len(self.confirmed), -len(self.available), self.secondary, self.start)
 
 
 def role_team(players):
@@ -114,13 +114,9 @@ class HostingService:
             )
         return tuple(ranks)
 
-    async def configure(self, minimum, maximum, destination, minutes):
+    async def configure(self, destination, minutes):
         from rionnag.cogs.scrim_hosting import posting_channels
-        from rionnag.services.scrim_search import normalize_filter
 
-        ranks = normalize_filter(minimum, maximum or None)
-        if ranks is None:
-            raise ValueError("Choose a specific opponent rank range.")
         if not 60 <= minutes <= 240:
             raise ValueError("Choose a session length from 60 to 240 minutes.")
         old = self.store.host_settings(self.channel_id)
@@ -135,8 +131,6 @@ class HostingService:
                 self.store.prune_host_votes(self.channel_id, {})
             self.store.configure_host(
                 self.channel_id,
-                min_rank=ranks[0],
-                max_rank=ranks[1],
                 destination=target,
                 duration=minutes * 60,
             )
@@ -178,30 +172,26 @@ class HostingService:
         embed = discord.Embed(
             title="HOST SCRIMS",
             color=config.COLOR,
-            description=f"Confirm sessions you can attend in full · {settings['duration'] // 60} minutes\n"
-            "Next 14 days · Times display in your local time zone.\n"
-            "2 Tank / 2 DPS / 2 Support · Best and second-best roles only.",
+            description="Choose a day, then a time you can attend.\n"
+            "Sessions appear here after the first player confirms.\n"
+            f"{settings['duration'] // 60}-minute sessions · 2 Tank / 2 DPS / 2 Support.",
         )
-        ready = [s for s in slots if s.ready]
-        collecting = [s for s in slots if not s.ready]
-        for title, group in (("Ready to host", ready), ("Needs confirmations", collecting)):
-            if group:
-                embed.add_field(
-                    name=title,
-                    value="\n\n".join(
-                        f"{'★ ' if index == 0 and s.ready else ''}<t:{s.start}:F> – <t:{s.end}:t>\n"
-                        f"**{len(s.confirmed)} confirmed** · {len(s.available)} available · "
-                        f"{6 - s.secondary} best / {s.secondary} secondary"
-                        for index, s in enumerate(group[:3])
-                    ),
-                    inline=False,
-                )
-        if not slots:
+        players = {p["member_id"]: p for p in self.players()}
+        confirmed_slots = [s for s in slots if s.confirmed]
+        for slot in confirmed_slots:
+            names = [
+                f"<@{mid}> · Best role: {players[mid]['answers'].get('preferred_role_1', 'Unavailable')}"
+                for mid in sorted(slot.confirmed)
+                if mid in players
+            ]
+            value = (
+                f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
+                f"**{len(slot.confirmed)} confirmed** · {len(slot.available)} available\n" + "\n".join(names)
+            )
+            if len(embed.fields) >= 18 or len(embed) + len(value) > 5500:
+                break
             embed.add_field(
-                name="No qualifying sessions yet",
-                value="We need six available players who can fill 2 Tank, 2 DPS and 2 Support. "
-                "Check your saved schedule and roles with /edit_form.",
-                inline=False,
+                name="Ready to host" if slot.ready else "Players confirmed", value=value[:1024], inline=False
             )
         adverts = self.store.host_adverts(self.channel_id)
         for start, advert in sorted(adverts.items()):
@@ -308,8 +298,8 @@ class HostingService:
                 raise ValueError("This session no longer has a confirmed 2–2–2 team.")
             if self.preview_token(slot, settings) != expected:
                 raise ValueError("The lineup or settings changed. Review a fresh preview before publishing.")
-            if not settings["destination"] or not settings["min_rank"]:
-                raise ValueError("Set the destination and rank range with /scrim_host_settings first.")
+            if not settings["destination"]:
+                raise ValueError("Set an advert destination in Host settings first.")
             previous = self.store.host_adverts(self.channel_id).get(start)
             if previous and previous["status"] == "sent":
                 old_team = {int(mid): role for mid, role in json.loads(previous["lineup"]).items()}
@@ -339,6 +329,4 @@ class HostingService:
             tuple(sorted(slot.lineup.items())),
             settings["duration"],
             settings["destination"],
-            settings["min_rank"],
-            settings["max_rank"],
         )
