@@ -292,7 +292,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(embed.fields), 1)
         self.assertIn("1 confirmed", embed.fields[0].value)
         self.assertIn("Tank: <@1>", embed.fields[0].value)
-        self.assertIn("**Available players**\n<@2> <@3> <@4> <@5> <@6>", embed.fields[0].value)
+        self.assertIn("**Available players** (5)\n<@2> <@3> <@4> <@5> <@6>", embed.fields[0].value)
         self.assertNotIn("6 available", embed.fields[0].value)
 
     async def test_confirmed_players_group_by_best_role_in_tank_dps_support_order(self):
@@ -302,7 +302,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         value = service.board_embed([slot]).fields[0].value
         self.assertIn("Tank: <@1>, <@2>\nDPS: <@3>, <@4>\nSupport: <@5>, <@6>", value)
         self.assertNotIn("Best role:", value)
-        self.assertIn("**Available players**\nNone remaining.", value)
+        self.assertIn("**Available players** (0)\nNone remaining.", value)
 
     async def test_public_board_orders_confirmed_count_then_soonest_start(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)

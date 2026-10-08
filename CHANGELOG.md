@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-08 - available-player heading count
+
+- Show the remaining unconfirmed availability count as **Available players** (number) on session cards.
+
 ## 2026-10-08 - exclude confirmations from available-player mentions
 
 - Public session cards list only unconfirmed players under Available players. Confirmed players remain

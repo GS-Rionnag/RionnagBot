@@ -270,7 +270,7 @@ class HostingService:
                 f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
                 f"**{len(slot.confirmed)} confirmed**\n"
                 + "\n".join(names)
-                + "\n**Available players**\n"
+                + f"\n**Available players** ({len(slot.available - slot.confirmed)})\n"
                 + (
                     " ".join(f"<@{mid}>" for mid in sorted(slot.available - slot.confirmed))
                     or "None remaining."
