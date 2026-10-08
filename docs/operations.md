@@ -53,7 +53,7 @@ votes survive deployment, so previously confirmed sessions remain visible. Menti
 Public confirmed sessions sort by confirmed-player count descending, then scrim start ascending (soonest first).
 Confirmed-player mentions group by saved best role as `Tank: @mentions`, `DPS: @mentions`, then `Support: @mentions`.
 
-The public board has only **Choose a day**, **My selections**, and **View lineups**. Host a session,
+The public board has only **Choose a day** and **My selections**. View lineups, Host a session,
 Host settings, and `/scrim_host_settings` have been removed. Hosting retains the saved session duration
 and advert destination, defaulting to two hours and the sole configured collector source channel.
 There are no opponent rank limits. `/scrim_host` points members to the board.

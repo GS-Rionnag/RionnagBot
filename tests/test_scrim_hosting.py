@@ -328,7 +328,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
     async def test_public_board_has_only_player_controls(self):
         board = HostingBoard(SimpleNamespace())
         self.assertEqual(
-            [item.label for item in board.children], ["Choose a day", "My selections", "View lineups"]
+            [item.label for item in board.children], ["Choose a day", "My selections"]
         )
         board.stop()
 

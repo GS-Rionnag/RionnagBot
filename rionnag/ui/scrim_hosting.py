@@ -87,10 +87,6 @@ class HostingBoard(discord.ui.View):
     async def mine(self, interaction, button):
         await self.open(interaction, "remove")
 
-    @discord.ui.button(label="View lineups", style=discord.ButtonStyle.secondary, custom_id="hosting:lineups")
-    async def lineups(self, interaction, button):
-        await self.open(interaction, "lineup")
-
 
 class DayPicker(discord.ui.View):
     def __init__(self, service, owner, slots, mode, zone=None):
