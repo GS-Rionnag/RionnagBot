@@ -253,9 +253,17 @@ class HostingService:
         )
         for slot in confirmed_slots:
             names = [
-                f"<@{mid}> · Best role: {players[mid]['answers'].get('preferred_role_1', 'Unavailable')}"
-                for mid in sorted(slot.confirmed)
-                if mid in players
+                f"{role}: "
+                + ", ".join(
+                    f"<@{mid}>"
+                    for mid in sorted(slot.confirmed)
+                    if mid in players and players[mid]["answers"].get("preferred_role_1") == role
+                )
+                for role in ("Tank", "DPS", "Support")
+                if any(
+                    mid in players and players[mid]["answers"].get("preferred_role_1") == role
+                    for mid in slot.confirmed
+                )
             ]
             value = (
                 f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"

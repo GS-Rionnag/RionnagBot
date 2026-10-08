@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-07 - confirmed players grouped by role
+
+- Group public confirmed-player mentions under Tank, DPS, then Support using each player's saved best role.
+
 ## 2026-10-07 - confirmed-session board ordering
 
 - Order public confirmed sessions by most confirmed players first, then soonest scrim start for ties.

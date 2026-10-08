@@ -286,14 +286,22 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         embed = service.board_embed(slots)
         self.assertEqual(len(embed.fields), 1)
         self.assertIn("1 confirmed", embed.fields[0].value)
-        self.assertIn("<@1> · Best role: Tank", embed.fields[0].value)
+        self.assertIn("Tank: <@1>", embed.fields[0].value)
+
+    async def test_confirmed_players_group_by_best_role_in_tank_dps_support_order(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        service.players = roster
+        slot = HostSlot(self.start, self.start + 7200, set(range(1, 7)), {1, 2, 3, 4, 5, 6}, {}, 0, True)
+        value = service.board_embed([slot]).fields[0].value
+        self.assertIn("Tank: <@1>, <@2>\nDPS: <@3>, <@4>\nSupport: <@5>, <@6>", value)
+        self.assertNotIn("Best role:", value)
 
     async def test_public_board_orders_confirmed_count_then_soonest_start(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
         service.players = roster
-        soon = HostSlot(self.start, self.start+7200, set(range(1, 7)), {1}, {}, 2, False)
-        later = HostSlot(self.start+86400, self.start+93600, set(range(1, 10)), {2}, {}, 0, False)
-        most = HostSlot(self.start+172800, self.start+180000, set(range(1, 7)), {1, 2}, {}, 2, False)
+        soon = HostSlot(self.start, self.start + 7200, set(range(1, 7)), {1}, {}, 2, False)
+        later = HostSlot(self.start + 86400, self.start + 93600, set(range(1, 10)), {2}, {}, 0, False)
+        most = HostSlot(self.start + 172800, self.start + 180000, set(range(1, 7)), {1, 2}, {}, 2, False)
         embed = service.board_embed([later, most, soon])
         self.assertIn(f"<t:{most.start}:F>", embed.fields[0].value)
         self.assertIn(f"<t:{soon.start}:F>", embed.fields[1].value)

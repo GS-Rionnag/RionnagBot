@@ -51,6 +51,7 @@ exact interval, that session appears publicly with confirmed/available counts an
 by their saved best roles. These are preferred roles, not promises of final lineup assignments. Existing
 votes survive deployment, so previously confirmed sessions remain visible. Mentions do not send notifications.
 Public confirmed sessions sort by confirmed-player count descending, then scrim start ascending (soonest first).
+Confirmed-player mentions group by saved best role as `Tank: @mentions`, `DPS: @mentions`, then `Support: @mentions`.
 
 The public board has only **Choose a day**, **My selections**, and **View lineups**. Host a session,
 Host settings, and `/scrim_host_settings` have been removed. Hosting retains the saved session duration
