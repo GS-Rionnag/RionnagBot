@@ -149,6 +149,11 @@ class Store:
             db.execute("INSERT OR REPLACE INTO scrim_host_cards VALUES(?,?,?)",
                        (channel_id, position, message_id))
 
+    def remove_host_card(self, channel_id, position):
+        with self.connection() as db:
+            db.execute("DELETE FROM scrim_host_cards WHERE channel_id=? AND position=?",
+                       (channel_id, position))
+
     def host_overrides(self, channel_id, duration):
         with self.connection() as db:
             result = {}

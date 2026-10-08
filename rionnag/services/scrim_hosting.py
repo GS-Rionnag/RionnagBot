@@ -257,7 +257,7 @@ class HostingService:
         confirmed_slots = sorted(
             (s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start)
         )
-        confirmed_slots = confirmed_slots[:5]
+        confirmed_slots = confirmed_slots[:3]
         for slot in confirmed_slots:
             names = [
                 f"{role}: "
@@ -337,9 +337,9 @@ class HostingService:
         fields = list(summary.fields)
         summary.clear_fields()
         embeds = [summary]
-        ranked = sorted((s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start))[:5]
+        ranked = sorted((s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start))[:3]
         for place, field, slot in zip(
-            ("First place", "Second place", "Third place", "Fourth place", "Fifth place"), fields, ranked
+            ("First place", "Second place", "Third place"), fields, ranked
         ):
             embed = discord.Embed(title=f"<t:{slot.start}:F>", color=config.COLOR, description=field.value)
             embed.set_footer(text=f"{place} · {field.name}")
@@ -388,7 +388,15 @@ class HostingService:
                 )
             self.store.configure_host(self.channel_id, message_id=message.id)
             cards = self.store.host_cards(self.channel_id)
-            for position in range(5):
+            for position, mid in cards.items():
+                if position >= 3:
+                    try:
+                        obsolete = await channel.fetch_message(mid)
+                        await obsolete.delete()
+                    except discord.NotFound:
+                        pass
+                    self.store.remove_host_card(self.channel_id, position)
+            for position in range(3):
                 marker = f"**Scrim option {position + 1}**"
                 card = None
                 if position in cards:

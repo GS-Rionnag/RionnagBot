@@ -210,7 +210,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         async def history(**kwargs):
             yield message
 
-        cards = [SimpleNamespace(id=200 + i, edit=AsyncMock()) for i in range(5)]
+        cards = [SimpleNamespace(id=200 + i, edit=AsyncMock(), delete=AsyncMock()) for i in range(5)]
         by_id = {card.id: card for card in cards}
         for i, card in enumerate(cards):
             card.edit.return_value = card
@@ -227,9 +227,13 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         channel.send.assert_not_awaited()
         message.edit.assert_awaited_once()
         self.assertEqual(len(message.edit.call_args.kwargs["embeds"]), 1)
-        for card in cards:
+        for card in cards[:3]:
             card.edit.assert_awaited_once()
             self.assertTrue(all(b.disabled for b in card.edit.call_args.kwargs["view"].children))
+        for card in cards[3:]:
+            card.delete.assert_awaited_once()
+            card.edit.assert_not_awaited()
+        self.assertEqual(len(self.store.host_cards(config.SCRIM_HOST_CHANNEL_ID)), 3)
         self.assertEqual(self.store.host_settings(config.SCRIM_HOST_CHANNEL_ID)["message_id"], 123)
 
     async def test_outbound_revalidates_withdrawn_vote(self):
@@ -344,7 +348,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(cards[0].fields), 0)
         self.assertIn(f"<t:{most.start}:F>", cards[1].description)
 
-    async def test_board_shows_top_five_sessions_even_without_attendance_ties(self):
+    async def test_board_shows_top_three_sessions_even_without_attendance_ties(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
         service.players = roster
         tied = [
@@ -364,7 +368,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         )
         less_confirmed = HostSlot(self.start - 7200, self.start, set(range(1, 20)), {1}, {}, 0, False)
         embed = service.board_embed([less_available, less_confirmed, *reversed(tied)])
-        self.assertEqual(len(embed.fields), 5)
+        self.assertEqual(len(embed.fields), 3)
         self.assertIn(f"<t:{less_available.start}:F>", embed.fields[0].value)
         self.assertIn(f"<t:{tied[0].start}:F>", embed.fields[1].value)
         self.assertIn(f"<t:{tied[1].start}:F>", embed.fields[2].value)

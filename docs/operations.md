@@ -54,7 +54,7 @@ The public board shows no suggested sessions before the first confirmation. Once
 exact interval, that session appears publicly with confirmed/available counts and member mentions followed
 by their saved best roles. These are preferred roles, not promises of final lineup assignments. Existing
 votes survive deployment, so previously confirmed sessions remain visible. Mentions do not send notifications.
-HOST SCRIMS remains a separate introduction/control message. Five separate session messages show
+HOST SCRIMS remains the first introduction/control message. Three separate session messages show
 the top confirmed sessions, with disabled placeholders for unused positions. Rank by confirmed-player
 count descending, then soonest start, regardless of available-player count or whether counts tie.
 Each session title is its Discord date/time timestamp; its footer indicates its place.

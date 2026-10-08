@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-08 - top three separate scrim messages
+
+- Keep the Choose a day / My selections header first and show only three ranked scrim messages below it.
+  Remove the two previously created extra option messages, preserving confirmations and direct buttons.
+
 ## 2026-10-08 - concise chronological day chooser
 
 - Choose a day shows only the five soonest qualifying days, ordered by date before confirmed and
