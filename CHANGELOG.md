@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-08 - top scrim message labels
+
+- Rename the three public message labels to Top scrim option 1, 2, and 3.
+
 ## 2026-10-08 - top three separate scrim messages
 
 - Keep the Choose a day / My selections header first and show only three ranked scrim messages below it.

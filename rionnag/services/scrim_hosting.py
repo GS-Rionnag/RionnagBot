@@ -397,7 +397,7 @@ class HostingService:
                         pass
                     self.store.remove_host_card(self.channel_id, position)
             for position in range(3):
-                marker = f"**Scrim option {position + 1}**"
+                marker = f"Top scrim option {position + 1}"
                 card = None
                 if position in cards:
                     try:
@@ -406,7 +406,9 @@ class HostingService:
                         pass
                 if card is None:
                     async for candidate in channel.history(limit=100):
-                        if candidate.author.id == self.bot.user.id and candidate.content == marker:
+                        if candidate.author.id == self.bot.user.id and candidate.content in {
+                            marker, f"**Scrim option {position + 1}**"
+                        }:
                             card = candidate
                             break
                 embed = embeds[position + 1] if position + 1 < len(embeds) else discord.Embed(
