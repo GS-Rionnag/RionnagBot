@@ -201,18 +201,27 @@ def recent_result(match, probe, used_ids, budget, tolerance=300):
         roster = [person for person in match["roster"] if not test_mode or not person.get("simulated")]
         if not roster:
             return None
+        tracker = match.get("tracker_member_id")
+        person = roster[0] if tracker is None else next(
+            (p for p in roster if p.get("member_id") == tracker), None
+        )
+        if person is None or person.get("simulated"):
+            return None
+        identity = person.get("uid") or budget.identities.get(person["username"])
+        if not identity:
+            identity = str(client.get_player(person["username"]).uid)
+            budget.identities[person["username"]] = identity
         expected = set()
         for person in roster:
             uid = person.get("uid") or budget.identities.get(person["username"])
             if not uid:
-                uid = str(client.get_player(person["username"]).uid)
-                budget.identities[person["username"]] = uid
+                return None  # Never fan out to other players' profiles during history polling.
             expected.add(str(uid))
-        person = roster[probe % len(roster)]
-        uid = person.get("uid") or budget.identities[person["username"]]
+        uid = identity
         # Construct the lazy resource directly to avoid fetching/enriching a profile every retry.
         from rivals_api.resources import PlayerMatches
 
+        client.enrich = False  # One player's history from one provider, not federated history polling.
         history = PlayerMatches(client, int(uid)).fetch(limit=1, mode="custom", cached=False).to_dict()
         candidates = rows(history.get("matches"))
         if not candidates:
@@ -251,6 +260,7 @@ def recent_result(match, probe, used_ids, budget, tolerance=300):
             ):
                 return None
         # A partial detail response cached by the SDK must not stall indexing retries.
+        client.enrich = True
         payload = client.matches.get(external_id, refresh=True).to_dict()
         if custom_game(payload) is False or not same_team(
             payload,

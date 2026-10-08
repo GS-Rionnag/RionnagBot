@@ -8,6 +8,8 @@ The scrim cog passes `Store.saved_uid` to the controller so accepted account ide
 
 The monitor probes only real players in the starting six and skips simulated accounts and substitutes. Test rerolls may bench the host; an all-simulated starting lineup correctly stays waiting even when a real substitute enters a Custom game.
 
+Each game pins one real starter for live/history polling, prioritizing recorded successful history checks among the selected lineup. Persisted selection survives restart; completed-game retries use the recorded roster independently of current voice attendance or lineup changes. History fetches only the newest custom match from the primary provider, then verifies full details, identity, timing, and recorded teammates. Unverified completed games remain pending indefinitely, respecting provider cooldowns. The win-rate exact method is not used.
+
 The member registry is authoritative: roles alone do not prove completion. Members without completed data receive tickets during startup, joins, or repair, including the owner. Reconciliation retries every five minutes. Per-member locks serialize transitions; an OS lock prevents duplicate processes.
 
 Leaving the server erases the member registry entry, all form answers and embedded stats caches, role-restoration metadata, pending DMs, saved game profiles, and availability. The private ticket is deleted. Reconciliation also erases entries for members who left while the bot was offline. Rejoining starts fresh onboarding with no saved answers or automatic restoration.

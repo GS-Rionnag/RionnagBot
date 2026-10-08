@@ -526,17 +526,35 @@ class ScrimStore:
         value["roster"], value["data"] = json.loads(value["roster"]), json.loads(value["data"])
         return value
 
-    def pending_matches(self, grace=3600):
+    def pending_matches(self):
         with self.connection() as db:
             ids = [
                 r[0]
                 for r in db.execute(
                     "SELECT id FROM scrim_matches WHERE status='playing' OR "
-                    "(status='completed' AND ended_at>? AND json_extract(data, '$.teams') IS NULL)",
-                    (time.time() - grace,),
+                    "(status='completed' AND json_extract(data, '$.teams') IS NULL)",
                 )
             ]
         return [self.match(mid) for mid in ids]
+
+    def history_tracker(self, guild_id, roster):
+        """Prefer a current starter whose history previously verified a scrim."""
+        available = [person["member_id"] for person in roster if not person.get("simulated")]
+        scores = {}
+        with self.connection() as db:
+            verified = db.execute(
+                "SELECT m.id,m.roster,s.data FROM scrim_matches m JOIN scrim_sessions s ON s.id=m.session_id "
+                "WHERE s.guild_id=? AND m.external_id IS NOT NULL ORDER BY m.id", (guild_id,),
+            ).fetchall()
+        for mid, raw_roster, raw_session in verified:
+            starters = [p for p in json.loads(raw_roster) if not p.get("simulated")]
+            state = json.loads(raw_session).get("imports", {}).get(str(mid), {})
+            tracker = state.get("tracker_member_id")
+            if tracker is None and starters and state.get("verified") and state.get("probe"):
+                tracker = starters[(state["probe"] - 1) % len(starters)]["member_id"]
+            if tracker in available:
+                scores[tracker] = scores.get(tracker, 0) + 1
+        return max(available, key=lambda mid: scores.get(mid, 0)) if available else None
 
     def session_matches(self, session_id):
         with self.connection() as db:

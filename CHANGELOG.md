@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-07 - persistent single-starter scrim tracking
+
+- Pin live and history checks to one real starter, preferring a currently selected player whose history previously verified a game. Save the selection across retries/restarts and use the recorded lineup for completed games.
+- Fetch only that player's latest custom match, without federated history or the win-rate `exact` option. Verify its identity, timing, and recorded teammates against full match details.
+- Retry unverified completed games without a time limit, including ended sessions. Keep provider cooldowns; retry other history errors after sixty seconds. Late verified logs still replace unverified summaries.
+
 ## 2026-10-07 - recover delayed scrim results and replace unverified summaries
 
 - Keep completed games eligible for history verification for one hour after ending, including after a session closes. Non-rate-limit history errors rotate to another starter after fifteen seconds; provider cooldowns remain enforced.

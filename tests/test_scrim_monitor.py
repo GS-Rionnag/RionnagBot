@@ -124,18 +124,42 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.pending_matches(), [])
         self.assertEqual(sum(p["played"] for p in self.store.get(data["id"])["players"].values()), 6)
 
-    async def test_history_errors_rotate_starters_but_rate_limits_keep_cooldown(self):
+    async def test_successful_history_player_is_preferred_only_when_in_team(self):
+        data = await self.begin()
+        await self.controller.game_ended(self.guild, data)
+        match = self.store.pending_matches()[0]
+        reliable = match["roster"][2]["member_id"]
+        data = self.store.get(data["id"])
+        data["imports"] = {str(match["id"]): {"tracker_member_id": reliable, "verified": "known"}}
+        self.store.save(data)
+        self.store.snapshot(match["id"], "details", {"teams": []}, "known")
+        self.assertEqual(self.store.history_tracker(self.guild.id, match["roster"]), reliable)
+        other_starters = [p for p in match["roster"] if p["member_id"] != reliable]
+        self.assertEqual(
+            self.store.history_tracker(self.guild.id, other_starters), other_starters[0]["member_id"]
+        )
+        simulated = [{**p, "simulated": p["member_id"] == reliable} for p in match["roster"]]
+        self.assertNotEqual(self.store.history_tracker(self.guild.id, simulated), reliable)
+
+    async def test_history_keeps_one_starter_across_restart_and_retries_without_deadline(self):
         data = await self.begin()
         await self.controller.game_ended(self.guild, data)
         monitor = ScrimMonitor(self.controller)
         match = self.store.pending_matches()[0]
-        with patch.object(scrim_rivals, "recent_result", side_effect=TimeoutError):
+        with patch.object(scrim_rivals, "recent_result", side_effect=TimeoutError) as first:
             await monitor.probe("history", self.store.get(data["id"]), match)
         state = self.store.get(data["id"])["imports"][str(match["id"])]
         self.assertEqual(state["probe"], 1)
-        self.assertLessEqual(state["next_at"], time.time() + 15)
-        with patch.object(scrim_rivals, "recent_result", side_effect=scrim_rivals.MonitorRateLimit(180)):
+        self.assertLessEqual(state["next_at"], time.time() + 60)
+        tracker = state["tracker_member_id"]
+        self.assertIn(tracker, [p["member_id"] for p in match["roster"]])
+        self.assertEqual(first.call_args.args[0]["tracker_member_id"], tracker)
+        monitor = ScrimMonitor(self.controller)
+        with patch.object(
+            scrim_rivals, "recent_result", side_effect=scrim_rivals.MonitorRateLimit(180)
+        ) as retry:
             await monitor.probe("history", self.store.get(data["id"]), match)
+        self.assertEqual(retry.call_args.args[0]["tracker_member_id"], tracker)
         state = self.store.get(data["id"])["imports"][str(match["id"])]
         self.assertGreater(state["next_at"], time.time() + 179)
         with self.store.connection() as db:
@@ -143,7 +167,7 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([m["id"] for m in self.store.pending_matches()], [match["id"]])
         with self.store.connection() as db:
             db.execute("UPDATE scrim_matches SET ended_at=? WHERE id=?", (time.time() - 3601, match["id"]))
-        self.assertEqual(self.store.pending_matches(), [])
+        self.assertEqual([m["id"] for m in self.store.pending_matches()], [match["id"]])
 
     async def test_changed_lineup_or_ended_session_discards_in_flight_response(self):
         data = await self.begin(start=False)
@@ -423,7 +447,7 @@ class AdapterTests(unittest.TestCase):
             self.assertEqual(result[0], "custom-1")
             self.assertEqual(
                 request.call_args_list[0].args,
-                ("/player/matches", {"uid": 3, "cursor": None, "mode": 3}),
+                ("/player/matches", {"uid": 1, "cursor": None, "mode": 3}),
             )
             self.assertEqual(request.call_args_list[1].args, ("/match", {"match_id": "custom-1"}))
 
@@ -466,7 +490,8 @@ class AdapterTests(unittest.TestCase):
 
     def result(self, candidate, *, used=(), payload=None, battle_id=None):
         match = {
-            "roster": [{"uid": str(i), "username": f"p{i}"} for i in range(1, 7)],
+            "roster": [{"member_id": i, "uid": str(i), "username": f"p{i}"} for i in range(1, 7)],
+            "tracker_member_id": 3,
             "started_at": 1000,
             "ended_at": 1600,
             "data": {"detection": {"battle_id": battle_id}},
@@ -485,7 +510,11 @@ class AdapterTests(unittest.TestCase):
             patch("rivals_api.resources.PlayerMatches") as resource,
         ):
             client = context.return_value.__enter__.return_value
-            resource.return_value.fetch.return_value.to_dict.return_value = {"matches": [candidate]}
+            def fetch(**kwargs):
+                self.assertFalse(client.enrich)
+                return SimpleNamespace(to_dict=lambda: {"matches": [candidate]})
+
+            resource.return_value.fetch.side_effect = fetch
             client.matches.get.return_value.to_dict.return_value = payload
             result = scrim_rivals.recent_result(match, 2, used, scrim_rivals.RequestBudget(), 120)
             resource.assert_called_once_with(client, 3)

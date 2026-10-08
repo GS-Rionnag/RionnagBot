@@ -42,7 +42,9 @@ class ScrimMonitor:
         jobs += [
             ("history", m["session_id"], m)
             for m in store.pending_matches()
-            if m["status"] == "completed" and self.supported(store.get(m["session_id"]))
+            if m["status"] == "completed"
+            and store.get(m["session_id"])["game"].casefold() == "marvel rivals"
+            and any(not p.get("simulated") for p in m["roster"])
         ]
         now = time.time()
         for offset in range(len(jobs)):
@@ -77,11 +79,16 @@ class ScrimMonitor:
         probe = state.get("probe", 0)
         roster = match["roster"] if match else [session["players"][mid] for mid in session["roster"]]
         # Demo teammates are unrelated leaderboard accounts; probe real starters only.
-        if session.get("test_mode"):
-            roster = [person for person in roster if not person.get("simulated")]
+        roster = [person for person in roster if not person.get("simulated")]
         if not roster:
             return
-        person = roster[probe % len(roster)]
+        tracker = state.get("tracker_member_id")
+        if tracker not in {p["member_id"] for p in roster}:
+            recorded = (match or {}).get("data", {}).get("detection", {}).get("tracker_member_id")
+            tracker = recorded if recorded in {p["member_id"] for p in roster} else (
+                store.history_tracker(guild.id, roster)
+            )
+        person = next(p for p in roster if p["member_id"] == tracker)
         # API I/O is outside the guild lock; controls and voice events stay responsive.
         error = None
         try:
@@ -90,7 +97,7 @@ class ScrimMonitor:
             else:
                 result = await asyncio.to_thread(
                     scrim_rivals.recent_result,
-                    {**match, "test_mode": bool(session.get("test_mode"))},
+                    {**match, "test_mode": bool(session.get("test_mode")), "tracker_member_id": tracker},
                     probe,
                     store.used_ids(guild.id),
                     self.budget,
@@ -109,6 +116,7 @@ class ScrimMonitor:
             ):
                 return
             state = self.state(current, kind, match)
+            state["tracker_member_id"] = tracker
             state["probe"] = probe + 1
             state["next_at"] = time.time() + (self.interval if kind == "live" else 15)
             if error:
@@ -117,8 +125,7 @@ class ScrimMonitor:
                 if isinstance(error, scrim_rivals.MonitorRateLimit):
                     delay = max(delay, error.delay)
                 elif kind == "history":
-                    # A failed account lookup must not stall the other recorded starters.
-                    delay = 15
+                    delay = 60
                 state["next_at"] = time.time() + delay
                 if kind == "live":
                     state.setdefault("absent", {}).pop(str(person["member_id"]), None)
@@ -143,7 +150,7 @@ class ScrimMonitor:
                     current["result_notice"] = (
                         f"Game {match['number']} ended. "
                         "Waiting for a recent custom match with the recorded real starters. "
-                        "Results retry for one hour; unavailable stats remain unverified in /scrim log."
+                        "The selected starter's latest custom game will keep retrying until verified."
                     )
                 store.save(current)
                 await self.update_panel(guild, current)
