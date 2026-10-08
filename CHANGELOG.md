@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-07 - hosting selector interaction recovery
+
+- Acknowledge day selection and return-to-days clicks before recalculating schedules, preventing slow
+  calculations from missing Discord's interaction acknowledgement deadline.
+- Time confirmations explicitly open a private processing response. Hosting controls log callback failures
+  and send retry guidance rather than silently failing.
+
 ## 2026-10-07 - separate top-three scrim cards
 
 - Keep HOST SCRIMS as an introduction/control embed and display First place, Second place, and Third place

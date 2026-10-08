@@ -264,10 +264,15 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("available", view.children[0].options[0].description)
         day = view.children[0].options[0].value
         interaction = SimpleNamespace(
-            data={"values": [day]}, response=SimpleNamespace(edit_message=AsyncMock())
+            data={"values": [day]}, response=SimpleNamespace(defer=AsyncMock()),
+            edit_original_response=AsyncMock(),
         )
+        def acknowledged_snapshot():
+            interaction.response.defer.assert_awaited_once()
+            return slots
+        service.snapshot = acknowledged_snapshot
         await view.selected(interaction)
-        picker = interaction.response.edit_message.call_args.kwargs["view"]
+        picker = interaction.edit_original_response.call_args.kwargs["view"]
         self.assertIsInstance(picker, SlotPicker)
         self.assertEqual({picker.date_key(s) for s in picker.slots}, {day})
         self.assertIn("available", picker.children[0].options[0].description)
@@ -363,6 +368,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
             followup=SimpleNamespace(send=AsyncMock()),
         )
         await picker.selected(interaction)
+        interaction.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
         self.assertEqual(self.store.host_votes(config.SCRIM_HOST_CHANNEL_ID), {chosen: {1}})
         service.sync.assert_awaited_once()
         picker.stop()

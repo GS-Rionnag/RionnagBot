@@ -1,6 +1,7 @@
 """Persistent public entry points and private, paginated hosting controls."""
 
 import json
+import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -8,6 +9,21 @@ import discord
 
 from rionnag import config
 from rionnag.services.scrim_availability import ZONES
+
+log = logging.getLogger(__name__)
+
+
+class HostingView(discord.ui.View):
+    async def on_error(self, interaction, error, item):
+        log.error("Hosting control failed: %s", type(item).__name__, exc_info=error)
+        text = "Could not finish this action. Reopen Choose a day from the board and try again."
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(text, ephemeral=True)
+            else:
+                await interaction.response.send_message(text, ephemeral=True)
+        except discord.HTTPException:
+            log.warning("Could not deliver hosting error feedback")
 
 
 def day_groups(slots, zone):
@@ -47,7 +63,7 @@ def lineup_text(slot):
     return "\n".join(lines)
 
 
-class HostingBoard(discord.ui.View):
+class HostingBoard(HostingView):
     def __init__(self, service):
         super().__init__(timeout=None)
         self.service = service
@@ -88,7 +104,7 @@ class HostingBoard(discord.ui.View):
         await self.open(interaction, "remove")
 
 
-class DayPicker(discord.ui.View):
+class DayPicker(HostingView):
     def __init__(self, service, owner, slots, mode, zone=None):
         super().__init__(timeout=600)
         self.service, self.owner, self.mode = service, owner, mode
@@ -143,6 +159,7 @@ class DayPicker(discord.ui.View):
         return embed
 
     async def selected(self, interaction):
+        await interaction.response.defer()
         day = interaction.data["values"][0]
         # Refresh counts and eligibility when advancing, before showing time choices.
         slots = self.service.snapshot()
@@ -150,24 +167,24 @@ class DayPicker(discord.ui.View):
             slots = [s for s in slots if self.owner in (s.available if self.mode == "add" else s.confirmed)]
         if self.mode == "publish":
             if not self.service.manager(interaction):
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "Only managers or the owner can host.", ephemeral=True
                 )
                 return
             slots = [s for s in slots if s.ready]
         slots = day_groups(slots, self.zone).get(day, [])
         if not slots:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 "This day no longer has matching sessions. Reopen Choose a day.", ephemeral=True
             )
             return
         view = SlotPicker(
             self.service, self.owner, sorted(slots, key=lambda s: s.order), self.mode, self.zone.key
         )
-        await interaction.response.edit_message(embed=view.embed(), view=view)
+        await interaction.edit_original_response(embed=view.embed(), view=view)
 
 
-class SlotPicker(discord.ui.View):
+class SlotPicker(HostingView):
     PAGE = 10
 
     def __init__(self, service, owner, slots, mode, zone="America/New_York"):
@@ -238,6 +255,7 @@ class SlotPicker(discord.ui.View):
         back = discord.ui.Button(label="Back to days", row=1)
 
         async def back_to_days(interaction):
+            await interaction.response.defer()
             slots = self.service.snapshot()
             if self.mode in {"add", "remove"}:
                 slots = [
@@ -246,12 +264,12 @@ class SlotPicker(discord.ui.View):
             if self.mode == "publish":
                 slots = [s for s in slots if s.ready]
             if not slots:
-                await interaction.response.send_message(
+                await interaction.followup.send(
                     "No matching sessions remain. Reopen the board.", ephemeral=True
                 )
                 return
             view = DayPicker(self.service, self.owner, slots, self.mode, self.zone.key)
-            await interaction.response.edit_message(embed=view.embed(), view=view)
+            await interaction.edit_original_response(embed=view.embed(), view=view)
 
         back.callback = back_to_days
         self.add_item(back)
@@ -284,7 +302,7 @@ class SlotPicker(discord.ui.View):
 
     async def selected(self, interaction):
         starts = [int(value) for value in interaction.data["values"]]
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True, thinking=True)
         try:
             if self.mode in {"add", "remove"}:
                 await self.service.change_votes(self.owner, starts, self.mode == "add", self.duration)
@@ -319,7 +337,7 @@ class SlotPicker(discord.ui.View):
             await interaction.followup.send(str(exc), ephemeral=True)
 
 
-class HostApproval(discord.ui.View):
+class HostApproval(HostingView):
     def __init__(self, service, start, generation):
         super().__init__(timeout=None)
         self.service, self.start, self.generation = service, start, generation
