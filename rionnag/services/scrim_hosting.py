@@ -248,7 +248,9 @@ class HostingService:
             f"{settings['duration'] // 60}-minute sessions · 2 Tank / 2 DPS / 2 Support.",
         )
         players = {p["member_id"]: p for p in self.players()}
-        confirmed_slots = [s for s in slots if s.confirmed]
+        confirmed_slots = sorted(
+            (s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start)
+        )
         for slot in confirmed_slots:
             names = [
                 f"<@{mid}> · Best role: {players[mid]['answers'].get('preferred_role_1', 'Unavailable')}"

@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-07 - confirmed-session board ordering
+
+- Order public confirmed sessions by most confirmed players first, then soonest scrim start for ties.
+  Private day/time recommendations retain their attendance and role-fit ranking.
+
 ## 2026-10-07 - owner DM approval when six players confirm
 
 - Remove Host a session and Host settings from the public board and remove the hosting-settings command.

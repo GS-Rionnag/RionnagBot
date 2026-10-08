@@ -288,6 +288,17 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("1 confirmed", embed.fields[0].value)
         self.assertIn("<@1> · Best role: Tank", embed.fields[0].value)
 
+    async def test_public_board_orders_confirmed_count_then_soonest_start(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        service.players = roster
+        soon = HostSlot(self.start, self.start+7200, set(range(1, 7)), {1}, {}, 2, False)
+        later = HostSlot(self.start+86400, self.start+93600, set(range(1, 10)), {2}, {}, 0, False)
+        most = HostSlot(self.start+172800, self.start+180000, set(range(1, 7)), {1, 2}, {}, 2, False)
+        embed = service.board_embed([later, most, soon])
+        self.assertIn(f"<t:{most.start}:F>", embed.fields[0].value)
+        self.assertIn(f"<t:{soon.start}:F>", embed.fields[1].value)
+        self.assertIn(f"<t:{later.start}:F>", embed.fields[2].value)
+
     async def test_time_selection_confirms_only_the_exact_chosen_session(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
         now = datetime(2026, 10, 8, 20, tzinfo=UTC).timestamp()
