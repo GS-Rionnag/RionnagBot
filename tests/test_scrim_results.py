@@ -418,7 +418,7 @@ class ResultTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.sent, [])
         self.assertTrue(self.store.session_delivery(session["id"])["done"])
 
-    async def test_empty_session_and_late_result_refresh_existing_summary(self):
+    async def test_late_result_replaces_unverified_summary_after_game_log(self):
         session = await self.begin(start=False)
         empty = session_embed(session, [])
         self.assertEqual(empty.title, "Session ended · 0–0")
@@ -446,12 +446,16 @@ class ResultTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.store.session_delivery(session["id"])["done"])
         await self.logs.tick()
         await self.logs.tick()
-        self.assertEqual(len(self.sent), 2)
-        self.assertEqual(self.store.session_delivery(session["id"])["message_id"], divider.id)
-        divider.edit.assert_awaited_once()
-        self.assertEqual(divider.embeds[0].title, "Session ended · 0–1")
-        self.assertEqual(divider.embeds[0].fields[1].value, f"<@{person['member_id']}>")
-        self.assertNotIn("Unverified games", [f.name for f in divider.embeds[0].fields])
+        self.assertEqual(len(self.sent), 3)
+        divider.delete.assert_awaited_once()
+        updated = self.sent[-1]
+        self.assertEqual(self.store.session_delivery(session["id"])["message_id"], updated.id)
+        self.assertGreater(updated.id, self.sent[-2].id)
+        self.assertEqual(updated.embeds[0].title, "Session ended · 0–1")
+        self.assertEqual(updated.embeds[0].fields[1].value, f"<@{person['member_id']}>")
+        self.assertNotIn("Unverified games", [f.name for f in updated.embeds[0].fields])
+        await self.logs.tick()
+        self.assertEqual(len(self.sent), 3)
 
     async def test_aborted_session_does_not_post_summary(self):
         session = await self.begin(start=False)

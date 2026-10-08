@@ -124,6 +124,27 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.pending_matches(), [])
         self.assertEqual(sum(p["played"] for p in self.store.get(data["id"])["players"].values()), 6)
 
+    async def test_history_errors_rotate_starters_but_rate_limits_keep_cooldown(self):
+        data = await self.begin()
+        await self.controller.game_ended(self.guild, data)
+        monitor = ScrimMonitor(self.controller)
+        match = self.store.pending_matches()[0]
+        with patch.object(scrim_rivals, "recent_result", side_effect=TimeoutError):
+            await monitor.probe("history", self.store.get(data["id"]), match)
+        state = self.store.get(data["id"])["imports"][str(match["id"])]
+        self.assertEqual(state["probe"], 1)
+        self.assertLessEqual(state["next_at"], time.time() + 15)
+        with patch.object(scrim_rivals, "recent_result", side_effect=scrim_rivals.MonitorRateLimit(180)):
+            await monitor.probe("history", self.store.get(data["id"]), match)
+        state = self.store.get(data["id"])["imports"][str(match["id"])]
+        self.assertGreater(state["next_at"], time.time() + 179)
+        with self.store.connection() as db:
+            db.execute("UPDATE scrim_matches SET ended_at=? WHERE id=?", (time.time() - 1200, match["id"]))
+        self.assertEqual([m["id"] for m in self.store.pending_matches()], [match["id"]])
+        with self.store.connection() as db:
+            db.execute("UPDATE scrim_matches SET ended_at=? WHERE id=?", (time.time() - 3601, match["id"]))
+        self.assertEqual(self.store.pending_matches(), [])
+
     async def test_changed_lineup_or_ended_session_discards_in_flight_response(self):
         data = await self.begin(start=False)
         monitor = ScrimMonitor(self.controller)

@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-07 - recover delayed scrim results and replace unverified summaries
+
+- Keep completed games eligible for history verification for one hour after ending, including after a session closes. Non-rate-limit history errors rotate to another starter after fifteen seconds; provider cooldowns remain enforced.
+- When late game data arrives, publish its verified game log, remove the previous session summary, and repost the updated summary beneath the game logs. Remove Unverified games when none remain.
+
 ## 2026-10-07 - mandatory manager force in/out selections
 
 - Honor explicit incoming/outgoing pairs even when their current roles differ. Reassign the other five starters using saved secondary roles first, with the fewest off-role overrides when required to preserve 2 Tank / 2 DPS / 2 Support.

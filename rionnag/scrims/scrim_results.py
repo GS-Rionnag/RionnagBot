@@ -386,6 +386,11 @@ class ScrimResultLogs:
                     ):
                         message = candidate
                         break
+            if message and state.get("repost"):
+                await message.delete()
+                message = None
+                state.update(message_id=None, repost=False, first_attempt_at=time.time())
+                store.save_session_delivery(session["id"], state)
             if message:
                 await message.edit(embeds=embeds, allowed_mentions=discord.AllowedMentions.none())
             else:

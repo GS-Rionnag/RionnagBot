@@ -526,7 +526,7 @@ class ScrimStore:
         value["roster"], value["data"] = json.loads(value["roster"]), json.loads(value["data"])
         return value
 
-    def pending_matches(self, grace=900):
+    def pending_matches(self, grace=3600):
         with self.connection() as db:
             ids = [
                 r[0]
@@ -675,9 +675,10 @@ class ScrimStore:
                 db.execute("UPDATE scrim_matches SET external_id=? WHERE id=?", (external_id, match_id))
             if kind == "details":
                 db.execute("UPDATE scrim_matches SET data=? WHERE id=?", (json.dumps(payload), match_id))
-                # Late results refresh the existing session separator in place.
+                # Late results move the summary after their newly published game log.
                 db.execute(
-                    "UPDATE scrim_session_deliveries SET data=json_set(data, '$.done', 0, '$.next_at', 0) "
+                    "UPDATE scrim_session_deliveries SET data=json_set("
+                    "data, '$.done', 0, '$.next_at', 0, '$.repost', 1) "
                     "WHERE session_id=(SELECT session_id FROM scrim_matches WHERE id=?)",
                     (match_id,),
                 )

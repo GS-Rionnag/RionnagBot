@@ -116,6 +116,9 @@ class ScrimMonitor:
                 delay = min(900, 30 * 2 ** state["errors"])
                 if isinstance(error, scrim_rivals.MonitorRateLimit):
                     delay = max(delay, error.delay)
+                elif kind == "history":
+                    # A failed account lookup must not stall the other recorded starters.
+                    delay = 15
                 state["next_at"] = time.time() + delay
                 if kind == "live":
                     state.setdefault("absent", {}).pop(str(person["member_id"]), None)
@@ -140,7 +143,7 @@ class ScrimMonitor:
                     current["result_notice"] = (
                         f"Game {match['number']} ended. "
                         "Waiting for a recent custom match with the recorded real starters. "
-                        "Results retry for 15 minutes; unavailable stats remain unverified in /scrim log."
+                        "Results retry for one hour; unavailable stats remain unverified in /scrim log."
                     )
                 store.save(current)
                 await self.update_panel(guild, current)
