@@ -1,5 +1,14 @@
 # Architecture
 
+Scrim hosting is composed separately in app.py using a HostingService, ScrimHosting cog, persistent board
+and private paginated views. It reuses accepted-player eligibility, conservative recurring-window coverage,
+and the role-constrained lineup solver without changing finder or live-session behavior. SQLite stores
+hosting settings, per-start commitments, a frozen selected roster, and an idempotent outbound queue.
+Only explicit manager confirmation queues an anonymous advert. The separate owner-account collector
+validates the queue against live membership and current saved profiles before delivery; uncertain sends
+are reconciled through account history instead of automatic retries. Both runtimes share the pure
+scrim_availability module without importing the other Discord library's UI classes.
+
 RionnagBot composes Store, Applications, and feature cogs. Onboarding handles joins, repairs, reloads, and persistent view registration. Profiles owns stats/promotion. Scrims adapts the retained scrim controller to the new profile store.
 
 The shared per-user supervisor starts the main bot and, when its private token/source channels are configured, the scrim collector in its separate virtual environment. Each child has independent crash recovery after fifteen seconds; shared restart/stop controls both owned process trees. Status reports collector health separately from bot health. A collector lock per feed prevents duplicate instances. Restarted collectors catch up recent source history and resume persisted extraction, so the publisher does not silently operate on a stale feed after collector loss.

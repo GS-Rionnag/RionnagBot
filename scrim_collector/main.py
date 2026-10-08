@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from rionnag.instance import SingleInstance  # noqa: E402
 from rionnag.scrims.scrim_feed import FeedStore  # noqa: E402
 from rionnag.scrims.scrim_offer_rules import validate_offer  # noqa: E402
+from scrim_collector.hosting import publish_requests  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
@@ -126,11 +127,13 @@ class Collector(discord.Client):
         self.store = store
         self.channels = channels
         self.worker = None
+        self.host_worker = None
         self.inbox_ready = asyncio.Event()
         self.history_lock = asyncio.Lock()
 
     async def setup_hook(self):
         self.worker = asyncio.create_task(self.process_batches())
+        self.host_worker = asyncio.create_task(publish_requests(self))
 
     async def on_ready(self):
         log.info("Collector connected; watching %d channels", len(self.channels))
@@ -222,6 +225,9 @@ class Collector(discord.Client):
                 self.inbox_ready.set()
 
     async def close(self):
+        if self.host_worker:
+            self.host_worker.cancel()
+            await asyncio.gather(self.host_worker, return_exceptions=True)
         if self.worker:
             self.worker.cancel()
             await asyncio.gather(self.worker, return_exceptions=True)

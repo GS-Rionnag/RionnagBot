@@ -48,6 +48,18 @@ def search_player_accounts(username: str) -> list[dict]:
         ]
 
 
+def fetch_player_ranks(identity: str) -> dict:
+    """Read profile ranks without running match-history or win-rate lookups."""
+    with RivalsClient(**client_options()) as client:
+        player = client.get_player(identity)
+        summary = getattr(player, "rank_summary", None)
+        if hasattr(summary, "to_dict"):
+            summary = summary.to_dict()
+        fields, _ = profile_overview({"rank_game_season": player.rank_game_season or {},
+                                     "rank_summary": summary, "top_heroes": [], "win_rate": None})
+        return {"current_rank": fields["current_rank"], "peak_rank": fields["peak_rank"]}
+
+
 def fetch_player_overview(username: str, method: str | None = None) -> dict:
     """Use canonical rates, preserving the SDK default unless a method is selected."""
     if method not in {None, "normal", "precise"}:

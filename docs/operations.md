@@ -30,6 +30,47 @@ Do not delete the database for routine form changes: it contains restoration sna
 
 ## Commands and recovery
 
+### Hosting scrims
+
+Channel 1557583583143526460 contains the persistent **HOST SCRIMS** board. **Choose times** opens private,
+date-filtered choices; **My selections** withdraws commitments. Times in embeds render in each viewer's
+local zone; date filters and dropdown labels explicitly use Eastern Time. Saved schedules determine
+availability for the full session. Suggestions span fourteen days at thirty-minute starts, defaulting to
+two-hour sessions. Missing schedules or impossible 2 Tank / 2 DPS / 2 Support compositions are excluded.
+Only current accepted Marvel members with restored profiles and live game roles count; Visitors never count.
+Best-role assignments outrank secondary assignments; third/worst roles are never used. Confirmations are
+uncapped so extra players can be substitutes. A slot needs a valid composition among confirmed players
+before it is Ready; six votes alone are insufficient.
+
+The owner or Marvel managers use **Host settings** (or `/scrim_host_settings`) for opponent ranks,
+duration (60–240 minutes), and the external advert channel ID. A changed duration clears commitments;
+stale private selectors cannot confirm a different duration. On first setup, existing finder ranks and
+the sole configured source channel are reused when available. No advert posts automatically.
+`/scrim_host` points members to the board.
+
+**Host a session** shows the proposed lineup and an exact anonymous advert preview. Rank-only profile
+reads use linked UIDs and existing provider pacing; results cache for ten minutes. Missing/unavailable
+ranks say Unavailable rather than guessing. The external text contains the LFS rank range/start timestamp
+and Player1–Player6 current/peak ranks. It contains no usernames, account UIDs, mentions, or profile links.
+The manager must press **Publish LFS advert**. You handle opponent conversations yourself.
+
+The shared collector handles an outbound queue in the private main database every ten seconds, separately
+from offer extraction. It must be logged into this server owner's account. `SCRIM_HOST_CHANNEL_IDS` in
+the collector's private environment can specify an outbound allowlist; otherwise existing
+`SCRIM_SOURCE_CHANNEL_IDS` are used. The collector rechecks current roles, completion, commitments,
+availability, settings, and 2–2–2 before sending. Queued requests survive restart. Each session has one
+publication identity; interrupted/uncertain sends search owner-account history for the exact content and
+never blindly resend. Uncertain delivery requires checking the external channel manually. Known failed
+requests may be retried explicitly through a fresh manager preview. No external messages are deleted.
+
+The board displays delivery status and advert links and flags a selected roster when a starter withdraws,
+leaves, resets, or changes their roles/availability. **Host a session** can review and confirm a compatible
+replacement lineup for an already posted session without reposting the advert. Its original anonymous
+rank text remains the original published snapshot; discuss any replacement with the opponent yourself.
+Existing finder posts, votes, and voice/game tracking are independent. No form definition/version changes
+or membership resets are needed. `python -m tools.inspect_hosting` checks board delivery without printing
+player answers or credentials.
+
 Applications become reviewable after required identity verification without waiting for optional Rivals stats. Stats load in the background (up to five minutes) and cannot block acceptance or overwrite a changed/decided application. Account search/verification uses a separate three-request limit from full stats reads while preserving SDK pacing/cooldowns. Decisions confirm saved roles/state before DM delivery and ticket cleanup; closed DMs still retain retry notifications.
 
 `/ping` privately reports Discord gateway latency and ERROR/CRITICAL entries from the bot log over the last 24 hours, including the latest five timestamps and logger sources in server log time. Counts can include duplicate reports of one failure. Raw messages, tracebacks, collector errors, and warnings are excluded. Missing/unreadable logs are reported as unavailable, rather than healthy.

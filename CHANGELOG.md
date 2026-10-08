@@ -1,5 +1,21 @@
 # Change timeline
 
+## 2026-10-07 - role-safe scrim hosting and anonymous roster adverts
+
+- Add a persistent hosting board in channel 1557583583143526460 with private date-filtered confirmations,
+  withdrawals, lineup inspection, and manager settings/publication previews. Suggest two-hour sessions
+  over the next fourteen days, in thirty-minute increments, with configurable duration.
+- Require six distinct current, accepted game members available for the full interval who can fill
+  2 Tank / 2 DPS / 2 Support using only best/secondary roles. Prioritize confirmed teams, main-role fit,
+  and confirmed substitutes. Never cap confirmations at six or include a worst-role-only composition.
+- Publish explicitly confirmed LFS adverts through the shared owner-account collector. Include anonymous
+  Player1–Player6 current/peak rank lines from linked profiles, without usernames, UIDs, mentions, or profile
+  links. Missing ranks say Unavailable; publication always previews the exact anonymous text.
+- Persist votes, selected rosters, board identity, and delivery status. Revalidate starters before sending,
+  recover interrupted sends without blind retries, flag withdrawn starters, and allow reviewed replacement
+  lineups without reposting. Session-length changes require fresh confirmations. Existing finder and live
+  scrim tracking remain independent.
+
 ## 2026-10-07 - persistent single-starter scrim tracking
 
 - Pin live and history checks to one real starter, preferring a currently selected player whose history previously verified a game. Save the selection across retries/restarts and use the recorded lineup for completed games.

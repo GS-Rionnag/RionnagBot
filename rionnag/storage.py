@@ -40,10 +40,27 @@ class Store:
                     channel_id INTEGER PRIMARY KEY, min_rank TEXT NOT NULL, max_rank TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS scrim_vote_summaries (
                     channel_id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS scrim_host_settings (
+                    channel_id INTEGER PRIMARY KEY, message_id INTEGER,
+                    duration INTEGER NOT NULL DEFAULT 7200,
+                    destination INTEGER, min_rank TEXT, max_rank TEXT);
+                CREATE TABLE IF NOT EXISTS scrim_host_votes (
+                    channel_id INTEGER, start INTEGER, member_id INTEGER,
+                    PRIMARY KEY(channel_id,start,member_id));
+                CREATE TABLE IF NOT EXISTS scrim_host_adverts (
+                    channel_id INTEGER, start INTEGER, duration INTEGER, destination INTEGER,
+                    content TEXT NOT NULL, lineup TEXT NOT NULL, requested_by INTEGER,
+                    status TEXT NOT NULL DEFAULT 'queued', message_id INTEGER, error TEXT,
+                    requested_at REAL NOT NULL DEFAULT (unixepoch()),
+                    PRIMARY KEY(channel_id,start));
             """)
             columns = {row[1] for row in db.execute("PRAGMA table_info(scrim_opportunity_posts)")}
-            for name, kind in (("start_time", "INTEGER"), ("source_key", "TEXT"),
-                               ("source_revision", "INTEGER"), ("source_author", "TEXT")):
+            for name, kind in (
+                ("start_time", "INTEGER"),
+                ("source_key", "TEXT"),
+                ("source_revision", "INTEGER"),
+                ("source_author", "TEXT"),
+            ):
                 if name not in columns:
                     db.execute(f"ALTER TABLE scrim_opportunity_posts ADD COLUMN {name} {kind}")
 
@@ -108,6 +125,131 @@ class Store:
             )
             db.execute("DELETE FROM members WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_opportunity_votes WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_host_votes WHERE member_id=?", (member_id,))
+
+    def host_settings(self, channel_id):
+        with self.connection() as db:
+            db.execute("INSERT OR IGNORE INTO scrim_host_settings(channel_id) VALUES(?)", (channel_id,))
+            return dict(
+                db.execute("SELECT * FROM scrim_host_settings WHERE channel_id=?", (channel_id,)).fetchone()
+            )
+
+    def configure_host(self, channel_id, **values):
+        if not values or not values.keys() <= {
+            "message_id",
+            "duration",
+            "destination",
+            "min_rank",
+            "max_rank",
+        }:
+            raise ValueError("Invalid hosting settings")
+        self.host_settings(channel_id)
+        with self.connection() as db:
+            db.execute(
+                "UPDATE scrim_host_settings SET "
+                + ",".join(f"{key}=?" for key in values)
+                + " WHERE channel_id=?",
+                (*values.values(), channel_id),
+            )
+
+    def host_votes(self, channel_id):
+        with self.connection() as db:
+            result = {}
+            for row in db.execute(
+                "SELECT start,member_id FROM scrim_host_votes WHERE channel_id=?", (channel_id,)
+            ):
+                result.setdefault(row[0], set()).add(row[1])
+            return result
+
+    def set_host_vote(self, channel_id, start, member_id, add):
+        with self.connection() as db:
+            if add:
+                db.execute(
+                    "INSERT OR IGNORE INTO scrim_host_votes VALUES(?,?,?)", (channel_id, start, member_id)
+                )
+            else:
+                db.execute(
+                    "DELETE FROM scrim_host_votes WHERE channel_id=? AND start=? AND member_id=?",
+                    (channel_id, start, member_id),
+                )
+
+    def prune_host_votes(self, channel_id, allowed):
+        with self.connection() as db:
+            for row in db.execute(
+                "SELECT start,member_id FROM scrim_host_votes WHERE channel_id=?", (channel_id,)
+            ).fetchall():
+                if row[1] not in allowed.get(row[0], set()):
+                    db.execute(
+                        "DELETE FROM scrim_host_votes WHERE channel_id=? AND start=? AND member_id=?",
+                        (channel_id, *row),
+                    )
+
+    def host_adverts(self, channel_id):
+        with self.connection() as db:
+            return {
+                row["start"]: dict(row)
+                for row in db.execute("SELECT * FROM scrim_host_adverts WHERE channel_id=?", (channel_id,))
+            }
+
+    def queue_host_advert(self, channel_id, start, settings, lineup, requester, rank_lines=()):
+        content = f"LFS {settings['min_rank']} - {settings['max_rank']} at <t:{start}:F>"
+        if rank_lines:
+            from rionnag.scrims.scrim_offer_rules import canonical_rank
+
+            if len(rank_lines) != 6:
+                raise ValueError("An advert needs exactly six anonymous player rank entries.")
+            lines = []
+            for index, (current, peak) in enumerate(rank_lines, 1):
+                current = canonical_rank(current) or "Unavailable"
+                peak = canonical_rank(peak) or "Unavailable"
+                lines.append(f"Player{index} - {current}; {peak} Peak")
+            content += "\n\n" + "\n".join(lines)
+        with self.connection() as db:
+            # One publication per session, including after restart or repeated clicks.
+            cursor = db.execute(
+                "INSERT OR IGNORE INTO scrim_host_adverts "
+                "(channel_id,start,duration,destination,content,lineup,requested_by) VALUES(?,?,?,?,?,?,?)",
+                (
+                    channel_id,
+                    start,
+                    settings["duration"],
+                    settings["destination"],
+                    content,
+                    json.dumps(lineup, sort_keys=True),
+                    requester,
+                ),
+            )
+            return bool(cursor.rowcount)
+
+    def update_host_advert(self, channel_id, start, status, message_id=None, error=None):
+        with self.connection() as db:
+            db.execute(
+                "UPDATE scrim_host_adverts SET status=?,message_id=?,error=? WHERE channel_id=? AND start=?",
+                (status, message_id, error, channel_id, start),
+            )
+
+    def claim_host_advert(self, channel_id, start):
+        with self.connection() as db:
+            cursor = db.execute(
+                "UPDATE scrim_host_adverts SET status='sending' "
+                "WHERE channel_id=? AND start=? AND status='queued'",
+                (channel_id, start),
+            )
+            return bool(cursor.rowcount)
+
+    def replace_host_lineup(self, channel_id, start, lineup):
+        with self.connection() as db:
+            db.execute(
+                "UPDATE scrim_host_adverts SET lineup=? WHERE channel_id=? AND start=? AND status='sent'",
+                (json.dumps(lineup, sort_keys=True), channel_id, start),
+            )
+
+    def retry_failed_host_advert(self, channel_id, start):
+        with self.connection() as db:
+            db.execute(
+                "DELETE FROM scrim_host_adverts WHERE channel_id=? AND start=? AND status='failed'",
+                (channel_id, start),
+            )
 
     def check_form(self, key: str, form: dict):
         definition = json.dumps(form, sort_keys=True)
@@ -136,10 +278,12 @@ class Store:
 
     def profile_names(self, guild_id, game="Marvel Rivals"):
         with self.connection() as db:
-            return dict(db.execute(
-                "SELECT member_id,username FROM player_profiles WHERE guild_id=? AND game=?",
-                (guild_id, game),
-            ).fetchall())
+            return dict(
+                db.execute(
+                    "SELECT member_id,username FROM player_profiles WHERE guild_id=? AND game=?",
+                    (guild_id, game),
+                ).fetchall()
+            )
 
     def scrim_candidates(self, guild_id, game, version):
         """Only accepted, current-form players with a restored game profile."""
@@ -154,14 +298,18 @@ class Store:
 
     def opportunity_posts(self, channel_id):
         with self.connection() as db:
-            return {row["offer_key"]: dict(row) for row in db.execute(
-                "SELECT * FROM scrim_opportunity_posts WHERE channel_id=?", (channel_id,)
-            )}
+            return {
+                row["offer_key"]: dict(row)
+                for row in db.execute(
+                    "SELECT * FROM scrim_opportunity_posts WHERE channel_id=?", (channel_id,)
+                )
+            }
 
     def scrim_rank_filter(self, channel_id):
         with self.connection() as db:
-            row = db.execute("SELECT min_rank,max_rank FROM scrim_search_settings WHERE channel_id=?",
-                             (channel_id,)).fetchone()
+            row = db.execute(
+                "SELECT min_rank,max_rank FROM scrim_search_settings WHERE channel_id=?", (channel_id,)
+            ).fetchone()
         return tuple(row) if row else None
 
     def set_scrim_rank_filter(self, channel_id, ranks):
@@ -177,8 +325,15 @@ class Store:
             db.execute("DELETE FROM scrim_opportunity_votes WHERE channel_id=?", (channel_id,))
             db.execute("DELETE FROM scrim_opportunity_posts WHERE channel_id=?", (channel_id,))
 
-    def reserve_opportunity(self, channel_id, offer_key, start_time=None, source_key=None,
-                            source_revision=None, source_author=None):
+    def reserve_opportunity(
+        self,
+        channel_id,
+        offer_key,
+        start_time=None,
+        source_key=None,
+        source_revision=None,
+        source_author=None,
+    ):
         import time
 
         with self.connection() as db:
@@ -196,8 +351,19 @@ class Store:
                 (channel_id, offer_key, time.time(), start_time, source_key, source_revision, source_author),
             )
 
-    def save_opportunity(self, channel_id, offer_key, message_id, fingerprint, status, start_time=None,
-                         source_key=None, source_revision=None, source_author=None, reset_votes=False):
+    def save_opportunity(
+        self,
+        channel_id,
+        offer_key,
+        message_id,
+        fingerprint,
+        status,
+        start_time=None,
+        source_key=None,
+        source_revision=None,
+        source_author=None,
+        reset_votes=False,
+    ):
         self.reserve_opportunity(channel_id, offer_key)
         with self.connection() as db:
             db.execute(
@@ -205,30 +371,45 @@ class Store:
                 "start_time=COALESCE(?,start_time), source_key=COALESCE(?,source_key), "
                 "source_revision=COALESCE(?,source_revision), source_author=COALESCE(?,source_author) "
                 "WHERE channel_id=? AND offer_key=?",
-                (message_id, fingerprint, status, start_time, source_key, source_revision, source_author,
-                 channel_id, offer_key),
+                (
+                    message_id,
+                    fingerprint,
+                    status,
+                    start_time,
+                    source_key,
+                    source_revision,
+                    source_author,
+                    channel_id,
+                    offer_key,
+                ),
             )
             if reset_votes:
-                db.execute("DELETE FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=?",
-                           (channel_id, offer_key))
+                db.execute(
+                    "DELETE FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=?",
+                    (channel_id, offer_key),
+                )
 
     def opportunity_votes(self, channel_id, offer_key):
         with self.connection() as db:
-            return [row[0] for row in db.execute(
-                "SELECT member_id FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=? "
-                "ORDER BY member_id", (channel_id, offer_key),
-            )]
+            return [
+                row[0]
+                for row in db.execute(
+                    "SELECT member_id FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=? "
+                    "ORDER BY member_id",
+                    (channel_id, offer_key),
+                )
+            ]
 
     def vote_summary_message(self, channel_id):
         with self.connection() as db:
-            row = db.execute("SELECT message_id FROM scrim_vote_summaries WHERE channel_id=?",
-                             (channel_id,)).fetchone()
+            row = db.execute(
+                "SELECT message_id FROM scrim_vote_summaries WHERE channel_id=?", (channel_id,)
+            ).fetchone()
         return row[0] if row else None
 
     def save_vote_summary_message(self, channel_id, message_id):
         with self.connection() as db:
-            db.execute("INSERT OR REPLACE INTO scrim_vote_summaries VALUES(?,?)",
-                       (channel_id, message_id))
+            db.execute("INSERT OR REPLACE INTO scrim_vote_summaries VALUES(?,?)", (channel_id, message_id))
 
     def vote_opportunity(self, channel_id, offer_key, member_id, add):
         with self.connection() as db:
@@ -246,8 +427,10 @@ class Store:
                 ).fetchone()
                 if count >= 6 and not exists:
                     raise ValueError("Six players have already voted for this scrim.")
-                db.execute("INSERT OR IGNORE INTO scrim_opportunity_votes VALUES(?,?,?)",
-                           (channel_id, offer_key, member_id))
+                db.execute(
+                    "INSERT OR IGNORE INTO scrim_opportunity_votes VALUES(?,?,?)",
+                    (channel_id, offer_key, member_id),
+                )
             else:
                 db.execute(
                     "DELETE FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=? AND member_id=?",
@@ -257,8 +440,10 @@ class Store:
     def clear_opportunity_votes(self, channel_id, offer_key, valid_ids=None):
         with self.connection() as db:
             if valid_ids is None:
-                db.execute("DELETE FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=?",
-                           (channel_id, offer_key))
+                db.execute(
+                    "DELETE FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=?",
+                    (channel_id, offer_key),
+                )
             else:
                 rows = db.execute(
                     "SELECT member_id FROM scrim_opportunity_votes WHERE channel_id=? AND offer_key=?",
