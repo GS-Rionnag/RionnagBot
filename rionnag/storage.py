@@ -57,6 +57,13 @@ class Store:
                     channel_id INTEGER, start INTEGER, member_id INTEGER, duration INTEGER,
                     status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
                     PRIMARY KEY(channel_id,start,member_id,duration));
+                CREATE TABLE IF NOT EXISTS scrim_host_bookings (
+                    channel_id INTEGER, start INTEGER, duration INTEGER, confirmed_by INTEGER,
+                    PRIMARY KEY(channel_id,start));
+                CREATE TABLE IF NOT EXISTS scrim_host_bumps (
+                    channel_id INTEGER, start INTEGER, generation INTEGER, old_message_id INTEGER,
+                    status TEXT, requested_at REAL, message_id INTEGER, error TEXT,
+                    PRIMARY KEY(channel_id,start,generation));
                 CREATE TABLE IF NOT EXISTS scrim_host_adverts (
                     channel_id INTEGER, start INTEGER, duration INTEGER, destination INTEGER,
                     content TEXT NOT NULL, lineup TEXT NOT NULL, requested_by INTEGER,
@@ -148,6 +155,54 @@ class Store:
             return [dict(row) for row in db.execute(
                 "SELECT * FROM scrim_host_invites WHERE channel_id=?", (channel_id,)
             )]
+
+    def host_bookings(self, channel_id):
+        with self.connection() as db:
+            return {row["start"]: dict(row) for row in db.execute(
+                "SELECT * FROM scrim_host_bookings WHERE channel_id=?", (channel_id,)
+            )}
+
+    def book_host(self, channel_id, start, duration, owner):
+        with self.connection() as db:
+            db.execute("INSERT OR IGNORE INTO scrim_host_bookings VALUES(?,?,?,?)",
+                       (channel_id, start, duration, owner))
+
+    def host_bumps(self, channel_id):
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM scrim_host_bumps WHERE channel_id=?", (channel_id,)
+            )]
+
+    def queue_host_bump(self, channel_id, start):
+        with self.connection() as db:
+            advert = db.execute("SELECT * FROM scrim_host_adverts WHERE channel_id=? AND start=?",
+                                (channel_id, start)).fetchone()
+            pending = db.execute("SELECT 1 FROM scrim_host_bumps WHERE channel_id=? AND start=? "
+                                 "AND status IN ('queued','deleting','sending','uncertain')",
+                                 (channel_id, start)).fetchone()
+            booked = db.execute("SELECT 1 FROM scrim_host_bookings WHERE channel_id=? AND start=?",
+                                (channel_id, start)).fetchone()
+            if not advert or advert["status"] != "sent" or not advert["message_id"] or pending or booked:
+                return False
+            generation = db.execute("SELECT COALESCE(MAX(generation),0)+1 FROM scrim_host_bumps "
+                                    "WHERE channel_id=? AND start=?", (channel_id, start)).fetchone()[0]
+            db.execute("INSERT INTO scrim_host_bumps VALUES(?,?,?,?,'queued',unixepoch(),NULL,NULL)",
+                       (channel_id, start, generation, advert["message_id"]))
+            return True
+
+    def update_host_bump(self, channel_id, start, generation, status, message_id=None, error=None):
+        with self.connection() as db:
+            db.execute("UPDATE scrim_host_bumps SET status=?,message_id=?,error=? "
+                       "WHERE channel_id=? AND start=? AND generation=?",
+                       (status, message_id, error, channel_id, start, generation))
+
+    def complete_host_bump(self, channel_id, start, generation, message_id):
+        with self.connection() as db:
+            db.execute("UPDATE scrim_host_bumps SET status='sent',message_id=?,error=NULL "
+                       "WHERE channel_id=? AND start=? AND generation=?",
+                       (message_id, channel_id, start, generation))
+            db.execute("UPDATE scrim_host_adverts SET status='sent',message_id=?,error=NULL "
+                       "WHERE channel_id=? AND start=?", (message_id, channel_id, start))
 
     def reserve_host_invite(self, channel_id, start, member_id, duration):
         with self.connection() as db:

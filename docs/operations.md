@@ -93,6 +93,16 @@ The external text is `LFS Grandmaster - Celestial at <t:UNIX:F>` using the owner
 It contains no individual player lists, ranks, usernames, account UIDs, mentions, or profile links.
 No automatic profile-rank lookup runs when approving the advert. You handle opponent conversations yourself.
 
+The six-player owner DM lists confirmed players under Tank, DPS, and Support, using their saved best roles
+like the main board. Persistent Bump post and Confirm scrim controls remain usable after an advert is sent.
+Existing panels refresh with these controls. Only the owner can operate them; readiness and notice generation
+are checked again. Bump post requires a delivered advert and no other pending bump. The posting account checks
+the current team and destination, deletes only the recorded own advert, and reposts its exact text. Durable
+phases recover interrupted deletion and uncertain delivery without blindly sending duplicates. The main
+board shows bump status and updates the advert link. Confirm scrim marks the interval officially booked,
+closes advertising/bumping and further player invitations for it, and updates the main board and owner DM.
+This does not start a tracked game, move members, or change their saved profiles.
+
 The shared collector handles an outbound queue in the private main database every ten seconds, separately
 from offer extraction. It must be logged into this server owner's account. `SCRIM_HOST_CHANNEL_IDS` in
 the collector's private environment can specify an outbound allowlist; otherwise existing

@@ -23,6 +23,8 @@ def invalid_request(store, job, players, live_members, owner_id, manager_role):
     if job["start"] <= time.time():
         return "Session already started"
     settings = store.host_settings(job["channel_id"])
+    if job["start"] in store.host_bookings(job["channel_id"]):
+        return "Scrim is officially confirmed; advertising is closed"
     content_matches = bool(re.fullmatch(
         rf"LFS [A-Za-z0-9 ]+ - [A-Za-z0-9 ]+ at <t:{job['start']}:F>", job["content"]
     )) or job["content"].splitlines()[0] == f"LFS at <t:{job['start']}:F>"
@@ -63,29 +65,10 @@ def invalid_request(store, job, players, live_members, owner_id, manager_role):
     return None
 
 
-async def process_job(client, store, job, allowed):
-    key = job["channel_id"], job["start"]
-    if job["destination"] not in allowed:
-        state = "uncertain" if job["status"] in {"sending", "uncertain"} else "failed"
-        store.update_host_advert(
-            *key, state, error="Destination is not allowed; check any prior delivery manually"
-        )
-        return
-    channel = client.get_channel(job["destination"]) or await client.fetch_channel(job["destination"])
-    if job["status"] in {"sending", "uncertain"}:
-        # Resolve a crash/network timeout by checking the original account's history.
-        # No match is not proof of failed delivery; never automatically resend.
-        after = datetime.fromtimestamp(job["requested_at"] - 5, UTC)
-        async for message in channel.history(limit=None, after=after):
-            if message.author.id == client.user.id and message.content == job["content"]:
-                store.update_host_advert(*key, "sent", message_id=message.id)
-                return
-        store.update_host_advert(*key, "uncertain", error="Delivery unconfirmed; check destination manually")
-        return
+async def live_reason(client, store, job):
     guild = client.get_guild(config.GUILD_ID)
     if guild is None or client.user.id != guild.owner_id:
-        store.update_host_advert(*key, "failed", error="Collector must be the server owner's account")
-        return
+        return "Collector must be the server owner's account"
     form = config.load_forms()["marvel-rivals"]
     players = {
         p["member_id"]: p for p in store.scrim_candidates(config.GUILD_ID, "marvel-rivals", form["version"])
@@ -101,7 +84,27 @@ async def process_job(client, store, job, allowed):
     players = {
         p["member_id"]: p for p in store.scrim_candidates(config.GUILD_ID, "marvel-rivals", form["version"])
     }
-    reason = invalid_request(store, job, players, members, guild.owner_id, form["manager_role"])
+    return invalid_request(store, job, players, members, guild.owner_id, form["manager_role"])
+
+
+async def process_job(client, store, job, allowed):
+    key = job["channel_id"], job["start"]
+    if job["destination"] not in allowed:
+        state = "uncertain" if job["status"] in {"sending", "uncertain"} else "failed"
+        store.update_host_advert(
+            *key, state, error="Destination is not allowed; check any prior delivery manually"
+        )
+        return
+    channel = client.get_channel(job["destination"]) or await client.fetch_channel(job["destination"])
+    if job["status"] in {"sending", "uncertain"}:
+        after = datetime.fromtimestamp(job["requested_at"] - 5, UTC)
+        async for message in channel.history(limit=None, after=after):
+            if message.author.id == client.user.id and message.content == job["content"]:
+                store.update_host_advert(*key, "sent", message_id=message.id)
+                return
+        store.update_host_advert(*key, "uncertain", error="Delivery unconfirmed; check destination manually")
+        return
+    reason = await live_reason(client, store, job)
     if reason:
         store.update_host_advert(*key, "failed", error=reason)
         return
@@ -117,6 +120,45 @@ async def process_job(client, store, job, allowed):
     store.update_host_advert(*key, "sent", message_id=message.id)
 
 
+async def process_bump(client, store, bump, allowed):
+    key = bump["channel_id"], bump["start"], bump["generation"]
+    job = store.host_adverts(bump["channel_id"]).get(bump["start"])
+    if not job or job["destination"] not in allowed:
+        store.update_host_bump(*key, "failed", error="Advert missing or destination not allowed")
+        return
+    channel = client.get_channel(job["destination"]) or await client.fetch_channel(job["destination"])
+    if bump["status"] in {"sending", "uncertain"}:
+        after = datetime.fromtimestamp(bump["requested_at"] - 5, UTC)
+        async for message in channel.history(limit=None, after=after):
+            if (message.id != bump["old_message_id"] and message.author.id == client.user.id
+                    and message.content == job["content"]):
+                store.complete_host_bump(*key, message.id)
+                return
+        store.update_host_bump(*key, "uncertain", error="Delivery unconfirmed; check destination manually")
+        return
+    reason = await live_reason(client, store, job)
+    if reason:
+        store.update_host_bump(*key, "failed", error=reason)
+        return
+    store.update_host_bump(*key, "deleting")
+    try:
+        old = await channel.fetch_message(bump["old_message_id"])
+        if old.author.id != client.user.id:
+            store.update_host_bump(*key, "failed", error="Old advert is not owned by the posting account")
+            return
+        await old.delete()
+    except discord.NotFound:
+        pass
+    store.update_host_bump(*key, "sending")
+    try:
+        message = await channel.send(job["content"], nonce=str(int(bump["requested_at"] * 1000)),
+                                     allowed_mentions=discord.AllowedMentions.none())
+    except (discord.HTTPException, OSError, TimeoutError):
+        store.update_host_bump(*key, "uncertain", error="Delivery unconfirmed; checking destination")
+        return
+    store.complete_host_bump(*key, message.id)
+
+
 async def publish_requests(client):
     await client.wait_until_ready()
     store = Store(config.DATABASE)
@@ -130,4 +172,10 @@ async def publish_requests(client):
                 await process_job(client, store, job, allowed)
             except Exception:
                 log.warning("Hosting delivery check failed; retained for review/retry", exc_info=False)
+        for bump in store.host_bumps(config.SCRIM_HOST_CHANNEL_ID):
+            if bump["status"] in {"queued", "deleting", "sending", "uncertain"}:
+                try:
+                    await process_bump(client, store, bump, allowed)
+                except Exception:
+                    log.warning("Hosting bump failed; retained for recovery", exc_info=False)
         await asyncio.sleep(10)

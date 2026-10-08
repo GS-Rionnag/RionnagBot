@@ -522,3 +522,27 @@ class HostApproval(HostingView):
 
             button.callback = decide
             self.add_item(button)
+        for label, bump in (("Bump post", True), ("Confirm scrim", False)):
+            button = discord.ui.Button(
+                label=label, row=1, custom_id=f"hosting-manage:{start}:{generation}:{int(bump)}",
+                style=discord.ButtonStyle.primary if bump else discord.ButtonStyle.success,
+            )
+
+            async def manage(interaction, bump=bump):
+                await interaction.response.defer(thinking=True)
+                try:
+                    await service.manage_session(interaction, start, generation, bump)
+                except ValueError as exc:
+                    await interaction.followup.send(str(exc), ephemeral=True)
+                    return
+                if not bump:
+                    slot = next((s for s in service.snapshot() if s.start == start), None)
+                    if slot:
+                        await interaction.message.edit(embed=service.owner_panel(slot, generation))
+                await interaction.followup.send(
+                    "Bump queued. The old advert will be deleted and reposted."
+                    if bump else "Scrim officially confirmed. The main board is updated."
+                )
+
+            button.callback = manage
+            self.add_item(button)

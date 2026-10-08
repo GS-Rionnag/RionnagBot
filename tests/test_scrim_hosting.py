@@ -12,7 +12,7 @@ from rionnag import config
 from rionnag.services.scrim_hosting import HostingService, HostSlot, generate_slots, role_team
 from rionnag.storage import Store
 from rionnag.ui.scrim_hosting import DayPicker, HostingBoard, SessionCard, SlotPicker, day_groups
-from scrim_collector.hosting import invalid_request, process_job
+from scrim_collector.hosting import invalid_request, process_bump, process_job
 
 
 def player(mid, best, second):
@@ -220,6 +220,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         guild = SimpleNamespace(get_channel=lambda cid: channel)
         bot = SimpleNamespace(get_guild=lambda gid: guild, user=SimpleNamespace(id=44))
         service = HostingService(bot, SimpleNamespace(store=self.store, forms=config.load_forms()), None)
+        service.players = roster
         service.players = lambda: roster()
         service.snapshot = lambda: []
         await service.sync()
@@ -594,6 +595,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         guild = SimpleNamespace(owner_id=99, owner=owner)
         bot = SimpleNamespace(get_guild=lambda gid: guild, user=SimpleNamespace(id=44))
         service = HostingService(bot, SimpleNamespace(store=self.store, forms=config.load_forms()), None)
+        service.players = roster
         slot = SimpleNamespace(
             start=self.start,
             end=self.start + 7200,
@@ -613,7 +615,10 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         dm.send.assert_awaited_once()
         view = dm.send.call_args.kwargs["view"]
         self.assertTrue(view.is_persistent())
-        self.assertEqual([button.label for button in view.children], ["Enter ranks & send", "No"])
+        self.assertEqual([button.label for button in view.children],
+                         ["Enter ranks & send", "No", "Bump post", "Confirm scrim"])
+        self.assertIn("Tank: <@1>, <@2>\nDPS: <@3>, <@4>\nSupport: <@5>, <@6>",
+                      dm.send.call_args.kwargs["embed"].description)
         await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, False)
         await service.notify_ready()
         dm.send.assert_awaited_once()
@@ -668,6 +673,85 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 "@everyone - Celestial"
             )
         self.assertEqual(self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID), {})
+
+    async def test_bump_deletes_own_old_advert_before_reposting_and_updates_link(self):
+        self.queue()
+        cid = config.SCRIM_HOST_CHANNEL_ID
+        self.store.update_host_advert(cid, self.start, "sent", message_id=77)
+        self.assertTrue(self.store.queue_host_bump(cid, self.start))
+        self.assertFalse(self.store.queue_host_bump(cid, self.start))
+        calls = []
+
+        async def delete():
+            calls.append("delete")
+
+        async def send(*args, **kwargs):
+            calls.append("send")
+            return SimpleNamespace(id=88)
+
+        old = SimpleNamespace(author=SimpleNamespace(id=99), delete=AsyncMock(side_effect=delete))
+        channel = SimpleNamespace(fetch_message=AsyncMock(return_value=old), send=AsyncMock(side_effect=send))
+        client = SimpleNamespace(get_channel=lambda mid: channel, user=SimpleNamespace(id=99))
+        with patch("scrim_collector.hosting.live_reason", AsyncMock(return_value=None)):
+            await process_bump(client, self.store, self.store.host_bumps(cid)[0], {42})
+        self.assertEqual(calls, ["delete", "send"])
+        self.assertEqual(self.store.host_adverts(cid)[self.start]["message_id"], 88)
+        self.assertEqual(self.store.host_bumps(cid)[0]["status"], "sent")
+        self.assertTrue(self.store.queue_host_bump(cid, self.start))
+        self.assertEqual(self.store.host_bumps(cid)[1]["old_message_id"], 88)
+
+    async def test_bump_revalidates_before_delete_and_uncertain_delivery_never_resends(self):
+        self.queue()
+        cid = config.SCRIM_HOST_CHANNEL_ID
+        self.store.update_host_advert(cid, self.start, "sent", message_id=77)
+        self.store.queue_host_bump(cid, self.start)
+        channel = SimpleNamespace(fetch_message=AsyncMock(), send=AsyncMock())
+        client = SimpleNamespace(get_channel=lambda mid: channel, user=SimpleNamespace(id=99))
+        with patch("scrim_collector.hosting.live_reason", AsyncMock(return_value="Team changed")):
+            await process_bump(client, self.store, self.store.host_bumps(cid)[0], {42})
+        channel.fetch_message.assert_not_awaited()
+        channel.send.assert_not_awaited()
+        self.assertEqual(self.store.host_bumps(cid)[0]["status"], "failed")
+        self.store.queue_host_bump(cid, self.start)
+        bump = self.store.host_bumps(cid)[1]
+        self.store.update_host_bump(cid, self.start, bump["generation"], "uncertain")
+        bump = self.store.host_bumps(cid)[1]
+
+        async def history(**kwargs):
+            yield SimpleNamespace(id=77, author=SimpleNamespace(id=99),
+                                  content=self.store.host_adverts(cid)[self.start]["content"])
+
+        channel.history = history
+        await process_bump(client, self.store, bump, {42})
+        channel.send.assert_not_awaited()
+        self.assertEqual(self.store.host_bumps(cid)[1]["status"], "uncertain")
+
+        async def recovered_history(**kwargs):
+            yield SimpleNamespace(id=88, author=SimpleNamespace(id=99),
+                                  content=self.store.host_adverts(cid)[self.start]["content"])
+
+        channel.history = recovered_history
+        await process_bump(client, self.store, self.store.host_bumps(cid)[1], {42})
+        channel.send.assert_not_awaited()
+        self.assertEqual(self.store.host_adverts(cid)[self.start]["message_id"], 88)
+        self.assertEqual(self.store.host_bumps(cid)[1]["status"], "sent")
+
+    async def test_official_confirmation_is_owner_only_persisted_and_closes_advertising(self):
+        service, slot, dm = self.approval_fixture()
+        await service.notify_ready()
+        with self.assertRaises(ValueError):
+            await service.manage_session(SimpleNamespace(user=SimpleNamespace(id=77)), self.start, 1, False)
+        await service.manage_session(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, False)
+        booking = Store(self.store.path).host_bookings(service.channel_id)[self.start]
+        self.assertEqual(booking["confirmed_by"], 99)
+        self.assertIn("Officially confirmed", service.owner_panel(slot, 1).description)
+        with self.assertRaises(ValueError):
+            await service.publish(SimpleNamespace(user=SimpleNamespace(id=99), guild_id=config.GUILD_ID,
+                                                  guild=service.bot.get_guild(config.GUILD_ID)),
+                                  self.start, service.preview_token(slot, self.settings))
+        self.queue()
+        self.store.update_host_advert(service.channel_id, self.start, "sent", message_id=77)
+        self.assertFalse(self.store.queue_host_bump(service.channel_id, self.start))
 
     async def test_approval_expires_when_team_breaks_and_rearms_with_new_generation(self):
         service, slot, dm = self.approval_fixture()

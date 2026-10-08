@@ -1,5 +1,16 @@
 # Change timeline
 
+## 2026-10-08 - owner roster, advert bump, and official confirmation
+
+- Six-player owner DMs list confirmed mentions grouped by saved best role in Tank / DPS / Support order.
+  Add persistent owner-only Bump post and Confirm scrim buttons; refresh existing owner panels and restore
+  management controls after sending an advert and after restart.
+- Bump post queues one replacement at a time. The shared posting account revalidates the session, deletes
+  only its recorded own advert, and reposts the same content. Persist delete/send phases and recover uncertain
+  sends from history without blindly repeating them; atomically update the advert link on success.
+- Confirm scrim marks that interval officially booked on the main board and owner DM. Persist the booking
+  and stop new adverts, bumps, and player invitation DMs for that interval. Existing voice tracking is unchanged.
+
 ## 2026-10-08 - owner-entered advert rank range
 
 - Replace the six-player approval's send button with Enter ranks & send. Open an owner-only rank form

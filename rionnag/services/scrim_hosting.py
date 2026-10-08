@@ -100,10 +100,75 @@ class HostingService:
             self.bot.add_view(SessionCard(self, position), message_id=message_id)
 
         for start, notice in self.store.host_notices(self.channel_id).items():
-            if notice["status"] == "pending" and notice["message_id"]:
+            if notice["status"] in {"pending", "accepted"} and notice["message_id"]:
                 self.bot.add_view(
                     HostApproval(self, start, notice["generation"]), message_id=notice["message_id"]
                 )
+
+    def confirmed_roles(self, slot):
+        players = {p["member_id"]: p for p in self.players()}
+        return "\n".join(
+            f"{role}: " + ", ".join(f"<@{mid}>" for mid in sorted(slot.confirmed)
+                                    if mid in players
+                                    and players[mid]["answers"].get("preferred_role_1") == role)
+            for role in ("Tank", "DPS", "Support")
+        )
+
+    def owner_panel(self, slot, generation):
+        booked = slot.start in self.store.host_bookings(self.channel_id)
+        embed = discord.Embed(
+            title="Six players confirmed for a scrim", color=config.COLOR,
+            description=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
+            f"**{len(slot.confirmed)} players confirmed**\n{self.confirmed_roles(slot)}\n\n"
+            + ("**Officially confirmed**\n" if booked else "")
+            + "Enter ranks to send an advert, bump its existing post, or officially confirm the scrim.",
+        )
+        embed.set_footer(text=f"Scrim host approval · {slot.start} · {generation}")
+        return embed
+
+    async def refresh_owner_panels(self):
+        from rionnag.ui.scrim_hosting import HostApproval
+
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if not guild:
+            return
+        notices = self.store.host_notices(self.channel_id)
+        slots = {s.start: s for s in self.snapshot()}
+        if not any(n["message_id"] and n["status"] in {"pending", "accepted"} for n in notices.values()):
+            return
+        owner = guild.owner or await self.bot.fetch_user(guild.owner_id)
+        dm = owner.dm_channel or await owner.create_dm()
+        for start, notice in notices.items():
+            if (start not in slots or not notice["message_id"]
+                    or notice["status"] not in {"pending", "accepted"}):
+                continue
+            try:
+                message = await dm.fetch_message(notice["message_id"])
+                await message.edit(embed=self.owner_panel(slots[start], notice["generation"]),
+                                   view=HostApproval(self, start, notice["generation"]))
+            except discord.HTTPException:
+                log.warning("Could not refresh owner scrim controls; will retry")
+
+    async def manage_session(self, interaction, start, generation, bump):
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if not guild or interaction.user.id != guild.owner_id:
+            raise ValueError("Only the server owner can manage this scrim.")
+        async with self.notice_lock:
+            notice = self.store.host_notices(self.channel_id).get(start)
+            if not notice or notice["generation"] != generation or notice["status"] == "expired":
+                raise ValueError("This scrim request is no longer current.")
+            slot = next((s for s in self.snapshot() if s.start == start and s.ready), None)
+            if not slot:
+                raise ValueError("This session no longer has a confirmed 2–2–2 team.")
+            if bump:
+                if not self.store.queue_host_bump(self.channel_id, start):
+                    raise ValueError("No delivered advert, a bump is pending, or this scrim is booked.")
+            else:
+                self.store.book_host(self.channel_id, start, slot.end - slot.start, interaction.user.id)
+                self.store.update_host_notice(
+                    self.channel_id, start, generation, "accepted", notice["message_id"]
+                )
+        await self.sync()
 
     async def notify_ready(self):
         from rionnag.ui.scrim_hosting import HostApproval
@@ -112,7 +177,8 @@ class HostingService:
             guild = self.bot.get_guild(config.GUILD_ID)
             if guild is None:
                 return
-            slots = {s.start: s for s in self.snapshot() if s.ready}
+            booked = self.store.host_bookings(self.channel_id)
+            slots = {s.start: s for s in self.snapshot() if s.ready and s.start not in booked}
             notices = self.store.host_notices(self.channel_id)
             adverts = self.store.host_adverts(self.channel_id)
             for start, notice in notices.items():
@@ -144,15 +210,7 @@ class HostingService:
                         recovered = message
                         break
                 view = HostApproval(self, slot.start, generation)
-                embed = discord.Embed(
-                    title="Six players confirmed for a scrim",
-                    color=config.COLOR,
-                    description=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
-                    f"**{len(slot.confirmed)} players confirmed** · Valid 2 Tank / 2 DPS / 2 Support\n\n"
-                    "Would you like to send a message to the scrim advertisement area?\n"
-                    "Open the rank form, enter the rank range, and submit to send the advert.",
-                )
-                embed.set_footer(text=marker)
+                embed = self.owner_panel(slot, generation)
                 if recovered:
                     await recovered.edit(embed=embed, view=view)
                     message = recovered
@@ -166,7 +224,8 @@ class HostingService:
         from rionnag.ui.scrim_hosting import ScrimInvite
 
         async with self.invite_lock:
-            slots = [s for s in self.snapshot() if len(s.confirmed) >= 3]
+            booked = self.store.host_bookings(self.channel_id)
+            slots = [s for s in self.snapshot() if len(s.confirmed) >= 3 and s.start not in booked]
             existing = {(i["start"], i["member_id"], i["duration"]): i
                         for i in self.store.host_invites(self.channel_id)}
             for slot in slots:
@@ -349,6 +408,8 @@ class HostingService:
                     or "None remaining."
                 )
             )
+            if slot.start in self.store.host_bookings(self.channel_id):
+                value = "**Officially confirmed**\n" + value
             if len(embed.fields) >= 18 or len(embed) + len(value) > 5500:
                 break
             embed.add_field(
@@ -377,6 +438,12 @@ class HostingService:
                 )
             )
             state = advert["status"].replace("_", " ").capitalize()
+            bumps = [b for b in self.store.host_bumps(self.channel_id) if b["start"] == start]
+            if bumps:
+                latest = max(bumps, key=lambda b: b["generation"])
+                state += f" · Bump {latest['status']}"
+                if latest["error"]:
+                    state += f" · {latest['error']}"
             if advert["error"]:
                 state += f" · {advert['error']}"
             if not intact:
@@ -525,6 +592,8 @@ class HostingService:
         if not self.manager(interaction):
             raise ValueError("Only the owner or Marvel Rivals Managers can publish adverts.")
         async with self.lock:
+            if start in self.store.host_bookings(self.channel_id):
+                raise ValueError("This scrim is officially confirmed; no new advert will be sent.")
             settings = self.store.host_settings(self.channel_id)
             slot = next((s for s in self.snapshot() if s.start == start), None)
             if not slot or not slot.ready:
