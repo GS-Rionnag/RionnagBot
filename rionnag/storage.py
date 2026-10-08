@@ -47,6 +47,12 @@ class Store:
                 CREATE TABLE IF NOT EXISTS scrim_host_votes (
                     channel_id INTEGER, start INTEGER, member_id INTEGER,
                     PRIMARY KEY(channel_id,start,member_id));
+                CREATE TABLE IF NOT EXISTS scrim_host_overrides (
+                    channel_id INTEGER, start INTEGER, member_id INTEGER, duration INTEGER,
+                    PRIMARY KEY(channel_id,start,member_id));
+                CREATE TABLE IF NOT EXISTS scrim_host_cards (
+                    channel_id INTEGER, position INTEGER, message_id INTEGER,
+                    PRIMARY KEY(channel_id,position));
                 CREATE TABLE IF NOT EXISTS scrim_host_adverts (
                     channel_id INTEGER, start INTEGER, duration INTEGER, destination INTEGER,
                     content TEXT NOT NULL, lineup TEXT NOT NULL, requested_by INTEGER,
@@ -130,6 +136,33 @@ class Store:
             db.execute("DELETE FROM members WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_opportunity_votes WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_votes WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_host_overrides WHERE member_id=?", (member_id,))
+
+    def host_cards(self, channel_id):
+        with self.connection() as db:
+            return dict(db.execute(
+                "SELECT position,message_id FROM scrim_host_cards WHERE channel_id=?", (channel_id,)
+            ).fetchall())
+
+    def save_host_card(self, channel_id, position, message_id):
+        with self.connection() as db:
+            db.execute("INSERT OR REPLACE INTO scrim_host_cards VALUES(?,?,?)",
+                       (channel_id, position, message_id))
+
+    def host_overrides(self, channel_id, duration):
+        with self.connection() as db:
+            result = {}
+            for start, mid in db.execute(
+                "SELECT start,member_id FROM scrim_host_overrides WHERE channel_id=? AND duration=?",
+                (channel_id, duration),
+            ):
+                result.setdefault(start, set()).add(mid)
+            return result
+
+    def set_host_override(self, channel_id, start, member_id, duration):
+        with self.connection() as db:
+            db.execute("INSERT OR REPLACE INTO scrim_host_overrides VALUES(?,?,?,?)",
+                       (channel_id, start, member_id, duration))
 
     def host_settings(self, channel_id):
         with self.connection() as db:
@@ -173,6 +206,10 @@ class Store:
                 )
             else:
                 db.execute(
+                    "DELETE FROM scrim_host_overrides WHERE channel_id=? AND start=? AND member_id=?",
+                    (channel_id, start, member_id),
+                )
+                db.execute(
                     "DELETE FROM scrim_host_votes WHERE channel_id=? AND start=? AND member_id=?",
                     (channel_id, start, member_id),
                 )
@@ -183,6 +220,10 @@ class Store:
                 "SELECT start,member_id FROM scrim_host_votes WHERE channel_id=?", (channel_id,)
             ).fetchall():
                 if row[1] not in allowed.get(row[0], set()):
+                    db.execute(
+                        "DELETE FROM scrim_host_overrides WHERE channel_id=? AND start=? AND member_id=?",
+                        (channel_id, *row),
+                    )
                     db.execute(
                         "DELETE FROM scrim_host_votes WHERE channel_id=? AND start=? AND member_id=?",
                         (channel_id, *row),

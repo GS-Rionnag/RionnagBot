@@ -47,13 +47,15 @@ def role_team(players):
     return team, sum(role != primary[mid] for mid, role in team.items())
 
 
-def generate_slots(players, votes, now, duration=7200, days=14):
+def generate_slots(players, votes, now, duration=7200, days=14, overrides=None):
     """Only show full-interval, best/secondary-only 2–2–2 compositions."""
     players = list({p["member_id"]: p for p in players}.values())
     first = (int(now) // 1800 + 1) * 1800
     result = []
+    overrides = overrides or {}
     for start in range(first, int(now) + days * 86400, 1800):
-        available = [p for p in players if covers_interval(p["answers"], start, start + duration)]
+        available = [p for p in players if covers_interval(p["answers"], start, start + duration)
+                     or p["member_id"] in overrides.get(start, set()) & votes.get(start, set())]
         if len(available) < 6:
             continue
         team, secondary = role_team(available)
@@ -86,7 +88,10 @@ class HostingService:
         self.notice_lock = asyncio.Lock()
 
     def register_approvals(self):
-        from rionnag.ui.scrim_hosting import HostApproval
+        from rionnag.ui.scrim_hosting import HostApproval, SessionCard
+
+        for position, message_id in self.store.host_cards(self.channel_id).items():
+            self.bot.add_view(SessionCard(self, position), message_id=message_id)
 
         for start, notice in self.store.host_notices(self.channel_id).items():
             if notice["status"] == "pending" and notice["message_id"]:
@@ -236,6 +241,7 @@ class HostingService:
             self.store.host_votes(self.channel_id),
             time.time() if now is None else now,
             settings["duration"],
+            overrides=self.store.host_overrides(self.channel_id, settings["duration"]),
         )
 
     def board_embed(self, slots):
@@ -251,7 +257,7 @@ class HostingService:
         confirmed_slots = sorted(
             (s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start)
         )
-        confirmed_slots = confirmed_slots[:3]
+        confirmed_slots = confirmed_slots[:5]
         for slot in confirmed_slots:
             names = [
                 f"{role}: "
@@ -331,15 +337,17 @@ class HostingService:
         fields = list(summary.fields)
         summary.clear_fields()
         embeds = [summary]
-        ranked = sorted((s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start))[:3]
-        for place, field, slot in zip(("First place", "Second place", "Third place"), fields, ranked):
+        ranked = sorted((s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start))[:5]
+        for place, field, slot in zip(
+            ("First place", "Second place", "Third place", "Fourth place", "Fifth place"), fields, ranked
+        ):
             embed = discord.Embed(title=f"<t:{slot.start}:F>", color=config.COLOR, description=field.value)
             embed.set_footer(text=f"{place} · {field.name}")
             embeds.append(embed)
         return embeds
 
     async def sync(self):
-        from rionnag.ui.scrim_hosting import HostingBoard
+        from rionnag.ui.scrim_hosting import HostingBoard, SessionCard
 
         async with self.lock:
             slots = self.snapshot()
@@ -370,14 +378,55 @@ class HostingService:
                         break
             if message:
                 await message.edit(
-                    embeds=embeds, view=HostingBoard(self), allowed_mentions=discord.AllowedMentions.none()
+                    embeds=embeds[:1], view=HostingBoard(self),
+                    allowed_mentions=discord.AllowedMentions.none()
                 )
             else:
                 message = await channel.send(
-                    embeds=embeds, view=HostingBoard(self), allowed_mentions=discord.AllowedMentions.none()
+                    embeds=embeds[:1], view=HostingBoard(self),
+                    allowed_mentions=discord.AllowedMentions.none()
                 )
             self.store.configure_host(self.channel_id, message_id=message.id)
+            cards = self.store.host_cards(self.channel_id)
+            for position in range(5):
+                marker = f"**Scrim option {position + 1}**"
+                card = None
+                if position in cards:
+                    try:
+                        card = await channel.fetch_message(cards[position])
+                    except discord.NotFound:
+                        pass
+                if card is None:
+                    async for candidate in channel.history(limit=100):
+                        if candidate.author.id == self.bot.user.id and candidate.content == marker:
+                            card = candidate
+                            break
+                embed = embeds[position + 1] if position + 1 < len(embeds) else discord.Embed(
+                    title=f"Scrim #{position + 1}", description="No confirmed session in this position yet.",
+                    color=config.COLOR,
+                )
+                view = SessionCard(self, position, disabled=position + 1 >= len(embeds))
+                kwargs = dict(content=marker, embed=embed, view=view,
+                              allowed_mentions=discord.AllowedMentions.none())
+                card = await card.edit(**kwargs) if card else await channel.send(**kwargs)
+                self.store.save_host_card(self.channel_id, position, card.id)
             self.fingerprint = fingerprint
+
+    async def direct_join(self, member_id, start, duration, override=False):
+        async with self.lock:
+            settings = self.store.host_settings(self.channel_id)
+            players = {p["member_id"]: p for p in self.players()}
+            if member_id not in players:
+                raise ValueError("Complete your current Marvel Rivals form and restore your game roles.")
+            if duration != settings["duration"] or not any(s.start == start for s in self.snapshot()):
+                raise ValueError("This session changed or expired. Reopen the board.")
+            if not covers_interval(players[member_id]["answers"], start, start + duration):
+                if not override:
+                    return False
+                self.store.set_host_override(self.channel_id, start, member_id, duration)
+            self.store.set_host_vote(self.channel_id, start, member_id, True)
+        await self.sync()
+        return True
 
     async def change_votes(self, member_id, starts, add, expected_duration=None, *, withdraw_starts=()):
         async with self.lock:

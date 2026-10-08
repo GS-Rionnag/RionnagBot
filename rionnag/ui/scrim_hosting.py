@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -15,8 +16,11 @@ log = logging.getLogger(__name__)
 
 class HostingView(discord.ui.View):
     async def on_error(self, interaction, error, item):
-        log.error("Hosting control failed: %s", type(item).__name__, exc_info=error)
-        text = "Could not finish this action. Reopen Choose a day from the board and try again."
+        if not isinstance(error, ValueError):
+            log.error("Hosting control failed: %s", type(item).__name__, exc_info=error)
+        text = str(error) if isinstance(error, ValueError) else (
+            "Could not finish this action. Reopen Choose a day from the board and try again."
+        )
         try:
             if interaction.response.is_done():
                 await interaction.followup.send(text, ephemeral=True)
@@ -24,6 +28,62 @@ class HostingView(discord.ui.View):
                 await interaction.response.send_message(text, ephemeral=True)
         except discord.HTTPException:
             log.warning("Could not deliver hosting error feedback")
+
+
+class SessionCard(HostingView):
+    def __init__(self, service, position, disabled=False):
+        super().__init__(timeout=None)
+        for label, joining in (("Join scrim", True), ("Withdraw", False)):
+            button = discord.ui.Button(
+                label=label, custom_id=f"hosting-card:{position}:{int(joining)}", disabled=disabled,
+                style=discord.ButtonStyle.success if joining else discord.ButtonStyle.secondary,
+            )
+
+            async def clicked(interaction, joining=joining):
+                await interaction.response.defer(ephemeral=True, thinking=True)
+                match = re.fullmatch(r"<t:(\d+):F>", interaction.message.embeds[0].title or "")
+                if not match:
+                    raise ValueError("This card no longer has an active session.")
+                start = int(match[1])
+                end = re.search(r"<t:(\d+):t>", interaction.message.embeds[0].description or "")
+                if not end:
+                    raise ValueError("This session changed. Refresh the board.")
+                duration = int(end[1]) - start
+                if not joining:
+                    await service.change_votes(interaction.user.id, [start], False)
+                    await interaction.followup.send("You withdrew from this scrim.", ephemeral=True)
+                elif await service.direct_join(interaction.user.id, start, duration):
+                    await interaction.followup.send("You are confirmed for this scrim.", ephemeral=True)
+                else:
+                    await interaction.followup.send(
+                        f"<t:{start}:F> – <t:{start + duration}:t>\n"
+                        "This time is not in your saved schedule. Are you sure you want to join?",
+                        view=ScheduleOverride(service, interaction.user.id, start, duration), ephemeral=True,
+                    )
+
+            button.callback = clicked
+            self.add_item(button)
+
+
+class ScheduleOverride(HostingView):
+    def __init__(self, service, owner, start, duration):
+        super().__init__(timeout=300)
+        self.service, self.owner, self.start, self.duration = service, owner, start, duration
+
+    async def interaction_check(self, interaction):
+        return interaction.user.id == self.owner
+
+    @discord.ui.button(label="Yes, join this scrim", style=discord.ButtonStyle.success)
+    async def accept(self, interaction, button):
+        await interaction.response.defer()
+        await self.service.direct_join(self.owner, self.start, self.duration, override=True)
+        await interaction.edit_original_response(content="You are confirmed for this scrim.", view=None)
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction, button):
+        await interaction.response.edit_message(content="Cancelled. You have not joined.", view=None)
+        self.stop()
 
 
 def day_groups(slots, zone):

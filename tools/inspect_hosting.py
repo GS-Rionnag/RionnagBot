@@ -30,8 +30,12 @@ async def main():
                     if hasattr(item, "label")
                 )
             )
-            if message.embeds:
-                print(f"Public session cards: {len(message.embeds)-1}")
+            cards = store.host_cards(config.SCRIM_HOST_CHANNEL_ID)
+            print(f"Public session messages: {len(cards)}")
+            for position, mid in sorted(cards.items()):
+                card = await channel.fetch_message(mid)
+                labels = [item.label for row in card.components for item in row.children]
+                print(f"Session {position + 1}: embeds={len(card.embeds)}, buttons={', '.join(labels)}")
             print(f"Board link: {message.jump_url}")
         else:
             print("Hosting board has not been delivered yet")

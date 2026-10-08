@@ -53,12 +53,18 @@ The public board shows no suggested sessions before the first confirmation. Once
 exact interval, that session appears publicly with confirmed/available counts and member mentions followed
 by their saved best roles. These are preferred roles, not promises of final lineup assignments. Existing
 votes survive deployment, so previously confirmed sessions remain visible. Mentions do not send notifications.
-HOST SCRIMS remains a separate introduction/control embed. Up to three confirmed sessions appear as
-First place, Second place, and Third place embeds in the same persistent message. Rank by confirmed-player
+HOST SCRIMS remains a separate introduction/control message. Five separate session messages show
+the top confirmed sessions, with disabled placeholders for unused positions. Rank by confirmed-player
 count descending, then soonest start, regardless of available-player count or whether counts tie.
-Each session title is its Discord date/time timestamp; its footer indicates First, Second, or Third place.
+Each session title is its Discord date/time timestamp; its footer indicates its place.
+Each session message has persistent Join scrim and Withdraw buttons. An eligible player whose saved
+schedule does not cover the interval receives a private warning with Yes, join this scrim and Cancel.
+Only Yes stores an explicit schedule override for that exact start and session duration. The commitment
+survives refresh/restart, counts toward readiness, and is recognized by outbound validation. Withdrawal
+clears the override; changed durations and lost membership eligibility invalidate it. Saved form schedules
+remain unchanged. Best/secondary-only 2–2–2 constraints still apply.
 Private selectors retain all choices.
-The public available-player section lists member mentions instead of just an available-player count.
+The public Available players (number) section lists only unconfirmed available members.
 Confirmed-player mentions group by saved best role as `Tank: @mentions`, `DPS: @mentions`, then `Support: @mentions`.
 
 The public board has only **Choose a day** and **My selections**. View lineups, Host a session,

@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from rionnag import config
 from rionnag.services.scrim_hosting import HostingService, HostSlot, generate_slots, role_team
 from rionnag.storage import Store
-from rionnag.ui.scrim_hosting import DayPicker, HostingBoard, SlotPicker, day_groups
+from rionnag.ui.scrim_hosting import DayPicker, HostingBoard, SessionCard, SlotPicker, day_groups
 from scrim_collector.hosting import invalid_request, process_job
 
 
@@ -201,6 +201,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
     async def test_board_recovers_existing_message_without_duplicates(self):
         message = SimpleNamespace(
             id=123,
+            content="",
             author=SimpleNamespace(id=44),
             embeds=[SimpleNamespace(footer=SimpleNamespace(text="Rionnag scrim hosting board"))],
             edit=AsyncMock(),
@@ -209,9 +210,13 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         async def history(**kwargs):
             yield message
 
-        channel = SimpleNamespace(
-            history=history, send=AsyncMock(), fetch_message=AsyncMock(return_value=message)
-        )
+        cards = [SimpleNamespace(id=200 + i, edit=AsyncMock()) for i in range(5)]
+        by_id = {card.id: card for card in cards}
+        for i, card in enumerate(cards):
+            card.edit.return_value = card
+            self.store.save_host_card(config.SCRIM_HOST_CHANNEL_ID, i, card.id)
+        channel = SimpleNamespace(history=history, send=AsyncMock(),
+                                  fetch_message=AsyncMock(side_effect=lambda mid: by_id[mid]))
         guild = SimpleNamespace(get_channel=lambda cid: channel)
         bot = SimpleNamespace(get_guild=lambda gid: guild, user=SimpleNamespace(id=44))
         service = HostingService(bot, SimpleNamespace(store=self.store, forms=config.load_forms()), None)
@@ -221,6 +226,10 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         await service.sync()
         channel.send.assert_not_awaited()
         message.edit.assert_awaited_once()
+        self.assertEqual(len(message.edit.call_args.kwargs["embeds"]), 1)
+        for card in cards:
+            card.edit.assert_awaited_once()
+            self.assertTrue(all(b.disabled for b in card.edit.call_args.kwargs["view"].children))
         self.assertEqual(self.store.host_settings(config.SCRIM_HOST_CHANNEL_ID)["message_id"], 123)
 
     async def test_outbound_revalidates_withdrawn_vote(self):
@@ -326,7 +335,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(cards[0].fields), 0)
         self.assertIn(f"<t:{most.start}:F>", cards[1].description)
 
-    async def test_board_shows_top_three_sessions_even_without_attendance_ties(self):
+    async def test_board_shows_top_five_sessions_even_without_attendance_ties(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
         service.players = roster
         tied = [
@@ -346,7 +355,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         )
         less_confirmed = HostSlot(self.start - 7200, self.start, set(range(1, 20)), {1}, {}, 0, False)
         embed = service.board_embed([less_available, less_confirmed, *reversed(tied)])
-        self.assertEqual(len(embed.fields), 3)
+        self.assertEqual(len(embed.fields), 5)
         self.assertIn(f"<t:{less_available.start}:F>", embed.fields[0].value)
         self.assertIn(f"<t:{tied[0].start}:F>", embed.fields[1].value)
         self.assertIn(f"<t:{tied[1].start}:F>", embed.fields[2].value)
@@ -422,6 +431,69 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         board = HostingBoard(SimpleNamespace())
         self.assertEqual([item.label for item in board.children], ["Choose a day", "My selections"])
         board.stop()
+
+    async def test_direct_join_requires_schedule_confirmation_and_override_survives_refresh(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        players = roster() + [player(7, "Support", "DPS")]
+        players[-1]["answers"]["availability_days"] = {}
+        service.players = lambda: players
+        service.sync = AsyncMock()
+        slot = service.snapshot()[0]
+        self.assertFalse(await service.direct_join(7, slot.start, 7200))
+        self.assertEqual(self.store.host_votes(service.channel_id), {})
+        self.assertTrue(await service.direct_join(7, slot.start, 7200, override=True))
+        restored = Store(self.store.path)
+        self.assertEqual(restored.host_overrides(service.channel_id, 7200), {slot.start: {7}})
+        confirmed = next(s for s in service.snapshot() if s.start == slot.start)
+        self.assertIn(7, confirmed.confirmed)
+        self.assertIn(7, confirmed.available)
+        self.store.prune_host_votes(service.channel_id, {s.start: s.available for s in service.snapshot()})
+        self.assertEqual(self.store.host_votes(service.channel_id), {slot.start: {7}})
+        await service.change_votes(7, [slot.start], False)
+        self.assertEqual(restored.host_overrides(service.channel_id, 7200), {})
+        with self.assertRaises(ValueError):
+            await service.direct_join(99, slot.start, 7200, override=True)
+        with self.assertRaises(ValueError):
+            await service.direct_join(7, slot.start, 3600, override=True)
+
+    async def test_direct_button_warns_before_outside_schedule_join(self):
+        service = SimpleNamespace(
+            store=self.store, channel_id=config.SCRIM_HOST_CHANNEL_ID,
+            direct_join=AsyncMock(return_value=False),
+        )
+        view = SessionCard(service, 0)
+        self.assertTrue(view.is_persistent())
+        interaction = SimpleNamespace(
+            user=SimpleNamespace(id=7), response=SimpleNamespace(defer=AsyncMock()),
+            message=SimpleNamespace(embeds=[SimpleNamespace(
+                title=f"<t:{self.start}:F>", description=f"<t:{self.start + 7200}:t>"
+            )]),
+            followup=SimpleNamespace(send=AsyncMock()), edit_original_response=AsyncMock(),
+        )
+        await view.children[0].callback(interaction)
+        service.direct_join.assert_awaited_once_with(7, self.start, 7200)
+        warning = interaction.followup.send.call_args
+        self.assertIn("not in your saved schedule", warning.args[0])
+        prompt = warning.kwargs["view"]
+        await prompt.children[0].callback(interaction)
+        self.assertEqual(service.direct_join.call_args.kwargs, {"override": True})
+        view.stop()
+
+    async def test_outbound_accepts_explicit_schedule_override_only_for_exact_duration(self):
+        self.queue()
+        job = self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
+        for mid in self.team:
+            self.store.set_host_vote(config.SCRIM_HOST_CHANNEL_ID, self.start, mid, True)
+        players = {p["member_id"]: p for p in roster()}
+        for p in players.values():
+            p["answers"]["availability_days"] = {}
+            self.store.set_host_override(config.SCRIM_HOST_CHANNEL_ID, self.start, p["member_id"], 7200)
+        role = config.load_forms()["marvel-rivals"]["team_role"]
+        members = {mid: SimpleNamespace(id=mid, bot=False, roles=[SimpleNamespace(id=role)])
+                   for mid in (*self.team, 99)}
+        self.assertIsNone(invalid_request(self.store, job, players, members, 99, 88))
+        self.store.set_host_override(config.SCRIM_HOST_CHANNEL_ID, self.start, 1, 3600)
+        self.assertIn("availability", invalid_request(self.store, job, players, members, 99, 88))
 
     def approval_fixture(self):
         async def history(**kwargs):

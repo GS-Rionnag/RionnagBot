@@ -52,7 +52,10 @@ def invalid_request(store, job, players, live_members, owner_id, manager_role):
         answers = player["answers"]
         if role not in normalized_roles([answers.get("preferred_role_1"), answers.get("preferred_role_2")]):
             return "A starter's preferred roles changed"
-        if not covers_interval(answers, job["start"], job["start"] + job["duration"]):
+        overrides = store.host_overrides(job["channel_id"], job["duration"]).get(job["start"], set())
+        if mid not in overrides and not covers_interval(
+            answers, job["start"], job["start"] + job["duration"]
+        ):
             return "A starter's availability changed"
     return None
 

@@ -1,5 +1,17 @@
 # Change timeline
 
+## 2026-10-08 - five scrim messages and direct joining
+
+- Keep the HOST SCRIMS controls in their existing message and publish five separate ranked session
+  messages, each with Join scrim and Withdraw buttons. Empty positions show disabled placeholders.
+  Rank confirmed sessions by confirmed attendance then soonest date. Recover message identities and
+  persistent buttons across restarts without reposting the board.
+- Direct joins outside saved availability require a private Yes/Cancel warning. Store the player's
+  explicit commitment for that exact interval and duration; preserve eligibility and best/secondary
+  2–2–2 role checks. Withdrawals, departures, and invalidated votes clear schedule overrides.
+- Owner approval and the outbound collector recognize explicit schedule commitments when validating
+  the selected roster. No schedule edits, membership changes, or external adverts occur automatically.
+
 ## 2026-10-08 - available-player heading count
 
 - Show the remaining unconfirmed availability count as **Available players** (number) on session cards.
