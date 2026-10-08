@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-07 - end scrims when one starter leaves the tracked game
+
+- Complete a running game on the first explicit idle/non-custom or changed-battle response from any recorded starter. Unknown status, substitutes, and failed API requests do not confirm completion.
+
 ## 2026-10-07 - faster scrim monitoring and manual game controls
 
 - Poll live starters every five seconds by default instead of fifteen, retaining two full idle sweeps before automatic completion. Retry result history every fifteen seconds instead of sixty; provider pacing and rate-limit backoff remain enforced.

@@ -52,7 +52,7 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         ):
             await monitor.probe("live", data)
 
-    async def test_any_one_starter_starts_and_two_full_idle_sweeps_finish_once(self):
+    async def test_any_one_starter_starts_and_one_idle_starter_finishes_once(self):
         data = await self.begin(start=False)
         monitor = ScrimMonitor(self.controller)
         await self.live(monitor, False)
@@ -63,9 +63,6 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.stage.members), 9)
         self.assertIn("Game Started", playing["note"])
         self.assertEqual(len(self.store.match(playing["match_id"])["roster"]), 6)
-        for _ in range(11):
-            await self.live(monitor, False)
-        self.assertEqual(self.store.get(data["id"])["status"], "playing")
         await self.live(monitor, False)
         finished = self.store.get(data["id"])
         self.assertEqual(finished["status"], "prepared")
@@ -76,7 +73,7 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         await self.live(monitor, True)  # stale original battle ID cannot start round two
         self.assertEqual(len(self.store.export(data["id"])["matches"]), 1)
 
-    async def test_one_disconnect_unknown_and_request_failure_do_not_end_game(self):
+    async def test_unknown_status_and_request_failure_do_not_end_game(self):
         data = await self.begin(start=False)
         monitor = ScrimMonitor(self.controller)
         await self.live(monitor, True)
@@ -88,7 +85,7 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
                 "check_live",
                 side_effect=lambda p, _: {
                     "uid": str(p["member_id"]),
-                    "custom": p["member_id"] != origin,
+                    "custom": None if p["member_id"] == origin else True,
                     "battle_id": None if p["member_id"] == origin else "custom-1",
                     "payload": {},
                 },
@@ -106,8 +103,6 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         data = await self.begin(start=False)
         monitor = ScrimMonitor(self.controller)
         await self.live(monitor, True)
-        for _ in range(11):
-            await self.live(monitor, False)
         restarted = ScrimMonitor(self.controller)
         await self.live(restarted, False)
         await self.live(restarted, False)
@@ -206,7 +201,7 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
             patch.object(client, "_post_json", return_value={"uid": 1, "status": {"state": 5}}),
         ):
             await monitor.probe("live", self.store.get(data["id"]))
-            self.assertEqual(self.store.get(data["id"])["status"], "playing")
+            self.assertEqual(self.store.get(data["id"])["status"], "prepared")
             await monitor.probe("live", self.store.get(data["id"]))
         self.assertEqual(self.store.get(data["id"])["status"], "prepared")
         self.assertIn("Game Ended", self.store.get(data["id"])["note"])

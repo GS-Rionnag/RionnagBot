@@ -76,4 +76,5 @@ corresponding SDK update and a bot restart to take effect in the running service
 
 The organization uses discord.py's [cogs](https://discordpy.readthedocs.io/en/latest/ext/commands/cogs.html) and [persistent view registration](https://github.com/Rapptz/discord.py/blob/master/examples/views/persistent.py).
 
-Scrim live polling defaults to five seconds between probes (SCRIM_POLL_INTERVAL, minimum five), retaining two idle confirmations per starter before ending a game. History retries rotate starters every fifteen seconds. Provider pacing, response time, shared monitoring work, and error backoff can add delay. Managers can use Force start game or Force end game on the current dashboard when detection lags; these record normal transitions, preserve completion counts, and verify results separately.
+Scrim live polling defaults to five seconds between probes (SCRIM_POLL_INTERVAL, minimum five), ending a game on the first explicit departure from the tracked game by any starter. History retries rotate starters every fifteen seconds. Provider pacing, response time, shared monitoring work, and error backoff can add delay. Managers can use Force start game or Force end game on the current dashboard when detection lags; these record normal transitions, preserve completion counts, and verify results separately.
+

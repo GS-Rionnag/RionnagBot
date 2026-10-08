@@ -177,11 +177,7 @@ class ScrimMonitor:
                 count = previous.get("count", 0) if time.time() - previous.get("at", 0) <= freshness else 0
                 absent[str(mid)] = {"count": count + 1, "at": time.time()}
             store.save(current)
-            if all(
-                absent.get(str(starter), {}).get("count", 0) >= 2
-                and time.time() - absent[str(starter)]["at"] <= freshness
-                for starter in (person["member_id"] for person in roster)
-            ):
+            if absent.get(str(mid), {}).get("count", 0) >= 1:
                 await self.controller.game_ended(guild, current)
 
     async def update_panel(self, guild, data):
