@@ -321,10 +321,13 @@ class SlotPicker(HostingView):
                         else:
                             slot.confirmed.discard(self.owner)
                     self.build()
-                    await interaction.message.edit(embed=self.embed(), view=self)
+                    await interaction.followup.edit_message(
+                        interaction.message.id, embed=self.embed(), view=self
+                    )
                 else:
                     await self.service.change_votes(self.owner, starts, False, self.duration)
-                    await interaction.message.edit(
+                    await interaction.followup.edit_message(
+                        interaction.message.id,
                         content="Selected confirmations withdrawn.", embed=None, view=None
                     )
                     self.stop()

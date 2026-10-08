@@ -365,8 +365,8 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         interaction = SimpleNamespace(
             data={"values": [str(chosen)]},
             response=SimpleNamespace(defer=AsyncMock()),
-            followup=SimpleNamespace(send=AsyncMock()),
-            message=SimpleNamespace(edit=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock(), edit_message=AsyncMock()),
+            message=SimpleNamespace(id=123, edit=AsyncMock(side_effect=AssertionError("Wrong edit API"))),
         )
         await picker.selected(interaction)
         interaction.response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
@@ -389,12 +389,14 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(picker.children[0].min_values, 0)
         interaction = SimpleNamespace(
             data={"values": []}, response=SimpleNamespace(defer=AsyncMock()),
-            followup=SimpleNamespace(send=AsyncMock()), message=SimpleNamespace(edit=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock(), edit_message=AsyncMock()),
+            message=SimpleNamespace(id=123, edit=AsyncMock(side_effect=AssertionError("Wrong edit API"))),
         )
         await picker.selected(interaction)
         self.assertEqual(self.store.host_votes(service.channel_id), {other_page.start: {1}})
         self.assertFalse(picker.children[0].options[0].default)
-        interaction.message.edit.assert_awaited_once()
+        interaction.followup.edit_message.assert_awaited_once()
+        self.assertEqual(interaction.followup.edit_message.call_args.args, (123,))
         picker.stop()
 
     async def test_my_selections_withdraws_confirmed_time_and_closes_stale_picker(self):
@@ -406,11 +408,13 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         picker = SlotPicker(service, 1, [slot], "remove")
         interaction = SimpleNamespace(
             data={"values": [str(slot.start)]}, response=SimpleNamespace(defer=AsyncMock()),
-            followup=SimpleNamespace(send=AsyncMock()), message=SimpleNamespace(edit=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock(), edit_message=AsyncMock()),
+            message=SimpleNamespace(id=123, edit=AsyncMock(side_effect=AssertionError("Wrong edit API"))),
         )
         await picker.selected(interaction)
         self.assertEqual(self.store.host_votes(service.channel_id), {})
-        self.assertIsNone(interaction.message.edit.call_args.kwargs["view"])
+        self.assertEqual(interaction.followup.edit_message.call_args.args, (123,))
+        self.assertIsNone(interaction.followup.edit_message.call_args.kwargs["view"])
         picker.stop()
 
     async def test_public_board_has_only_player_controls(self):

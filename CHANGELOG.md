@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-07 - private confirmation picker refresh
+
+- Refresh and close ephemeral scrim time pickers through the interaction webhook instead of the normal
+  channel-message endpoint, fixing Unknown Message errors after confirmations and withdrawals save.
+
 ## 2026-10-07 - uncheck scrim confirmations
 
 - Preselect confirmed times in Choose a day's time dropdown. Unchecking a time now withdraws that
