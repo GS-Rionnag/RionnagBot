@@ -5,7 +5,7 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 from rionnag import config
@@ -505,6 +505,84 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(invalid_request(self.store, job, players, members, 99, 88))
         self.store.set_host_override(config.SCRIM_HOST_CHANNEL_ID, self.start, 1, 3600)
         self.assertIn("availability", invalid_request(self.store, job, players, members, 99, 88))
+
+    async def test_three_confirmations_invite_remaining_players_once_and_persist_decisions(self):
+        async def history(**kwargs):
+            if False:
+                yield None
+
+        users = {mid: SimpleNamespace(dm_channel=SimpleNamespace(
+            history=history, send=AsyncMock(return_value=SimpleNamespace(id=100 + mid))
+        )) for mid in range(1, 7)}
+        bot = SimpleNamespace(get_user=users.get, user=SimpleNamespace(id=44), add_view=Mock())
+        service = HostingService(bot, SimpleNamespace(store=self.store), None)
+        service.players = roster
+        slot = HostSlot(self.start, self.start + 7200, set(range(1, 7)), {1, 2}, {}, 0, False)
+        service.snapshot = lambda: [slot]
+        service.sync = AsyncMock()
+        await service.invite_available()
+        self.assertEqual(self.store.host_invites(service.channel_id), [])
+        slot.confirmed.add(3)
+        await service.invite_available()
+        await service.invite_available()
+        for mid in (1, 2, 3):
+            users[mid].dm_channel.send.assert_not_awaited()
+        for mid in (4, 5, 6):
+            users[mid].dm_channel.send.assert_awaited_once()
+            embed = users[mid].dm_channel.send.call_args.kwargs["embed"]
+            self.assertIn(f"<t:{slot.start}:F> – <t:{slot.end}:t>", embed.description)
+            self.assertTrue(users[mid].dm_channel.send.call_args.kwargs["view"].is_persistent())
+        await service.answer_invite(4, slot.start, 7200, False)
+        self.assertEqual(self.store.host_votes(service.channel_id), {})
+        with patch("rionnag.services.scrim_hosting.covers_interval", return_value=True):
+            await service.answer_invite(5, slot.start, 7200, True)
+        self.assertEqual(self.store.host_votes(service.channel_id), {slot.start: {5}})
+        with self.assertRaises(ValueError):
+            await service.answer_invite(4, slot.start, 7200, True)
+        restored = HostingService(bot, SimpleNamespace(store=Store(self.store.path)), None)
+        restored.register_approvals()
+        bot.add_view.assert_called_once()
+        self.assertEqual(bot.add_view.call_args.kwargs["message_id"], 106)
+        await service.invite_available()
+        self.assertEqual(users[4].dm_channel.send.await_count, 1)
+
+    async def test_invite_rejects_changed_schedule_and_expired_interval(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        service.players = roster
+        service.sync = AsyncMock()
+        slot = HostSlot(self.start, self.start + 7200, set(range(1, 7)), {1, 2, 3}, {}, 0, False)
+        service.snapshot = lambda: [slot]
+        self.store.reserve_host_invite(service.channel_id, self.start, 4, 7200)
+        with patch("rionnag.services.scrim_hosting.covers_interval", return_value=False):
+            with self.assertRaises(ValueError):
+                await service.answer_invite(4, self.start, 7200, True)
+        service.snapshot = lambda: []
+        with self.assertRaises(ValueError):
+            await service.answer_invite(4, self.start, 7200, True)
+        self.assertEqual(self.store.host_votes(service.channel_id), {})
+
+    async def test_invite_recovers_interrupted_send_from_dm_history(self):
+        marker = f"Scrim invitation · {self.start} · 6 · 7200"
+        message = SimpleNamespace(
+            id=106, author=SimpleNamespace(id=44),
+            embeds=[SimpleNamespace(footer=SimpleNamespace(text=marker))], edit=AsyncMock()
+        )
+        message.edit.return_value = message
+
+        async def history(**kwargs):
+            yield message
+
+        dm = SimpleNamespace(history=history, send=AsyncMock())
+        service = HostingService(SimpleNamespace(get_user=lambda mid: SimpleNamespace(dm_channel=dm),
+                                                user=SimpleNamespace(id=44)),
+                                 SimpleNamespace(store=self.store), None)
+        service.snapshot = lambda: [HostSlot(self.start, self.start + 7200, set(range(1, 7)),
+                                            set(range(1, 6)), {}, 0, False)]
+        self.store.reserve_host_invite(service.channel_id, self.start, 6, 7200)
+        await service.invite_available()
+        dm.send.assert_not_awaited()
+        message.edit.assert_awaited_once()
+        self.assertEqual(self.store.host_invites(service.channel_id)[0]["message_id"], 106)
 
     def approval_fixture(self):
         async def history(**kwargs):

@@ -53,6 +53,10 @@ class Store:
                 CREATE TABLE IF NOT EXISTS scrim_host_cards (
                     channel_id INTEGER, position INTEGER, message_id INTEGER,
                     PRIMARY KEY(channel_id,position));
+                CREATE TABLE IF NOT EXISTS scrim_host_invites (
+                    channel_id INTEGER, start INTEGER, member_id INTEGER, duration INTEGER,
+                    status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
+                    PRIMARY KEY(channel_id,start,member_id,duration));
                 CREATE TABLE IF NOT EXISTS scrim_host_adverts (
                     channel_id INTEGER, start INTEGER, duration INTEGER, destination INTEGER,
                     content TEXT NOT NULL, lineup TEXT NOT NULL, requested_by INTEGER,
@@ -137,6 +141,26 @@ class Store:
             db.execute("DELETE FROM scrim_opportunity_votes WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_votes WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_overrides WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_host_invites WHERE member_id=?", (member_id,))
+
+    def host_invites(self, channel_id):
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM scrim_host_invites WHERE channel_id=?", (channel_id,)
+            )]
+
+    def reserve_host_invite(self, channel_id, start, member_id, duration):
+        with self.connection() as db:
+            db.execute("INSERT OR IGNORE INTO scrim_host_invites(channel_id,start,member_id,duration) "
+                       "VALUES(?,?,?,?)", (channel_id, start, member_id, duration))
+
+    def update_host_invite(self, channel_id, start, member_id, duration, status, message_id=None):
+        with self.connection() as db:
+            db.execute(
+                "UPDATE scrim_host_invites SET status=?,message_id=COALESCE(?,message_id) "
+                "WHERE channel_id=? AND start=? AND member_id=? AND duration=?",
+                (status, message_id, channel_id, start, member_id, duration),
+            )
 
     def host_cards(self, channel_id):
         with self.connection() as db:

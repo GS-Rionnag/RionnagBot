@@ -79,6 +79,12 @@ owner can answer. Yes revalidates the current lineup, fetches anonymous current/
 the advert; No publishes nothing. The DM is independent of the public board. The owner's DMs must permit
 bot messages; failed deliveries remain pending for retry. Declining suppresses repeated prompts while
 the interval stays ready. If readiness is lost and later regained, a fresh request invalidates old buttons.
+
+At three confirmed players, another ten-second loop invites the remaining available players by DM.
+The invitation shows the exact date/start and end as Discord timestamps with Yes/No buttons. Yes confirms
+that player after checking current eligibility, interval, duration, and schedule; No only declines the
+invitation. Each player receives at most one invitation per exact start/duration. Decisions and buttons
+survive restarts, interrupted deliveries recover from DM history, and closed DMs are marked undeliverable.
 Approval messages/decisions persist and their buttons restore after restart. Interrupted sends recover
 through the owner's bot DM history using a stable marker. An expired or broken lineup cannot publish.
 

@@ -86,9 +86,15 @@ class HostingService:
         self.fingerprint = None
         self.rank_cache = {}
         self.notice_lock = asyncio.Lock()
+        self.invite_lock = asyncio.Lock()
 
     def register_approvals(self):
-        from rionnag.ui.scrim_hosting import HostApproval, SessionCard
+        from rionnag.ui.scrim_hosting import HostApproval, ScrimInvite, SessionCard
+
+        for invite in self.store.host_invites(self.channel_id):
+            if invite["status"] == "pending" and invite["message_id"]:
+                self.bot.add_view(ScrimInvite(self, invite["member_id"], invite["start"], invite["duration"]),
+                                  message_id=invite["message_id"])
 
         for position, message_id in self.store.host_cards(self.channel_id).items():
             self.bot.add_view(SessionCard(self, position), message_id=message_id)
@@ -155,6 +161,67 @@ class HostingService:
                         embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none()
                     )
                 self.store.update_host_notice(self.channel_id, slot.start, generation, "pending", message.id)
+
+    async def invite_available(self):
+        from rionnag.ui.scrim_hosting import ScrimInvite
+
+        async with self.invite_lock:
+            slots = [s for s in self.snapshot() if len(s.confirmed) >= 3]
+            existing = {(i["start"], i["member_id"], i["duration"]): i
+                        for i in self.store.host_invites(self.channel_id)}
+            for slot in slots:
+                duration = slot.end - slot.start
+                for mid in sorted(slot.available - slot.confirmed):
+                    previous = existing.get((slot.start, mid, duration))
+                    if previous and (previous["status"] != "pending" or previous["message_id"]):
+                        continue
+                    self.store.reserve_host_invite(self.channel_id, slot.start, mid, duration)
+                    marker = f"Scrim invitation · {slot.start} · {mid} · {duration}"
+                    try:
+                        user = self.bot.get_user(mid) or await self.bot.fetch_user(mid)
+                        dm = user.dm_channel or await user.create_dm()
+                        recovered = None
+                        async for message in dm.history(limit=100):
+                            if message.author.id == self.bot.user.id and any(
+                                e.footer.text == marker for e in message.embeds
+                            ):
+                                recovered = message
+                                break
+                        embed = discord.Embed(
+                            title="Can you make it for scrims?", color=config.COLOR,
+                            description=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n\n"
+                            f"**{len(slot.confirmed)} players confirmed.**\n"
+                            "You're available for this session.\n"
+                            "Can you join? Yes confirms your place; No declines this invitation.",
+                        )
+                        embed.set_footer(text=marker)
+                        view = ScrimInvite(self, mid, slot.start, duration)
+                        message = (await recovered.edit(embed=embed, view=view) if recovered else
+                                   await dm.send(embed=embed, view=view,
+                                                 allowed_mentions=discord.AllowedMentions.none()))
+                        self.store.update_host_invite(
+                            self.channel_id, slot.start, mid, duration, "pending", message.id
+                        )
+                    except discord.Forbidden:
+                        self.store.update_host_invite(
+                            self.channel_id, slot.start, mid, duration, "undeliverable"
+                        )
+                    except discord.HTTPException:
+                        log.warning("Scrim invitation delivery failed; will recover and retry")
+
+    async def answer_invite(self, member_id, start, duration, accept):
+        async with self.invite_lock:
+            invite = next((i for i in self.store.host_invites(self.channel_id)
+                           if (i["start"], i["member_id"], i["duration"])
+                           == (start, member_id, duration)), None)
+            if not invite or invite["status"] != "pending":
+                raise ValueError("This invitation has already been answered or is no longer active.")
+            if accept:
+                if not await self.direct_join(member_id, start, duration):
+                    raise ValueError("Your schedule changed. Use Join scrim on the board to review this.")
+            self.store.update_host_invite(
+                self.channel_id, start, member_id, duration, "accepted" if accept else "declined"
+            )
 
     async def decide_notice(self, interaction, start, generation, send):
         guild = self.bot.get_guild(config.GUILD_ID)

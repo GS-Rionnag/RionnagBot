@@ -86,6 +86,33 @@ class ScheduleOverride(HostingView):
         self.stop()
 
 
+class ScrimInvite(HostingView):
+    def __init__(self, service, owner, start, duration):
+        super().__init__(timeout=None)
+        for label, accept in (("Yes", True), ("No", False)):
+            button = discord.ui.Button(
+                label=label, custom_id=f"hosting-invite:{owner}:{start}:{duration}:{int(accept)}",
+                style=discord.ButtonStyle.success if accept else discord.ButtonStyle.secondary,
+            )
+
+            async def answer(interaction, accept=accept):
+                if interaction.user.id != owner:
+                    await interaction.response.send_message("This invitation belongs to another player.",
+                                                            ephemeral=True)
+                    return
+                await interaction.response.defer()
+                await service.answer_invite(owner, start, duration, accept)
+                for item in self.children:
+                    item.disabled = True
+                await interaction.edit_original_response(
+                    content="You're confirmed for this scrim." if accept else "Invitation declined.",
+                    view=self,
+                )
+
+            button.callback = answer
+            self.add_item(button)
+
+
 def day_groups(slots, zone):
     """Distinct day counts across qualifying sessions, never sum overlapping slots."""
     groups = {}

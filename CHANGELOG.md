@@ -1,5 +1,13 @@
 # Change timeline
 
+## 2026-10-08 - invite available players after three confirmations
+
+- At three or more confirmations for an exact scrim interval, DM remaining available players with
+  Discord full-date/start and end-time timestamps and persistent Yes/No buttons. Yes revalidates and
+  confirms that player; No declines without changing other selections.
+- Persist invitations and decisions per player/start/duration to prevent repeated DMs across refreshes
+  and restarts. Recover interrupted deliveries from DM history; closed DMs do not loop indefinitely.
+
 ## 2026-10-08 - day chooser mention spacing
 
 - Separate available-player mentions with spaces instead of commas in Choose a day.

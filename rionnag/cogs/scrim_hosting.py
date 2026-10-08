@@ -27,10 +27,23 @@ class ScrimHosting(commands.Cog):
         self.service.register_approvals()
         self.refresh.start()
         self.approvals.start()
+        self.invitations.start()
 
     async def cog_unload(self):
         self.refresh.cancel()
         self.approvals.cancel()
+        self.invitations.cancel()
+
+    @tasks.loop(seconds=10)
+    async def invitations(self):
+        try:
+            await self.service.invite_available()
+        except Exception:
+            logging.getLogger(__name__).exception("Scrim player invitation failed; will retry")
+
+    @invitations.before_loop
+    async def before_invitations(self):
+        await self.service.bot.wait_until_ready()
 
     @tasks.loop(seconds=10)
     async def approvals(self):
