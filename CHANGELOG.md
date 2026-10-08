@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-08 - exclude confirmations from available-player mentions
+
+- Public session cards list only unconfirmed players under Available players. Confirmed players remain
+  in their role lines; when everyone available has confirmed, display None remaining.
+
 ## 2026-10-07 - private confirmation picker refresh
 
 - Refresh and close ephemeral scrim time pickers through the interaction webhook instead of the normal

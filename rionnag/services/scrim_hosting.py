@@ -271,7 +271,10 @@ class HostingService:
                 f"**{len(slot.confirmed)} confirmed**\n"
                 + "\n".join(names)
                 + "\n**Available players**\n"
-                + " ".join(f"<@{mid}>" for mid in sorted(slot.available))
+                + (
+                    " ".join(f"<@{mid}>" for mid in sorted(slot.available - slot.confirmed))
+                    or "None remaining."
+                )
             )
             if len(embed.fields) >= 18 or len(embed) + len(value) > 5500:
                 break
