@@ -21,6 +21,15 @@ async def main():
         if settings["message_id"]:
             message = await channel.fetch_message(settings["message_id"])
             print(f"Hosting board present: {bool(message.embeds)}, controls={len(message.components)} rows")
+            print(
+                "Public buttons: "
+                + ", ".join(
+                    item.label
+                    for row in message.components
+                    for item in row.children
+                    if hasattr(item, "label")
+                )
+            )
             if message.embeds:
                 print(f"Public session fields: {len(message.embeds[0].fields)}")
             print(f"Board link: {message.jump_url}")

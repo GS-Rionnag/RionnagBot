@@ -4,7 +4,9 @@ Scrim hosting is composed separately in app.py using a HostingService, ScrimHost
 and private paginated views. It reuses accepted-player eligibility, conservative recurring-window coverage,
 and the role-constrained lineup solver without changing finder or live-session behavior. SQLite stores
 hosting settings, per-start commitments, a frozen selected roster, and an idempotent outbound queue.
-Only explicit manager confirmation queues an anonymous advert. The separate owner-account collector
+Persistent readiness notices DM the server owner when six confirmed players form a valid team. Only
+the owner's Yes queues an anonymous advert; declined and expired requests remain durable, and old
+approval generations cannot publish. The separate owner-account collector
 validates the queue against live membership and current saved profiles before delivery; uncertain sends
 are reconciled through account history instead of automatic retries. Both runtimes share the pure
 scrim_availability module without importing the other Discord library's UI classes.

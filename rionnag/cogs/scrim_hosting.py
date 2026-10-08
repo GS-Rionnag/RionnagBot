@@ -24,10 +24,24 @@ class ScrimHosting(commands.Cog):
 
     async def cog_load(self):
         self.service.bot.add_view(HostingBoard(self.service))
+        self.service.register_approvals()
         self.refresh.start()
+        self.approvals.start()
 
     async def cog_unload(self):
         self.refresh.cancel()
+        self.approvals.cancel()
+
+    @tasks.loop(seconds=10)
+    async def approvals(self):
+        try:
+            await self.service.notify_ready()
+        except Exception:
+            logging.getLogger(__name__).exception("Scrim owner notification failed; will retry")
+
+    @approvals.before_loop
+    async def before_approval_refresh(self):
+        await self.service.bot.wait_until_ready()
 
     @tasks.loop(seconds=60)
     async def refresh(self):
@@ -44,34 +58,4 @@ class ScrimHosting(commands.Cog):
     async def board(self, interaction: discord.Interaction):
         await interaction.response.send_message(
             f"Choose and confirm sessions in <#{self.service.channel_id}>.", ephemeral=True
-        )
-
-    @app_commands.command(
-        name="scrim_host_settings", description="Managers: set hosting duration and advert destination"
-    )
-    @app_commands.describe(
-        destination="Advert channel ID in a scrim server; omit to keep the saved destination",
-        duration_minutes="Full session length, 60–240 minutes; default 120",
-    )
-    async def settings(
-        self,
-        interaction: discord.Interaction,
-        destination: str | None = None,
-        duration_minutes: app_commands.Range[int, 60, 240] = 120,
-    ):
-        if not self.service.manager(interaction):
-            await interaction.response.send_message(
-                "Only the owner or Marvel Rivals Managers can configure hosting.", ephemeral=True
-            )
-            return
-        await interaction.response.defer(ephemeral=True)
-        try:
-            await self.service.configure(destination, duration_minutes)
-        except ValueError as exc:
-            await interaction.followup.send(str(exc), ephemeral=True)
-            return
-        await interaction.followup.send(
-            "Hosting settings saved. A changed session length clears confirmations. "
-            "Nothing is published until you confirm a preview.",
-            ephemeral=True,
         )

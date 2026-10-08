@@ -1,5 +1,16 @@
 # Change timeline
 
+## 2026-10-07 - owner DM approval when six players confirm
+
+- Remove Host a session and Host settings from the public board and remove the hosting-settings command.
+  Retain the player day/time chooser, withdrawals, and lineup viewer.
+- When a specific interval first has six confirmed players forming a valid 2–2–2 team, DM the server owner
+  its date/time with Yes, send advert and No buttons. Only the owner's Yes queues the anonymous roster advert;
+  No sends nothing. Profile ranks are fetched after approval, using the existing paced rank-only lookups.
+- Persist approval messages and decisions, restore buttons after restart, recover interrupted DM delivery,
+  and suppress repeat prompts while a slot remains ready. Expired/replaced approvals cannot send; a slot
+  that loses and regains readiness receives a fresh approval generation. No confirmation data is erased.
+
 ## 2026-10-07 - day-first hosting and attendance-first recommendations
 
 - Keep the public hosting board free of suggested dates/times until a player confirms. Confirmed sessions

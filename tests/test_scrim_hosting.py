@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from rionnag import config
 from rionnag.services.scrim_hosting import HostingService, HostSlot, generate_slots, role_team
 from rionnag.storage import Store
-from rionnag.ui.scrim_hosting import DayPicker, HostingBoard, HostingSettings, SlotPicker, day_groups
+from rionnag.ui.scrim_hosting import DayPicker, HostingBoard, SlotPicker, day_groups
 from scrim_collector.hosting import invalid_request, process_job
 
 
@@ -214,7 +214,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         )
         guild = SimpleNamespace(get_channel=lambda cid: channel)
         bot = SimpleNamespace(get_guild=lambda gid: guild, user=SimpleNamespace(id=44))
-        service = HostingService(bot, SimpleNamespace(store=self.store), None)
+        service = HostingService(bot, SimpleNamespace(store=self.store, forms=config.load_forms()), None)
         service.players = lambda: roster()
         service.snapshot = lambda: []
         await service.sync()
@@ -306,12 +306,121 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         service.sync.assert_awaited_once()
         picker.stop()
 
-    async def test_settings_have_no_opponent_rank_inputs(self):
-        service = SimpleNamespace(store=self.store, channel_id=config.SCRIM_HOST_CHANNEL_ID)
-        modal = HostingSettings(service)
-        self.assertEqual(len(modal.children), 2)
-        self.assertFalse(any("rank" in child.label.casefold() for child in modal.children))
-        modal.stop()
+    async def test_public_board_has_only_player_controls(self):
+        board = HostingBoard(SimpleNamespace())
+        self.assertEqual(
+            [item.label for item in board.children], ["Choose a day", "My selections", "View lineups"]
+        )
+        board.stop()
+
+    def approval_fixture(self):
+        async def history(**kwargs):
+            if False:
+                yield None
+
+        dm = SimpleNamespace(history=history, send=AsyncMock(return_value=SimpleNamespace(id=55)))
+        owner = SimpleNamespace(id=99, dm_channel=dm)
+        guild = SimpleNamespace(owner_id=99, owner=owner)
+        bot = SimpleNamespace(get_guild=lambda gid: guild, user=SimpleNamespace(id=44))
+        service = HostingService(bot, SimpleNamespace(store=self.store, forms=config.load_forms()), None)
+        slot = SimpleNamespace(
+            start=self.start,
+            end=self.start + 7200,
+            confirmed=set(self.team),
+            ready=True,
+            lineup=self.team,
+            order=(0,),
+        )
+        service.snapshot = lambda: [slot]
+        service.sync = AsyncMock()
+        return service, slot, dm
+
+    async def test_owner_notified_once_and_no_does_not_publish(self):
+        service, slot, dm = self.approval_fixture()
+        await service.notify_ready()
+        await service.notify_ready()
+        dm.send.assert_awaited_once()
+        view = dm.send.call_args.kwargs["view"]
+        self.assertTrue(view.is_persistent())
+        self.assertEqual([button.label for button in view.children], ["Yes, send advert", "No"])
+        await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, False)
+        await service.notify_ready()
+        dm.send.assert_awaited_once()
+        self.assertEqual(self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID), {})
+        self.assertEqual(
+            self.store.host_notices(config.SCRIM_HOST_CHANNEL_ID)[self.start]["status"], "declined"
+        )
+        view.stop()
+
+    async def test_only_owner_yes_queues_anonymous_advert_once(self):
+        service, slot, dm = self.approval_fixture()
+        service.advert_ranks = AsyncMock(return_value=(("Grandmaster", "Celestial"),) * 6)
+        await service.notify_ready()
+        with self.assertRaisesRegex(ValueError, "Only the server owner"):
+            await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=77)), self.start, 1, True)
+        interaction = SimpleNamespace(user=SimpleNamespace(id=99))
+        await service.decide_notice(interaction, self.start, 1, True)
+        job = self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
+        self.assertIn("Player6 - Grandmaster; Celestial Peak", job["content"])
+        self.assertEqual(job["requested_by"], 99)
+        with self.assertRaisesRegex(ValueError, "already answered"):
+            await service.decide_notice(interaction, self.start, 1, True)
+        await service.notify_ready()
+        dm.send.assert_awaited_once()
+
+    async def test_approval_expires_when_team_breaks_and_rearms_with_new_generation(self):
+        service, slot, dm = self.approval_fixture()
+        await service.notify_ready()
+        slot.ready = False
+        with self.assertRaisesRegex(ValueError, "no longer has six"):
+            await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, True)
+        self.assertEqual(self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID), {})
+        slot.ready = True
+        await service.notify_ready()
+        self.assertEqual(dm.send.await_count, 2)
+        self.assertEqual(self.store.host_notices(config.SCRIM_HOST_CHANNEL_ID)[self.start]["generation"], 2)
+        with self.assertRaisesRegex(ValueError, "no longer current"):
+            await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, True)
+
+    async def test_six_confirmations_without_valid_roles_do_not_notify(self):
+        service, slot, dm = self.approval_fixture()
+        slot.ready = False
+        await service.notify_ready()
+        dm.send.assert_not_awaited()
+
+    async def test_interrupted_dm_send_recovers_without_duplicate(self):
+        service, slot, dm = self.approval_fixture()
+        dm.send.side_effect = OSError("Acknowledgement lost")
+        with self.assertRaises(OSError):
+            await service.notify_ready()
+        recovered = SimpleNamespace(
+            id=55,
+            author=SimpleNamespace(id=44),
+            edit=AsyncMock(),
+            embeds=[SimpleNamespace(footer=SimpleNamespace(text=f"Scrim host approval · {self.start} · 1"))],
+        )
+
+        async def history(**kwargs):
+            yield recovered
+
+        dm.history = history
+        await service.notify_ready()
+        self.assertEqual(dm.send.await_count, 1)
+        recovered.edit.assert_awaited_once()
+        self.assertEqual(self.store.host_notices(config.SCRIM_HOST_CHANNEL_ID)[self.start]["message_id"], 55)
+
+    async def test_pending_dm_approval_restores_after_restart_without_renotifying(self):
+        service, slot, dm = self.approval_fixture()
+        await service.notify_ready()
+        restored, _, _ = self.approval_fixture()
+        views = []
+        restored.bot.add_view = lambda view, **kwargs: views.append((view, kwargs))
+        restored.register_approvals()
+        self.assertEqual(len(views), 1)
+        self.assertEqual(views[0][1]["message_id"], 55)
+        self.assertTrue(views[0][0].is_persistent())
+        await restored.notify_ready()
+        views[0][0].stop()
 
     async def test_anonymous_rank_content_never_contains_identity(self):
         ranks = [("Grandmaster", "Celestial")] * 6

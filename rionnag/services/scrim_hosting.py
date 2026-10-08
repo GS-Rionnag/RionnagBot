@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import discord
 
@@ -82,6 +83,98 @@ class HostingService:
         self.lock = asyncio.Lock()
         self.fingerprint = None
         self.rank_cache = {}
+        self.notice_lock = asyncio.Lock()
+
+    def register_approvals(self):
+        from rionnag.ui.scrim_hosting import HostApproval
+
+        for start, notice in self.store.host_notices(self.channel_id).items():
+            if notice["status"] == "pending" and notice["message_id"]:
+                self.bot.add_view(
+                    HostApproval(self, start, notice["generation"]), message_id=notice["message_id"]
+                )
+
+    async def notify_ready(self):
+        from rionnag.ui.scrim_hosting import HostApproval
+
+        async with self.notice_lock:
+            guild = self.bot.get_guild(config.GUILD_ID)
+            if guild is None:
+                return
+            slots = {s.start: s for s in self.snapshot() if s.ready}
+            notices = self.store.host_notices(self.channel_id)
+            adverts = self.store.host_adverts(self.channel_id)
+            for start, notice in notices.items():
+                if start not in slots and notice["status"] in {"pending", "declined"}:
+                    self.store.update_host_notice(self.channel_id, start, notice["generation"], "expired")
+            needed = [
+                slot
+                for start, slot in slots.items()
+                if start not in adverts
+                and (
+                    start not in notices
+                    or notices[start]["status"] == "expired"
+                    or (notices[start]["status"] == "pending" and not notices[start]["message_id"])
+                )
+            ]
+            if not needed:
+                return
+            owner = guild.owner or await self.bot.fetch_user(guild.owner_id)
+            dm = owner.dm_channel or await owner.create_dm()
+            for slot in sorted(needed, key=lambda s: s.order):
+                generation = self.store.reserve_host_notice(self.channel_id, slot.start)
+                marker = f"Scrim host approval · {slot.start} · {generation}"
+                # A pending row precedes delivery. Recover an interrupted send before sending again.
+                recovered = None
+                async for message in dm.history(limit=100):
+                    if message.author.id == self.bot.user.id and any(
+                        embed.footer.text == marker for embed in message.embeds
+                    ):
+                        recovered = message
+                        break
+                view = HostApproval(self, slot.start, generation)
+                embed = discord.Embed(
+                    title="Six players confirmed for a scrim",
+                    color=config.COLOR,
+                    description=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
+                    f"**{len(slot.confirmed)} players confirmed** · Valid 2 Tank / 2 DPS / 2 Support\n\n"
+                    "Would you like to send a message to the scrim advertisement area?\n"
+                    "The advert includes anonymous Player1–Player6 current and peak ranks.",
+                )
+                embed.set_footer(text=marker)
+                if recovered:
+                    await recovered.edit(embed=embed, view=view)
+                    message = recovered
+                else:
+                    message = await dm.send(
+                        embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none()
+                    )
+                self.store.update_host_notice(self.channel_id, slot.start, generation, "pending", message.id)
+
+    async def decide_notice(self, interaction, start, generation, send):
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if not guild or interaction.user.id != guild.owner_id:
+            raise ValueError("Only the server owner can answer this scrim approval.")
+        async with self.notice_lock:
+            notice = self.store.host_notices(self.channel_id).get(start)
+            if not notice or notice["generation"] != generation or notice["status"] != "pending":
+                raise ValueError("This request was already answered or is no longer current.")
+            if not send:
+                self.store.update_host_notice(self.channel_id, start, generation, "declined")
+                return
+            slot = next((s for s in self.snapshot() if s.start == start and s.ready), None)
+            if not slot:
+                self.store.update_host_notice(self.channel_id, start, generation, "expired")
+                raise ValueError(
+                    "This time no longer has six confirmed players forming 2–2–2. Nothing was sent."
+                )
+            settings = self.store.host_settings(self.channel_id)
+            token = self.preview_token(slot, settings)
+            ranks = await self.advert_ranks(slot)
+            # Reuse the validated queue path, supplying the owner's guild context for a DM interaction.
+            request = SimpleNamespace(user=interaction.user, guild=guild, guild_id=config.GUILD_ID)
+            await self.publish(request, start, token, ranks)
+            self.store.update_host_notice(self.channel_id, start, generation, "accepted")
 
     async def advert_ranks(self, slot):
         from rionnag.integrations.rivals import fetch_player_ranks, queued_lookup
@@ -113,28 +206,6 @@ class HostingService:
                 )
             )
         return tuple(ranks)
-
-    async def configure(self, destination, minutes):
-        from rionnag.cogs.scrim_hosting import posting_channels
-
-        if not 60 <= minutes <= 240:
-            raise ValueError("Choose a session length from 60 to 240 minutes.")
-        old = self.store.host_settings(self.channel_id)
-        allowed = posting_channels()
-        target = int(destination) if destination else old["destination"]
-        if target is None and len(allowed) == 1:
-            target = next(iter(allowed))
-        if target not in allowed:
-            raise ValueError("Choose one of the configured external scrim channels for adverts.")
-        async with self.lock:
-            if old["duration"] != minutes * 60:
-                self.store.prune_host_votes(self.channel_id, {})
-            self.store.configure_host(
-                self.channel_id,
-                destination=target,
-                duration=minutes * 60,
-            )
-        await self.sync()
 
     def manager(self, interaction):
         form = self.applications.forms.get("marvel-rivals", {})
@@ -299,7 +370,7 @@ class HostingService:
             if self.preview_token(slot, settings) != expected:
                 raise ValueError("The lineup or settings changed. Review a fresh preview before publishing.")
             if not settings["destination"]:
-                raise ValueError("Set an advert destination in Host settings first.")
+                raise ValueError("No advert destination is configured in the collector settings.")
             previous = self.store.host_adverts(self.channel_id).get(start)
             if previous and previous["status"] == "sent":
                 old_team = {int(mid): role for mid, role in json.loads(previous["lineup"]).items()}

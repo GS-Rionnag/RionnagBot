@@ -53,6 +53,10 @@ class Store:
                     status TEXT NOT NULL DEFAULT 'queued', message_id INTEGER, error TEXT,
                     requested_at REAL NOT NULL DEFAULT (unixepoch()),
                     PRIMARY KEY(channel_id,start));
+                CREATE TABLE IF NOT EXISTS scrim_host_notices (
+                    channel_id INTEGER, start INTEGER, generation INTEGER NOT NULL,
+                    status TEXT NOT NULL, message_id INTEGER,
+                    PRIMARY KEY(channel_id,start));
             """)
             columns = {row[1] for row in db.execute("PRAGMA table_info(scrim_opportunity_posts)")}
             for name, kind in (
@@ -190,6 +194,36 @@ class Store:
                 row["start"]: dict(row)
                 for row in db.execute("SELECT * FROM scrim_host_adverts WHERE channel_id=?", (channel_id,))
             }
+
+    def host_notices(self, channel_id):
+        with self.connection() as db:
+            return {
+                row["start"]: dict(row)
+                for row in db.execute("SELECT * FROM scrim_host_notices WHERE channel_id=?", (channel_id,))
+            }
+
+    def reserve_host_notice(self, channel_id, start):
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT generation,status FROM scrim_host_notices WHERE channel_id=? AND start=?",
+                (channel_id, start),
+            ).fetchone()
+            if row and row["status"] != "expired":
+                return row["generation"]
+            generation = row["generation"] + 1 if row else 1
+            db.execute(
+                "INSERT OR REPLACE INTO scrim_host_notices VALUES(?,?,?,'pending',NULL)",
+                (channel_id, start, generation),
+            )
+            return generation
+
+    def update_host_notice(self, channel_id, start, generation, status, message_id=None):
+        with self.connection() as db:
+            db.execute(
+                "UPDATE scrim_host_notices SET status=?, message_id=COALESCE(?,message_id) "
+                "WHERE channel_id=? AND start=? AND generation=?",
+                (status, message_id, channel_id, start, generation),
+            )
 
     def queue_host_advert(self, channel_id, start, settings, lineup, requester, rank_lines=()):
         content = f"LFS at <t:{start}:F>"

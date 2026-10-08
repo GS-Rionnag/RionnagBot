@@ -91,21 +91,6 @@ class HostingBoard(discord.ui.View):
     async def lineups(self, interaction, button):
         await self.open(interaction, "lineup")
 
-    @discord.ui.button(label="Host a session", style=discord.ButtonStyle.primary, custom_id="hosting:publish")
-    async def publish(self, interaction, button):
-        await self.open(interaction, "publish")
-
-    @discord.ui.button(
-        label="Host settings", style=discord.ButtonStyle.secondary, custom_id="hosting:settings", row=1
-    )
-    async def settings(self, interaction, button):
-        if not self.service.manager(interaction):
-            await interaction.response.send_message(
-                "Only the owner or Marvel Rivals Managers can configure hosting.", ephemeral=True
-            )
-            return
-        await interaction.response.send_modal(HostingSettings(self.service))
-
 
 class DayPicker(discord.ui.View):
     def __init__(self, service, owner, slots, mode, zone=None):
@@ -331,94 +316,41 @@ class SlotPicker(discord.ui.View):
             ]
             if secondary:
                 text += "\n**Secondary assignments**\n" + "\n".join(secondary)
-            view = None
-            if self.mode == "publish":
-                if not self.service.manager(interaction) or not slot.ready:
-                    raise ValueError("A manager and six confirmed players forming 2–2–2 are required.")
-                settings = self.service.store.host_settings(self.service.channel_id)
-                if not settings["destination"]:
-                    raise ValueError("Set an advert destination in Host settings first.")
-                rank_lines = await self.service.advert_ranks(slot)
-                anonymous = "\n".join(
-                    f"Player{index} - {current}; {peak} Peak"
-                    for index, (current, peak) in enumerate(rank_lines, 1)
-                )
-                text += (
-                    f"\n\n**Post as the owner in <#{settings['destination']}>**\n"
-                    f"LFS at <t:{slot.start}:F>\n"
-                    f"{anonymous}\n"
-                    "Publishing freezes this lineup. You handle opponent conversations."
-                )
-                view = PublishPreview(
-                    self.service,
-                    self.owner,
-                    slot.start,
-                    self.service.preview_token(slot, settings),
-                    rank_lines,
-                )
-                if advert and advert["status"] == "sent":
-                    view.children[0].label = "Confirm replacement lineup"
-                    text += "\nThis updates the selected roster; the existing advert stays posted."
-            options = {"view": view} if view else {}
             await interaction.followup.send(
-                text[:2000], ephemeral=True, allowed_mentions=discord.AllowedMentions.none(), **options
+                text[:2000], ephemeral=True, allowed_mentions=discord.AllowedMentions.none()
             )
         except ValueError as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
 
 
-class PublishPreview(discord.ui.View):
-    def __init__(self, service, owner, start, expected, rank_lines=()):
-        super().__init__(timeout=300)
-        self.service, self.owner, self.start, self.expected = service, owner, start, expected
-        self.rank_lines = rank_lines
-
-    @discord.ui.button(label="Publish LFS advert", style=discord.ButtonStyle.success)
-    async def publish(self, interaction, button):
-        if interaction.user.id != self.owner:
-            await interaction.response.send_message("Open your own advert preview.", ephemeral=True)
-            return
-        await interaction.response.defer(ephemeral=True)
-        try:
-            await self.service.publish(interaction, self.start, self.expected, self.rank_lines)
-        except ValueError as exc:
-            await interaction.followup.send(str(exc), ephemeral=True)
-            return
-        button.disabled = True
-        await interaction.edit_original_response(view=self)
-        await interaction.followup.send(
-            "Session saved. The board shows the selected session and advert delivery status.", ephemeral=True
-        )
-
-
-class HostingSettings(discord.ui.Modal, title="Scrim hosting settings"):
-    def __init__(self, service):
-        super().__init__()
-        self.service = service
-        settings = service.store.host_settings(service.channel_id)
-        self.destination = discord.ui.TextInput(
-            label="Advert destination channel ID", default=str(settings["destination"] or "")
-        )
-        self.duration = discord.ui.TextInput(
-            label="Session length in minutes (60–240)", default=str(settings["duration"] // 60)
-        )
-        for field in (self.destination, self.duration):
-            self.add_item(field)
-
-    async def on_submit(self, interaction):
-        if not self.service.manager(interaction):
-            await interaction.response.send_message(
-                "Only game managers or the owner can change these settings.", ephemeral=True
+class HostApproval(discord.ui.View):
+    def __init__(self, service, start, generation):
+        super().__init__(timeout=None)
+        self.service, self.start, self.generation = service, start, generation
+        for label, send, style in (
+            ("Yes, send advert", True, discord.ButtonStyle.success),
+            ("No", False, discord.ButtonStyle.secondary),
+        ):
+            button = discord.ui.Button(
+                label=label, style=style, custom_id=f"hosting-approval:{start}:{generation}:{int(send)}"
             )
-            return
-        await interaction.response.defer(ephemeral=True)
-        try:
-            await self.service.configure(str(self.destination), int(str(self.duration)))
-        except ValueError as exc:
-            await interaction.followup.send(str(exc), ephemeral=True)
-            return
-        await interaction.followup.send(
-            "Hosting settings saved. A duration change clears confirmations "
-            "so players can confirm the new session length.",
-            ephemeral=True,
-        )
+
+            async def decide(interaction, send=send):
+                await interaction.response.defer(thinking=True)
+                try:
+                    await self.service.decide_notice(interaction, self.start, self.generation, send)
+                except ValueError as exc:
+                    await interaction.followup.send(str(exc), ephemeral=True)
+                    return
+                for item in self.children:
+                    item.disabled = True
+                await interaction.message.edit(view=self)
+                await interaction.followup.send(
+                    "Advert queued. Delivery status will appear on the scrim board."
+                    if send
+                    else "Declined. No advert will be sent for this request.",
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+
+            button.callback = decide
+            self.add_item(button)
