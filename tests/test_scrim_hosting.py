@@ -125,6 +125,48 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
             config.SCRIM_HOST_CHANNEL_ID, self.start, self.settings, self.team, 99
         )
 
+    async def test_one_global_official_slot_and_durable_notice(self):
+        cid = config.SCRIM_HOST_CHANNEL_ID
+        self.store.book_host(cid, self.start, 7200, 99)
+        self.assertEqual(self.store.official_host(cid), self.start)
+        notice = self.store.host_notification(cid, self.start, 1, "confirmed")
+        self.assertEqual(notice["status"], "pending")
+        self.store.complete_host_notification(cid, self.start, 1, "confirmed", "sent", 123)
+        saved = Store(self.store.path).host_notification(cid, self.start, 1, "confirmed")
+        self.assertEqual(saved["message_id"], 123)
+        self.store.book_host(cid, self.start + 3600, 7200, 99)
+        self.assertEqual(Store(self.store.path).official_host(cid), self.start + 3600)
+
+    async def test_official_announcement_sends_once_to_confirmed_then_available(self):
+        async def history(**kwargs):
+            if False:
+                yield None
+
+        sent = []
+
+        def send_for(mid):
+            async def send(**kwargs):
+                sent.append((mid, kwargs["embed"].description))
+                return SimpleNamespace(id=100 + mid)
+            return send
+
+        users = {
+            mid: SimpleNamespace(dm_channel=SimpleNamespace(
+                history=history, send=AsyncMock(side_effect=send_for(mid))
+            )) for mid in (1, 2)
+        }
+        bot = SimpleNamespace(get_user=users.get, user=SimpleNamespace(id=44))
+        service = HostingService(bot, SimpleNamespace(store=self.store), None)
+        service.players = lambda: [dict(member_id=mid, answers={}) for mid in (1, 2)]
+        self.store.book_host(service.channel_id, self.start, 7200, 99)
+        self.store.set_host_vote(service.channel_id, self.start, 1, True)
+        with patch("rionnag.services.scrim_hosting.covers_interval", return_value=True):
+            await service.notify_official()
+            await service.notify_official()
+        self.assertEqual([mid for mid, _ in sent], [1, 2])
+        self.assertIn("officially confirmed", sent[0][1])
+        self.assertIn("Can you make it?", sent[1][1])
+
     async def test_idempotent_persisted_queue_and_departure_cleanup(self):
         self.assertTrue(self.queue())
         self.assertFalse(self.queue())

@@ -5,7 +5,9 @@ import json
 import logging
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 import discord
 
@@ -87,14 +89,24 @@ class HostingService:
         self.rank_cache = {}
         self.notice_lock = asyncio.Lock()
         self.invite_lock = asyncio.Lock()
+        self.notification_lock = asyncio.Lock()
 
     def register_approvals(self):
-        from rionnag.ui.scrim_hosting import HostApproval, ScrimInvite, SessionCard
+        from rionnag.ui.scrim_hosting import HostApproval, OfficialInvite, ScrimInvite, SessionCard
 
         for invite in self.store.host_invites(self.channel_id):
             if invite["status"] == "pending" and invite["message_id"]:
                 self.bot.add_view(ScrimInvite(self, invite["member_id"], invite["start"], invite["duration"]),
                                   message_id=invite["message_id"])
+        official = self.store.official_host(self.channel_id)
+        if official is not None:
+            with self.store.connection() as db:
+                rows = db.execute("SELECT * FROM scrim_host_notifications WHERE channel_id=? AND start=? "
+                                  "AND kind='invite' AND status='sent' AND message_id IS NOT NULL",
+                                  (self.channel_id, official)).fetchall()
+            for row in rows:
+                self.bot.add_view(OfficialInvite(self, row["member_id"], official),
+                                  message_id=row["message_id"])
 
         for position, message_id in self.store.host_cards(self.channel_id).items():
             self.bot.add_view(SessionCard(self, position), message_id=message_id)
@@ -177,6 +189,81 @@ class HostingService:
                     self.channel_id, start, generation, "accepted", notice["message_id"]
                 )
         await self.sync()
+
+    async def answer_official_invite(self, member_id, start, accept):
+        if self.store.official_host(self.channel_id) != start:
+            raise ValueError("This is no longer the official scrim.")
+        settings = self.store.host_settings(self.channel_id)
+        if accept:
+            await self.direct_join(member_id, start, settings["duration"])
+        else:
+            await self.change_votes(member_id, [start], False)
+        self.store.complete_host_notification(self.channel_id, start, member_id, "invite",
+                                              "accepted" if accept else "declined")
+
+    async def notify_official(self):
+        from rionnag.ui.scrim_hosting import OfficialInvite
+
+        async with self.notification_lock:
+            start = self.store.official_host(self.channel_id)
+            if start is None or start <= time.time():
+                return
+            booking = self.store.host_bookings(self.channel_id).get(start)
+            if not booking:
+                return
+            duration = booking["duration"]
+            votes = self.store.host_votes(self.channel_id).get(start, set())
+            players = {p["member_id"]: p for p in self.players()}
+            for mid, player in sorted(players.items(), key=lambda item: (item[0] not in votes, item[0])):
+                available = covers_interval(player["answers"], start, start + duration)
+                if mid not in votes and not available:
+                    continue
+                # A member may join or withdraw after booking; reminders use current votes.
+                kinds = ["confirmed" if mid in votes else "invite"]
+                if mid in votes:
+                    now = time.time()
+                    zone = ZoneInfo("America/New_York")
+                    if datetime.fromtimestamp(now, zone).date() == datetime.fromtimestamp(start, zone).date():
+                        kinds.append("day")
+                    if start - 1800 <= now < start:
+                        kinds.append("thirty")
+                for kind in kinds:
+                    record = self.store.host_notification(self.channel_id, start, mid, kind)
+                    if record["status"] != "pending":
+                        continue
+                    marker = f"Official scrim notice · {start} · {mid} · {kind}"
+                    try:
+                        user = self.bot.get_user(mid) or await self.bot.fetch_user(mid)
+                        dm = user.dm_channel or await user.create_dm()
+                        recovered = None
+                        async for message in dm.history(limit=100):
+                            if message.author.id == self.bot.user.id and any(
+                                e.footer and e.footer.text == marker for e in message.embeds
+                            ):
+                                recovered = message
+                                break
+                        if recovered is None:
+                            descriptions = {
+                                "confirmed": f"The scrim at <t:{start}:F> is officially confirmed.",
+                                "invite": f"The scrim at <t:{start}:F> is officially confirmed. "
+                                          "Can you make it? Yes joins; No declines.",
+                                "day": f"You have a scrim today at <t:{start}:F>. Please be there on time.",
+                                "thirty": f"Your scrim starts in 30 minutes at <t:{start}:F>. "
+                                          "Please get ready and join the scrim voice channel.",
+                            }
+                            embed = discord.Embed(title="Official Rionnag scrim",
+                                                  description=descriptions[kind], color=config.COLOR)
+                            embed.set_footer(text=marker)
+                            recovered = await dm.send(embed=embed,
+                                view=OfficialInvite(self, mid, start) if kind == "invite" else None,
+                                allowed_mentions=discord.AllowedMentions.none())
+                        self.store.complete_host_notification(self.channel_id, start, mid, kind,
+                                                              "sent", recovered.id)
+                    except discord.Forbidden:
+                        self.store.complete_host_notification(self.channel_id, start, mid, kind,
+                                                              "undeliverable")
+                    except discord.HTTPException:
+                        log.warning("Official scrim DM failed; will retry")
 
     async def notify_ready(self):
         from rionnag.ui.scrim_hosting import HostApproval
@@ -478,7 +565,15 @@ class HostingService:
         summary = self.board_embed(slots)
         fields = list(summary.fields)
         summary.clear_fields()
+        official = self.store.official_host(self.channel_id)
         embeds = [summary]
+        if official is not None and official > time.time():
+            booking = self.store.host_bookings(self.channel_id).get(official)
+            if booking:
+                embeds.insert(0, discord.Embed(
+                    title="Official upcoming scrim", color=config.COLOR,
+                    description=f"<t:{official}:F> – <t:{official + booking['duration']}:t>",
+                ))
         ranked = sorted((s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start))[:3]
         for field, slot in zip(fields, ranked):
             embed = discord.Embed(title=f"<t:{slot.start}:F>", color=config.COLOR, description=field.value)
@@ -501,6 +596,7 @@ class HostingService:
             fingerprint = json.dumps([embed.to_dict() for embed in embeds], sort_keys=True)
             if fingerprint == self.fingerprint and settings["message_id"]:
                 return
+            board_count = 2 if embeds[0].title == "Official upcoming scrim" else 1
             message = None
             if settings["message_id"]:
                 try:
@@ -519,12 +615,12 @@ class HostingService:
                         break
             if message:
                 await message.edit(
-                    embeds=embeds[:1], view=HostingBoard(self),
+                    embeds=embeds[:board_count], view=HostingBoard(self),
                     allowed_mentions=discord.AllowedMentions.none()
                 )
             else:
                 message = await channel.send(
-                    embeds=embeds[:1], view=HostingBoard(self),
+                    embeds=embeds[:board_count], view=HostingBoard(self),
                     allowed_mentions=discord.AllowedMentions.none()
                 )
             self.store.configure_host(self.channel_id, message_id=message.id)
@@ -552,11 +648,14 @@ class HostingService:
                         }:
                             card = candidate
                             break
-                embed = embeds[position + 1] if position + 1 < len(embeds) else discord.Embed(
-                    title=f"Scrim #{position + 1}", description="No confirmed session in this position yet.",
-                    color=config.COLOR,
-                )
-                view = SessionCard(self, position, disabled=position + 1 >= len(embeds))
+                if position + board_count < len(embeds):
+                    embed = embeds[position + board_count]
+                else:
+                    embed = discord.Embed(
+                        title=f"Scrim #{position + 1}",
+                        description="No confirmed session in this position yet.", color=config.COLOR,
+                    )
+                view = SessionCard(self, position, disabled=position + board_count >= len(embeds))
                 kwargs = dict(content=marker, embed=embed, view=view,
                               allowed_mentions=discord.AllowedMentions.none())
                 card = await card.edit(**kwargs) if card else await channel.send(**kwargs)

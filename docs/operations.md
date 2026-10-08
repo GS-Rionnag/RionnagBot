@@ -95,6 +95,11 @@ No automatic profile-rank lookup runs when approving the advert. You handle oppo
 
 The six-player owner DM lists confirmed players under Tank, DPS, and Support, using their saved best roles
 like the main board. Persistent Bump post and Confirm scrim controls remain usable after an advert is sent.
+Confirm scrim asks the owner for a final Yes/No choice. Yes sets the one current official upcoming
+scrim on the hosting board. The bot first DMs confirmed players that the time is official, then
+DMs available unconfirmed players with persistent Yes/No choices. Yes joins the scrim; No declines.
+Confirmed players receive a reminder on the scrim's calendar day in America/New_York and again
+30 minutes before its start. These DMs have durable identities and recover after a restart.
 Existing panels refresh with these controls. Only the owner can operate them; readiness and notice generation
 are checked again. Bump post requires a delivered advert and no other pending bump. The posting account checks
 the current team and destination, deletes only the recorded own advert, and reposts its exact text. Durable

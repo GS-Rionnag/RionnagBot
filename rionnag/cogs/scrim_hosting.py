@@ -28,11 +28,24 @@ class ScrimHosting(commands.Cog):
         self.refresh.start()
         self.approvals.start()
         self.invitations.start()
+        self.official_notifications.start()
 
     async def cog_unload(self):
         self.refresh.cancel()
         self.approvals.cancel()
         self.invitations.cancel()
+        self.official_notifications.cancel()
+
+    @tasks.loop(seconds=30)
+    async def official_notifications(self):
+        try:
+            await self.service.notify_official()
+        except Exception:
+            logging.getLogger(__name__).exception("Official scrim notification failed; will retry")
+
+    @official_notifications.before_loop
+    async def before_official_notifications(self):
+        await self.service.bot.wait_until_ready()
 
     @tasks.loop(seconds=10)
     async def invitations(self):

@@ -113,6 +113,29 @@ class ScrimInvite(HostingView):
             self.add_item(button)
 
 
+class OfficialInvite(HostingView):
+    def __init__(self, service, owner, start):
+        super().__init__(timeout=None)
+        for label, accept in (("Yes, I can make it", True), ("No, I cannot", False)):
+            button = discord.ui.Button(
+                label=label, custom_id=f"hosting-official:{owner}:{start}:{int(accept)}",
+                style=discord.ButtonStyle.success if accept else discord.ButtonStyle.secondary,
+            )
+
+            async def answer(interaction, accept=accept):
+                if interaction.user.id != owner:
+                    await interaction.response.send_message("This invitation belongs to another player.",
+                                                            ephemeral=True)
+                    return
+                await interaction.response.defer()
+                await service.answer_official_invite(owner, start, accept)
+                content = "You're confirmed for the official scrim." if accept else "You declined the scrim."
+                await interaction.edit_original_response(content=content, view=None)
+
+            button.callback = answer
+            self.add_item(button)
+
+
 def day_groups(slots, zone):
     """Distinct day counts across qualifying sessions, never sum overlapping slots."""
     groups = {}
@@ -530,6 +553,18 @@ class HostApproval(HostingView):
             )
 
             async def manage(interaction, bump=bump):
+                if not bump:
+                    guild = service.bot.get_guild(config.GUILD_ID)
+                    if not guild or interaction.user.id != guild.owner_id:
+                        await interaction.response.send_message("Only the server owner can confirm a scrim.",
+                                                                ephemeral=True)
+                        return
+                    await interaction.response.send_message(
+                        f"Are you sure you want to confirm the scrim at <t:{start}:F>?",
+                        view=ConfirmOfficial(service, start, generation, interaction.user.id),
+                        ephemeral=True,
+                    )
+                    return
                 await interaction.response.defer(thinking=True)
                 try:
                     await service.manage_session(interaction, start, generation, bump)
@@ -547,3 +582,24 @@ class HostApproval(HostingView):
 
             button.callback = manage
             self.add_item(button)
+
+
+class ConfirmOfficial(HostingView):
+    def __init__(self, service, start, generation, owner):
+        super().__init__(timeout=300)
+        self.service, self.start, self.generation, self.owner = service, start, generation, owner
+
+    async def interaction_check(self, interaction):
+        return interaction.user.id == self.owner
+
+    @discord.ui.button(label="Yes, confirm scrim", style=discord.ButtonStyle.success)
+    async def confirm(self, interaction, button):
+        await interaction.response.defer()
+        await self.service.manage_session(interaction, self.start, self.generation, False)
+        await interaction.edit_original_response(content="Scrim officially confirmed.", view=None)
+        self.stop()
+
+    @discord.ui.button(label="No", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction, button):
+        await interaction.response.edit_message(content="Confirmation cancelled.", view=None)
+        self.stop()

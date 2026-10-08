@@ -1,5 +1,13 @@
 # Change timeline
 
+## 2026-10-08 - official scrim announcements and reminders
+
+- Confirm scrim now asks the owner to approve the booking. The hosting board shows a separate
+  official upcoming scrim embed above its controls and tracks one current official slot globally.
+- Announce booking by DM to confirmed players first, then invite available unconfirmed players
+  with persistent Yes/No buttons. Send current confirmed players a day-of reminder and a
+  30-minute reminder. Notification identities survive restarts and recover uncertain sends.
+
 ## 2026-10-08 - exclude own adverts and silence opportunities
 
 - Ignore the collector account's hosted scrim adverts as source offers, including previously collected

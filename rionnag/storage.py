@@ -60,6 +60,12 @@ class Store:
                 CREATE TABLE IF NOT EXISTS scrim_host_bookings (
                     channel_id INTEGER, start INTEGER, duration INTEGER, confirmed_by INTEGER,
                     PRIMARY KEY(channel_id,start));
+                CREATE TABLE IF NOT EXISTS scrim_host_official (
+                    channel_id INTEGER PRIMARY KEY, start INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS scrim_host_notifications (
+                    channel_id INTEGER, start INTEGER, member_id INTEGER, kind TEXT,
+                    status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
+                    PRIMARY KEY(channel_id,start,member_id,kind));
                 CREATE TABLE IF NOT EXISTS scrim_host_bumps (
                     channel_id INTEGER, start INTEGER, generation INTEGER, old_message_id INTEGER,
                     status TEXT, requested_at REAL, message_id INTEGER, error TEXT,
@@ -149,6 +155,7 @@ class Store:
             db.execute("DELETE FROM scrim_host_votes WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_overrides WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_invites WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_host_notifications WHERE member_id=?", (member_id,))
 
     def host_invites(self, channel_id):
         with self.connection() as db:
@@ -166,6 +173,28 @@ class Store:
         with self.connection() as db:
             db.execute("INSERT OR IGNORE INTO scrim_host_bookings VALUES(?,?,?,?)",
                        (channel_id, start, duration, owner))
+            db.execute("INSERT OR REPLACE INTO scrim_host_official VALUES(?,?)", (channel_id, start))
+
+    def official_host(self, channel_id):
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT start FROM scrim_host_official WHERE channel_id=?", (channel_id,)
+            ).fetchone()
+            return row[0] if row else None
+
+    def host_notification(self, channel_id, start, member_id, kind):
+        with self.connection() as db:
+            db.execute("INSERT OR IGNORE INTO scrim_host_notifications(channel_id,start,member_id,kind) "
+                       "VALUES(?,?,?,?)", (channel_id, start, member_id, kind))
+            row = db.execute("SELECT * FROM scrim_host_notifications WHERE channel_id=? AND start=? "
+                             "AND member_id=? AND kind=?", (channel_id, start, member_id, kind)).fetchone()
+            return dict(row)
+
+    def complete_host_notification(self, channel_id, start, member_id, kind, status, message_id=None):
+        with self.connection() as db:
+            db.execute("UPDATE scrim_host_notifications SET status=?, message_id=COALESCE(?,message_id) "
+                       "WHERE channel_id=? AND start=? AND member_id=? AND kind=?",
+                       (status, message_id, channel_id, start, member_id, kind))
 
     def host_bumps(self, channel_id):
         with self.connection() as db:
