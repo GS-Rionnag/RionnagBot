@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class ScrimMonitor:
     def __init__(self, controller):
         self.controller = controller
-        self.interval = max(15, float(os.getenv("SCRIM_POLL_INTERVAL", "15")))
+        self.interval = max(5, float(os.getenv("SCRIM_POLL_INTERVAL", "5")))
         self.budget = scrim_rivals.RequestBudget()
         self.task = None
         self.cursor = 0
@@ -110,7 +110,7 @@ class ScrimMonitor:
                 return
             state = self.state(current, kind, match)
             state["probe"] = probe + 1
-            state["next_at"] = time.time() + (self.interval if kind == "live" else 60)
+            state["next_at"] = time.time() + (self.interval if kind == "live" else 15)
             if error:
                 state["errors"] = min(state.get("errors", 0) + 1, 6)
                 delay = min(900, 30 * 2 ** state["errors"])
@@ -161,6 +161,9 @@ class ScrimMonitor:
                     await self.update_panel(guild, current)
                 return
             live_id = state.get("battle_id")
+            # A manually started game acquires its live identity on the first confirmed probe.
+            if not live_id and result["custom"] is True and result["battle_id"]:
+                live_id = state["battle_id"] = result["battle_id"]
             # An opaque battle ID still proves the original game is running even without mode metadata.
             running = bool(live_id and result["battle_id"] == live_id) or (
                 result["custom"] is True and (not live_id or not result["battle_id"])

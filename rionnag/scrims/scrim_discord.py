@@ -42,6 +42,8 @@ class ScrimPanel(discord.ui.View):
                 ("Sub in", "sub", discord.ButtonStyle.primary, playing or session["number"] == 1),
                 ("Reroll teams", "reroll", discord.ButtonStyle.secondary, playing),
                 ("Edit lineup", "edit", discord.ButtonStyle.secondary, playing),
+                ("Force start game", "force_start", discord.ButtonStyle.success, playing),
+                ("Force end game", "force_finish", discord.ButtonStyle.danger, not playing),
             ]
             if session.get("sync_error"):
                 controls.append(("Sync voice", "sync", discord.ButtonStyle.secondary, False))
@@ -186,7 +188,7 @@ class ScrimController:
     def start_monitor(self):
         self.monitor.start()
 
-    async def game_started(self, guild, data, evidence):
+    async def game_started(self, guild, data, evidence, actor=None):
         """Called under the guild lock only after a starter reports a custom game."""
         if data["status"] != "prepared":
             return
@@ -197,7 +199,8 @@ class ScrimController:
             "absent": {},
             "test_mode": bool(data.get("test_mode")),
         }
-        data["note"] = "Game Started · Custom game detected automatically by Rivals Data."
+        data["note"] = ("Game Started · Forced by a scrim manager." if actor is not None else
+                        "Game Started · Custom game detected automatically by Rivals Data.")
         data["admission_ids"] = [
             m.id
             for cid in (data["waiting_id"], data["stage_id"])
@@ -205,13 +208,13 @@ class ScrimController:
             if m.id in data["players"] and not m.bot
         ]
         # A Discord failure must not erase the actual game start or change its recorded roster.
-        self.store.start(data, None, started_at=evidence.get("started_at"))
+        self.store.start(data, actor, started_at=evidence.get("started_at"))
         self.store.snapshot(data["match_id"], "live", evidence["payload"])
         await self.try_sync(guild, data)
         lobby = self.store.lobby(guild.id, data["game"])
         await self.panel(lobby, guild, data, mention_ids=data["roster"])
 
-    async def game_ended(self, guild, data):
+    async def game_ended(self, guild, data, actor=None):
         """Record completion once, then recover voice independently of result indexing."""
         if data["status"] != "playing":
             return
@@ -223,7 +226,9 @@ class ScrimController:
         data.pop("admission_ids", None)
         data["protected_in"] = []
         data["note"] = "Game Ended · Recorded locally; verifying the latest custom match for statistics."
-        self.store.finish(data, None)
+        if actor is not None:
+            data["note"] = "Game Ended · Forced by a scrim manager; verifying match statistics."
+        self.store.finish(data, actor)
         try:
             await self.return_waiting(guild, data)
         except (ValueError, discord.HTTPException) as exc:
@@ -783,6 +788,21 @@ class ScrimController:
                         raise ValueError("This example scrim is reserved for its tester.")
                     if revision != data.get("revision", 0) or data["status"] == "ended":
                         raise ValueError("That action was already handled. Use the updated controls.")
+                    if action in {"force_start", "force_finish"}:
+                        if action == "force_start":
+                            if data["status"] != "prepared":
+                                raise ValueError("This game has already started.")
+                            await self.game_started(interaction.guild, data, {"payload": {
+                                "forced": True, "actor_id": interaction.user.id,
+                            }}, actor=interaction.user.id)
+                            reply = "Game started manually. Automatic monitoring remains active."
+                        else:
+                            if data["status"] != "playing":
+                                raise ValueError("There is no running game to end.")
+                            await self.game_ended(interaction.guild, data, actor=interaction.user.id)
+                            reply = "Game ended manually. Match statistics will be verified separately."
+                        await interaction.followup.send(reply, ephemeral=True)
+                        return
                     # Persist the button revision alongside the roster/count mutation,
                     # before making slower Discord calls. Retries cannot repeat it.
                     data["revision"] = data.get("revision", 0) + 1

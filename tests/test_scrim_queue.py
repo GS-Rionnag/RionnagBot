@@ -20,6 +20,25 @@ from rionnag.storage import Store
 
 
 class QueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_force_controls_require_manager_and_stale_click_cannot_finish_twice(self):
+        data = await self.begin(start=False)
+        await self.click("force_start", user=2)
+        self.assertEqual(self.store.get(data["id"])["status"], "prepared")
+        await self.click("force_start")
+        playing = self.store.get(data["id"])
+        self.assertEqual(playing["status"], "playing")
+        self.assertIn("Forced", playing["note"])
+        revision = playing["revision"]
+        await self.click("force_finish", user=2)
+        self.assertEqual(self.store.get(data["id"])["status"], "playing")
+        await self.click("force_finish", revision=revision)
+        await self.click("force_finish", revision=revision)
+        finished = self.store.get(data["id"])
+        self.assertEqual(finished["status"], "prepared")
+        self.assertEqual(finished["number"], 2)
+        self.assertEqual(sum(p["played"] for p in finished["players"].values()), 6)
+        self.assertIsNone(self.store.export(data["id"])["matches"][0]["external_id"])
+
     async def test_visitor_stays_in_stage_muted_and_waiting_restores_voice(self):
         visitor = self.members[1]
         visitor.roles = [SimpleNamespace(id=config.VISITOR_ROLE_ID)]
@@ -754,11 +773,13 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(view.is_persistent())
         self.assertEqual(
             [b.label for b in view.children],
-            ["Sub in", "Reroll teams", "Edit lineup"],
+            ["Sub in", "Reroll teams", "Edit lineup", "Force start game", "Force end game"],
         )
         self.assertTrue(view.children[0].disabled)
         self.assertTrue(view.children[1].disabled)
         self.assertTrue(view.children[2].disabled)
+        self.assertTrue(view.children[3].disabled)
+        self.assertFalse(view.children[4].disabled)
 
     async def test_start_scrim_is_only_a_preview_until_start_game(self):
         data = await self.begin(start=False)

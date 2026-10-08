@@ -19,6 +19,25 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
     begin = test_scrim_queue.QueueTests.begin
     interaction = test_scrim_queue.QueueTests.interaction
 
+    async def test_default_monitor_checks_every_five_seconds(self):
+        with patch.dict("os.environ", {}, clear=True):
+            monitor = ScrimMonitor(self.controller)
+        self.assertEqual(monitor.interval, 5)
+        data = await self.begin(start=False)
+        await self.live(monitor, False)
+        self.assertLessEqual(self.store.get(data["id"])["detection"]["next_at"], time.time() + 5)
+
+    async def test_forced_game_learns_battle_id_and_does_not_restart_finished_battle(self):
+        data = await self.begin(start=False)
+        await self.controller.game_started(self.guild, data, {"payload": {"forced": True}}, actor=999)
+        monitor = ScrimMonitor(self.controller)
+        await self.live(monitor, True)
+        data = self.store.get(data["id"])
+        self.assertEqual(data["detection"]["battle_id"], "custom-1")
+        await self.controller.game_ended(self.guild, data, actor=999)
+        await self.live(monitor, True)
+        self.assertEqual(self.store.get(data["id"])["status"], "prepared")
+
     async def live(self, monitor, result):
         data = self.store.active()[0]
         with patch.object(
