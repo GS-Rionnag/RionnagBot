@@ -101,6 +101,20 @@ class MatchingTests(unittest.TestCase):
             instant("2027-06-08T03:00:00-04:00")
         ))
 
+    def test_opportunity_matches_second_block_but_not_break(self):
+        players = []
+        for mid in range(1, 7):
+            saved = answers()
+            saved["availability_days"]["Monday"] = [
+                {"start": 18, "end": 19}, {"start": 20, "end": 22},
+            ]
+            players.append({"member_id": mid, "answers": saved})
+        now = instant("2027-06-07T17:00:00-04:00")
+        second_block = offer("2027-06-08T00:00:00Z", "2027-06-08T02:00:00Z")
+        across_break = offer("2027-06-07T22:00:00Z", "2027-06-08T00:00:00Z")
+        self.assertEqual(match_offer(second_block, players, now), list(range(1, 7)))
+        self.assertEqual(match_offer(across_break, players, now), [])
+
     def test_dst_uses_scrim_date_and_conservative_transition_boundaries(self):
         summer = instant("2027-06-08T00:00:00+00:00")
         winter = instant("2027-01-05T01:00:00+00:00")

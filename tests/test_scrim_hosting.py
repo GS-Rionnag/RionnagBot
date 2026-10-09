@@ -98,6 +98,19 @@ class HostingRulesTests(unittest.TestCase):
             p["answers"]["availability_days"] = {"Thursday": {"start": 16, "end": 17}}
         self.assertEqual(generate_slots(players, {}, now, days=1), [])
 
+    def test_host_suggestions_use_each_block_and_skip_breaks(self):
+        players = roster()
+        for p in players:
+            p["answers"]["availability_days"] = {
+                "Monday": [{"start": 9, "end": 11}, {"start": 13, "end": 16}],
+            }
+        zone = ZoneInfo("America/New_York")
+        now = datetime(2027, 6, 7, 8, tzinfo=zone).timestamp()
+        slots = generate_slots(players, {}, now, duration=7200, days=1)
+        starts = {datetime.fromtimestamp(slot.start, zone).strftime("%H:%M") for slot in slots}
+        self.assertEqual(starts, {"09:00", "13:00", "13:30", "14:00"})
+        self.assertTrue(all(slot.available == set(range(1, 7)) for slot in slots))
+
     def test_six_votes_without_role_balance_never_ready_and_no_vote_cap(self):
         players = roster() + [player(i, "DPS", "Tank") for i in range(7, 13)]
         now = datetime(2026, 10, 8, 20, tzinfo=UTC).timestamp()
