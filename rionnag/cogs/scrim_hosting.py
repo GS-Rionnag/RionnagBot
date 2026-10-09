@@ -8,7 +8,7 @@ from discord.ext import commands, tasks
 from dotenv import dotenv_values
 
 from rionnag import config
-from rionnag.ui.scrim_hosting import HostingBoard
+from rionnag.ui.scrim_hosting import DayPicker, HostingBoard
 
 
 def posting_channels():
@@ -86,3 +86,23 @@ class ScrimHosting(commands.Cog):
         await interaction.response.send_message(
             f"Choose and confirm sessions in <#{self.service.channel_id}>.", ephemeral=True
         )
+
+    @app_commands.command(name="scrim_host_for", description="View scrim day and time options for a member")
+    @app_commands.describe(member="Member whose saved availability to use")
+    async def board_for(self, interaction: discord.Interaction, member: discord.Member):
+        if interaction.guild_id != config.GUILD_ID:
+            await interaction.response.send_message("Use this command in the Rionnag server.", ephemeral=True)
+            return
+        if not any(p["member_id"] == member.id for p in self.service.players()):
+            await interaction.response.send_message(
+                "That member does not have a current eligible Marvel Rivals profile.", ephemeral=True
+            )
+            return
+        slots = [s for s in self.service.snapshot() if member.id in s.available]
+        if not slots:
+            await interaction.response.send_message(
+                "No matching scrim sessions fit that member's saved availability yet.", ephemeral=True
+            )
+            return
+        view = DayPicker(self.service, interaction.user.id, slots, "inspect", subject=member.id)
+        await interaction.response.send_message(embed=view.embed(), view=view, ephemeral=True)

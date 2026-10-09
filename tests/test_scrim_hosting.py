@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 from rionnag import config
+from rionnag.cogs.scrim_hosting import ScrimHosting
 from rionnag.services.scrim_hosting import HostingService, HostSlot, generate_slots, role_team
 from rionnag.storage import Store
 from rionnag.ui.scrim_hosting import (
@@ -124,6 +125,36 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         return self.store.queue_host_advert(
             config.SCRIM_HOST_CHANNEL_ID, self.start, self.settings, self.team, 99
         )
+
+    async def test_member_day_command_uses_target_availability_read_only(self):
+        service = SimpleNamespace(
+            players=lambda: [player(2, "Tank", "DPS")],
+            snapshot=lambda: [HostSlot(self.start, self.start + 7200, {2}, set(), {}, 0, False)],
+            store=self.store, channel_id=config.SCRIM_HOST_CHANNEL_ID,
+            change_votes=AsyncMock(),
+        )
+        interaction = SimpleNamespace(
+            guild_id=config.GUILD_ID, user=SimpleNamespace(id=1),
+            response=SimpleNamespace(send_message=AsyncMock()),
+        )
+        await ScrimHosting.board_for.callback(ScrimHosting(service), interaction, SimpleNamespace(id=2))
+        view = interaction.response.send_message.call_args.kwargs["view"]
+        self.assertEqual(view.owner, 1)
+        self.assertEqual(view.subject, 2)
+        self.assertEqual(view.zone.key, "America/New_York")
+        self.assertIn("<@2>", view.embed().title)
+        self.assertTrue(interaction.response.send_message.call_args.kwargs["ephemeral"])
+        day = next(iter(view.groups))
+        next_interaction = SimpleNamespace(
+            user=SimpleNamespace(id=1), data={"values": [day]},
+            response=SimpleNamespace(defer=AsyncMock()), edit_original_response=AsyncMock(),
+        )
+        await view.selected(next_interaction)
+        times = next_interaction.edit_original_response.call_args.kwargs["view"]
+        self.assertEqual(times.mode, "inspect")
+        self.assertEqual(times.subject, 2)
+        self.assertIn("cannot change", times.embed().description)
+        service.change_votes.assert_not_awaited()
 
     async def test_one_global_official_slot_and_durable_notice(self):
         cid = config.SCRIM_HOST_CHANNEL_ID

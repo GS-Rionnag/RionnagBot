@@ -215,15 +215,16 @@ class HostingBoard(HostingView):
 
 
 class DayPicker(HostingView):
-    def __init__(self, service, owner, slots, mode, zone=None):
+    def __init__(self, service, owner, slots, mode, zone=None, subject=None):
         super().__init__(timeout=600)
         self.service, self.owner, self.mode = service, owner, mode
+        self.subject = owner if subject is None else subject
         if zone is None:
-            player = next((p for p in service.players() if p["member_id"] == owner), None)
+            player = next((p for p in service.players() if p["member_id"] == self.subject), None)
             zone = ZONES.get(player["answers"].get("time_zone")) if player else None
         self.zone = ZoneInfo(zone or "America/New_York")
         self.groups = day_groups(slots, self.zone)
-        if mode == "add":
+        if mode in {"add", "inspect"}:
             self.groups = dict(list(self.groups.items())[:5])
         options = []
         for day, candidates in self.groups.items():
@@ -235,7 +236,10 @@ class DayPicker(HostingView):
                     description=f"{confirmed} confirmed · {available} available",
                 )
             )
-        select = discord.ui.Select(placeholder="Choose your best day", options=options)
+        select = discord.ui.Select(
+            placeholder="Choose a day for this member" if mode == "inspect" else "Choose your best day",
+            options=options,
+        )
         select.callback = self.selected
         self.add_item(select)
 
@@ -255,11 +259,12 @@ class DayPicker(HostingView):
 
     def embed(self):
         embed = discord.Embed(
-            title="Choose a scrim day",
+            title="Choose a scrim day" if self.mode != "inspect" else f"Scrim days for <@{self.subject}>",
             color=config.COLOR,
-            description=f"Days use your saved time zone: {self.zone.key}.\n"
+            description=f"Days use {'this member’s' if self.mode == 'inspect' else 'your saved'} "
+            f"time zone: {self.zone.key}.\n"
             "Soonest days first, then confirmed players, then available players.\n"
-            + ("Showing the next five matching days.\n" if self.mode == "add" else "") +
+            + ("Showing the next five matching days.\n" if self.mode in {"add", "inspect"} else "") +
             "Counts are distinct players across qualifying times that day. "
             "Choose a day to see exact time-by-time counts.",
         )
@@ -282,6 +287,8 @@ class DayPicker(HostingView):
         slots = self.service.snapshot()
         if self.mode in {"add", "remove"}:
             slots = [s for s in slots if self.owner in (s.available if self.mode == "add" else s.confirmed)]
+        if self.mode == "inspect":
+            slots = [s for s in slots if self.subject in s.available]
         if self.mode == "publish":
             if not self.service.manager(interaction):
                 await interaction.followup.send(
@@ -296,7 +303,8 @@ class DayPicker(HostingView):
             )
             return
         view = SlotPicker(
-            self.service, self.owner, sorted(slots, key=lambda s: s.order), self.mode, self.zone.key
+            self.service, self.owner, sorted(slots, key=lambda s: s.order), self.mode, self.zone.key,
+            subject=self.subject,
         )
         await interaction.edit_original_response(embed=view.embed(), view=view)
 
@@ -304,9 +312,10 @@ class DayPicker(HostingView):
 class SlotPicker(HostingView):
     PAGE = 10
 
-    def __init__(self, service, owner, slots, mode, zone="America/New_York"):
+    def __init__(self, service, owner, slots, mode, zone="America/New_York", subject=None):
         super().__init__(timeout=600)
         self.service, self.owner, self.slots, self.mode = service, owner, slots, mode
+        self.subject = owner if subject is None else subject
         self.zone = ZoneInfo(zone)
         self.page = 0
         self.day = "all"
@@ -337,7 +346,7 @@ class SlotPicker(HostingView):
             end = datetime.fromtimestamp(slot.end, self.zone)
             options.append(
                 discord.SelectOption(
-                    label=f"{'✓ ' if self.owner in slot.confirmed else ''}"
+                    label=f"{'✓ ' if self.subject in slot.confirmed else ''}"
                     f"{index}. {local:%I:%M %p} – {end:%I:%M %p %Z}",
                     value=str(slot.start),
                     default=self.mode == "add" and self.owner in slot.confirmed,
@@ -351,6 +360,7 @@ class SlotPicker(HostingView):
                 "remove": "Select times to withdraw",
                 "lineup": "Choose a lineup to view",
                 "publish": "Choose a session to preview",
+                "inspect": "Choose a time to view",
             }[self.mode],
             options=options,
             min_values=0 if self.mode == "add" else 1,
@@ -379,6 +389,8 @@ class SlotPicker(HostingView):
                 slots = [
                     s for s in slots if self.owner in (s.available if self.mode == "add" else s.confirmed)
                 ]
+            if self.mode == "inspect":
+                slots = [s for s in slots if self.subject in s.available]
             if self.mode == "publish":
                 slots = [s for s in slots if s.ready]
             if not slots:
@@ -386,7 +398,8 @@ class SlotPicker(HostingView):
                     "No matching sessions remain. Reopen the board.", ephemeral=True
                 )
                 return
-            view = DayPicker(self.service, self.owner, slots, self.mode, self.zone.key)
+            view = DayPicker(self.service, self.owner, slots, self.mode, self.zone.key,
+                             subject=self.subject)
             await interaction.edit_original_response(embed=view.embed(), view=view)
 
         back.callback = back_to_days
@@ -398,15 +411,16 @@ class SlotPicker(HostingView):
             "remove": "Your confirmed times",
             "lineup": "Scrim lineups",
             "publish": "Select a session to host",
+            "inspect": f"Scrim times for <@{self.subject}>",
         }[self.mode]
+        instructions = {
+            "add": "Selections apply immediately. Check times to confirm; uncheck them to withdraw. "
+                   "Other pages stay saved.",
+            "inspect": "Select a time to view its lineup. This view cannot change their selections.",
+        }.get(self.mode, "Select a confirmed time to withdraw from or inspect the lineup.")
         embed = discord.Embed(
-            title=title,
-            color=config.COLOR,
-            description=f"Times below display locally. Dropdown labels use {self.zone.key}.\n"
-            "Selections apply immediately. Check times to confirm; uncheck them to withdraw. "
-            "Other pages stay saved." if self.mode == "add" else
-            f"Times below display locally. Dropdown labels use {self.zone.key}.\n"
-            "Select the confirmed times you want to withdraw from.",
+            title=title, color=config.COLOR,
+            description=f"Times below display locally. Dropdown labels use {self.zone.key}.\n{instructions}",
         )
         slots = self.filtered()
         for index, slot in enumerate(slots[self.page * 10 : (self.page + 1) * 10], self.page * 10 + 1):
@@ -458,6 +472,8 @@ class SlotPicker(HostingView):
             slot = next((s for s in self.service.snapshot() if s.start == starts[0]), None)
             if slot is None:
                 raise ValueError("This session is no longer available. Refresh from the board.")
+            if self.mode == "inspect" and self.subject not in slot.available:
+                raise ValueError("This session no longer matches that member's availability.")
             text = lineup_text(slot)
             advert = self.service.store.host_adverts(self.service.channel_id).get(slot.start)
             if advert:

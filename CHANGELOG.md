@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-08 - inspect another member's scrim days
+
+- Add `/scrim_host_for member:` to open a private, read-only day and time picker using an eligible
+  member's saved availability and time zone. It shows the same qualifying hosting sessions without
+  changing that member's commitments.
+
 ## 2026-10-08 - official scrim announcements and reminders
 
 - Confirm scrim now asks the owner to approve the booking. The hosting board shows a separate
