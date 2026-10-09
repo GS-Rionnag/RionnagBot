@@ -74,6 +74,7 @@ class ScrimHosting(commands.Cog):
     async def refresh(self):
         try:
             await self.service.sync()
+            await self.service.refresh_scrim_controls()
             await self.service.refresh_owner_panels()
         except Exception:
             logging.getLogger(__name__).exception("Hosting refresh failed; will retry")

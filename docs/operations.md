@@ -58,9 +58,10 @@ The public board shows no suggested sessions before the first confirmation. Once
 exact interval, that session appears publicly with confirmed/available counts and member mentions followed
 by their saved best roles. These are preferred roles, not promises of final lineup assignments. Existing
 votes survive deployment, so previously confirmed sessions remain visible. Mentions do not send notifications.
-When six or more players confirm a time, the first HOST SCRIMS message adds a Scrim status embed above
-its controls. It shows the exact time and the owner-message, advert-delivery, or officialized state from
-saved records. A six-player group without a valid 2–2–2 lineup is labeled as needing one.
+The Scrim Controls message always shows a Scrim status embed above Waiting for players, including
+No scrim upcoming yet when empty. Six-player confirmations come from saved hosting votes, so a
+session remains visible even if eligibility or lineup needs review. It shows the exact time and
+owner-message, advert-delivery, or officialized state. The HOST SCRIMS board shows the same status.
 HOST SCRIMS remains the first introduction/control message. Three separate session messages show
 the top confirmed sessions, with disabled placeholders for unused positions. Rank by confirmed-player
 count descending, then soonest start, regardless of available-player count or whether counts tie.

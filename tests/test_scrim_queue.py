@@ -469,6 +469,26 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["embeds"][0].title, "Waiting for players")
         self.assertTrue(all(b.disabled for b in kwargs["view"].children))
 
+    async def test_scrim_controls_show_default_status_above_waiting_and_refresh_it(self):
+        self.waiting.members = []
+        self.controller.queue(self.guild, self.lobby)
+        def status(description):
+            embed = discord.Embed(title="Scrim status", description=description)
+            embed.set_footer(text="Rionnag hosted scrim status")
+            return embed
+
+        self.controller.upcoming_status = lambda: status("No scrim upcoming yet.")
+        await self.controller.panel(self.lobby, self.guild)
+        embeds = self.control.send.call_args.kwargs["embeds"]
+        self.assertEqual([embed.title for embed in embeds], ["Scrim status", "Waiting for players"])
+        self.assertEqual(embeds[0].description, "No scrim upcoming yet.")
+        self.message.embeds = embeds
+        self.controller.upcoming_status = lambda: status("Six players confirmed for a scrim.")
+        await self.controller.refresh_upcoming_status()
+        refreshed = self.message.edit.call_args.kwargs["embeds"]
+        self.assertEqual(refreshed[0].description, "Six players confirmed for a scrim.")
+        self.assertEqual(refreshed[1].title, "Waiting for players")
+
     async def test_manager_can_start_without_any_ready_vote(self):
         data = await self.begin()
         self.assertEqual(data["status"], "playing")

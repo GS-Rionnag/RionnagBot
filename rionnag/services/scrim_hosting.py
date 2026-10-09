@@ -191,6 +191,7 @@ class HostingService:
                     self.channel_id, start, generation, "accepted", notice["message_id"]
                 )
         await self.sync()
+        await self.refresh_scrim_controls()
         if not bump:
             cog = self.bot.get_cog("Scrims") if hasattr(self.bot, "get_cog") else None
             if cog and cog.publisher:
@@ -323,6 +324,7 @@ class HostingService:
                         embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none()
                     )
                 self.store.update_host_notice(self.channel_id, slot.start, generation, "pending", message.id)
+        await self.refresh_scrim_controls()
 
     async def invite_available(self):
         from rionnag.ui.scrim_hosting import ScrimInvite
@@ -579,15 +581,16 @@ class HostingService:
         embed.set_footer(text="Use /edit_form to view more days")
         return embed
 
-    def board_embeds(self, slots):
-        summary = self.board_embed(slots)
-        fields = list(summary.fields)
-        summary.clear_fields()
+    def status_embed(self, slots=None):
+        """Shared status for the hosting board and the scrim controls message."""
+        slots = self.snapshot() if slots is None else slots
+        by_start = {slot.start: slot for slot in slots}
+        now = time.time()
         official = self.store.official_host(self.channel_id)
-        embeds = [summary]
         status = discord.Embed(title="Scrim status", color=config.COLOR)
+        status.set_footer(text="Rionnag hosted scrim status")
         booking = self.store.host_bookings(self.channel_id).get(official)
-        if official is not None and official > time.time() and booking:
+        if official is not None and official > now and booking:
             status.add_field(
                 name="Official upcoming scrim",
                 value=f"<t:{official}:F> – <t:{official + booking['duration']}:t>\n"
@@ -596,11 +599,16 @@ class HostingService:
             )
         adverts = self.store.host_adverts(self.channel_id)
         notices = self.store.host_notices(self.channel_id)
-        ready = sorted((s for s in slots if len(s.confirmed) >= 6 and s.start != official),
-                       key=lambda s: (-len(s.confirmed), s.start))
-        for slot in ready[:5 - len(status.fields)]:
-            advert = adverts.get(slot.start)
-            notice = notices.get(slot.start)
+        duration = self.store.host_settings(self.channel_id)["duration"]
+        votes = self.store.host_votes(self.channel_id)
+        ready = sorted(((start, ids) for start, ids in votes.items()
+                        if start > now and len(ids) >= 6 and start != official
+                        and not same_scrim_day(start, official)),
+                       key=lambda item: (-len(item[1]), item[0]))
+        for start, ids in ready[:5 - len(status.fields)]:
+            slot = by_start.get(start)
+            advert = adverts.get(start)
+            notice = notices.get(start)
             if advert and advert["status"] == "sent" and advert["message_id"]:
                 state = "Advert sent"
             elif advert and advert["status"] in {"queued", "sending"}:
@@ -613,15 +621,31 @@ class HostingService:
                 state = "Owner message sent · Advert not sent"
             else:
                 state = "Advert not sent"
-            if not slot.ready:
-                state += " · Needs a valid 2–2–2 lineup"
+            if slot is None or not slot.ready:
+                state += " · Needs eligibility or 2–2–2 lineup review"
             status.add_field(
-                name=f"{len(slot.confirmed)} players confirmed for a scrim",
-                value=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n**Status: {state}**",
+                name=f"{len(ids)} players confirmed for a scrim",
+                value=f"<t:{start}:F> – <t:{slot.end if slot else start + duration}:t>\n"
+                      f"**Status: {state}**",
                 inline=False,
             )
-        if status.fields:
-            embeds.insert(0, status)
+        if not status.fields:
+            status.description = "No scrim upcoming yet."
+        return status
+
+    async def refresh_scrim_controls(self):
+        cog = self.bot.get_cog("Scrims") if hasattr(self.bot, "get_cog") else None
+        if cog:
+            try:
+                await cog.controller.refresh_upcoming_status()
+            except Exception:
+                log.exception("Could not refresh scrim controls status; minute loop will retry")
+
+    def board_embeds(self, slots):
+        summary = self.board_embed(slots)
+        fields = list(summary.fields)
+        summary.clear_fields()
+        embeds = [self.status_embed(slots), summary]
         ranked = sorted((s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start))[:3]
         for field, slot in zip(fields, ranked):
             embed = discord.Embed(title=f"<t:{slot.start}:F>", color=config.COLOR, description=field.value)
@@ -644,7 +668,7 @@ class HostingService:
             fingerprint = json.dumps([embed.to_dict() for embed in embeds], sort_keys=True)
             if fingerprint == self.fingerprint and settings["message_id"]:
                 return
-            board_count = 2 if embeds[0].title == "Scrim status" else 1
+            board_count = 2
             message = None
             if settings["message_id"]:
                 try:
@@ -726,6 +750,7 @@ class HostingService:
                 self.store.set_host_override(self.channel_id, start, member_id, duration)
             self.store.set_host_vote(self.channel_id, start, member_id, True)
         await self.sync()
+        await self.refresh_scrim_controls()
         return True
 
     async def change_votes(self, member_id, starts, add, expected_duration=None, *, withdraw_starts=()):
@@ -750,6 +775,7 @@ class HostingService:
             for start in withdraw_starts:
                 self.store.set_host_vote(self.channel_id, start, member_id, False)
         await self.sync()
+        await self.refresh_scrim_controls()
 
     async def publish(self, interaction, start, expected, rank_range="Grandmaster - Celestial"):
         if not self.manager(interaction):
@@ -789,6 +815,7 @@ class HostingService:
                     "This session already has a publication request. Check its status on the board."
                 )
         await self.sync()
+        await self.refresh_scrim_controls()
 
     @staticmethod
     def preview_token(slot, settings):

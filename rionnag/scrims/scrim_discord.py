@@ -178,6 +178,7 @@ class ScrimController:
         self.bot, self.profile, self.authorize = bot, profile, authorize
         self.games, self.color = games, color
         self.account_uid = account_uid
+        self.upcoming_status = None
         self.store = ScrimStore(connection)
         self.locks, self.queue_tasks, self.views = {}, {}, {}
         self.monitor = ScrimMonitor(self)
@@ -559,8 +560,11 @@ class ScrimController:
         mention_ids = [
             mid for mid in mention_ids if mid > 0 and (not data or not data["players"][mid].get("simulated"))
         ]
+        embeds = self.embeds(lobby, guild, data)
+        if getattr(self, "upcoming_status", None) and lobby["game"] == "Marvel Rivals":
+            embeds.insert(0, self.upcoming_status())
         kwargs = dict(
-            embeds=self.embeds(lobby, guild, data),
+            embeds=embeds,
             view=view,
             content=("Playing this round: " + " ".join(f"<@{mid}>" for mid in mention_ids))
             if mention_ids
@@ -585,6 +589,28 @@ class ScrimController:
             previous.stop()
         self.bot.add_view(view, message_id=message.id)
         self.views[lobby["id"]] = view
+
+    async def refresh_upcoming_status(self):
+        """Refresh the existing controls message without changing its active session controls."""
+        if not getattr(self, "upcoming_status", None):
+            return
+        for guild_id, game in self.store.configured():
+            if game != "Marvel Rivals":
+                continue
+            guild = self.bot.get_guild(guild_id)
+            lobby = self.store.lobby(guild_id, game)
+            channel = guild.get_channel(lobby["control_id"]) if guild else None
+            if not channel or not lobby["message_id"]:
+                continue
+            try:
+                message = await channel.fetch_message(lobby["message_id"])
+                rest = [embed for embed in message.embeds
+                        if not embed.footer or embed.footer.text != "Rionnag hosted scrim status"]
+                embeds = [self.upcoming_status(), *rest]
+                if [embed.to_dict() for embed in message.embeds] != [embed.to_dict() for embed in embeds]:
+                    await message.edit(embeds=embeds, allowed_mentions=discord.AllowedMentions.none())
+            except discord.HTTPException:
+                logger.warning("Could not refresh upcoming status on scrim controls; will retry")
 
     async def action(self, interaction, lid, sid, revision, action):
         if action == "edit":

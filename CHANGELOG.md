@@ -1,8 +1,15 @@
 # Change timeline
 
+## 2026-10-08 - show hosting status on Scrim Controls
+
+- Put the hosted scrim status above Waiting for players on the existing Scrim Controls message.
+  It always shows No scrim upcoming yet when there is no qualifying future booking.
+- Read six-player confirmations from saved votes so previously confirmed sessions appear even
+  when a current lineup needs review. Refresh the controls after hosting changes and each minute.
+
 ## 2026-10-08 - show ready scrim status in controls
 
-- Add a status embed above the HOST SCRIMS controls whenever at least six players confirm a
+- Add a status embed above the HOST SCRIMS board whenever at least six players confirm a
   session. It shows each qualifying time and whether the owner message or advert was sent,
   whether advert delivery is pending or failed, and when the scrim is officialized.
 

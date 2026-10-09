@@ -44,12 +44,15 @@ class RionnagBot(commands.Bot):
             config.GUILD_ID,
             config.SCRIM_OPPORTUNITIES_CHANNEL_ID,
         )
-        await self.add_cog(Scrims(self, service, publisher))
+        scrims = Scrims(self, service, publisher)
+        await self.add_cog(scrims)
         hosting = store.host_settings(config.SCRIM_HOST_CHANNEL_ID)
         destinations = posting_channels()
         if hosting["destination"] is None and len(destinations) == 1:
             store.configure_host(config.SCRIM_HOST_CHANNEL_ID, destination=next(iter(destinations)))
-        await self.add_cog(ScrimHosting(HostingService(self, service, publisher.eligible_players)))
+        hosting_service = HostingService(self, service, publisher.eligible_players)
+        scrims.controller.upcoming_status = hosting_service.status_embed
+        await self.add_cog(ScrimHosting(hosting_service))
         self.tree.copy_global_to(guild=discord.Object(config.GUILD_ID))
         await self.tree.sync(guild=discord.Object(config.GUILD_ID))
         # Remove legacy public commands: this bot belongs to exactly one server.

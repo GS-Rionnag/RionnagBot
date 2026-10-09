@@ -373,7 +373,8 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         await service.sync()
         channel.send.assert_not_awaited()
         message.edit.assert_awaited_once()
-        self.assertEqual(len(message.edit.call_args.kwargs["embeds"]), 1)
+        self.assertEqual([embed.title for embed in message.edit.call_args.kwargs["embeds"]],
+                         ["Scrim status", "HOST SCRIMS"])
         for card in cards[:3]:
             card.edit.assert_awaited_once()
             self.assertTrue(all(b.disabled for b in card.edit.call_args.kwargs["view"].children))
@@ -478,11 +479,15 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         service.players = roster
         slot = HostSlot(self.start, self.start + 7200, set(range(1, 7)), set(range(1, 7)),
                         self.team, 0, True)
+        for mid in range(1, 7):
+            self.store.set_host_vote(service.channel_id, self.start, mid, True)
         status = service.board_embeds([slot])[0]
         self.assertEqual(status.title, "Scrim status")
         self.assertEqual(status.fields[0].name, "6 players confirmed for a scrim")
         self.assertIn(f"<t:{self.start}:F>", status.fields[0].value)
         self.assertIn("Status: Advert not sent", status.fields[0].value)
+        service.snapshot = lambda: []
+        self.assertIn("Needs eligibility", service.status_embed().fields[0].value)
         generation = self.store.reserve_host_notice(service.channel_id, self.start)
         self.store.update_host_notice(service.channel_id, self.start, generation, "pending", 55)
         self.assertIn("Owner message sent", service.board_embeds([slot])[0].fields[0].value)
@@ -508,12 +513,14 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         cards = service.board_embeds([later, most, soon])
         self.assertEqual(
             [card.title for card in cards],
-            ["HOST SCRIMS", f"<t:{most.start}:F>", f"<t:{soon.start}:F>", f"<t:{later.start}:F>"],
+            ["Scrim status", "HOST SCRIMS", f"<t:{most.start}:F>",
+             f"<t:{soon.start}:F>", f"<t:{later.start}:F>"],
         )
-        self.assertTrue(all(card.footer.text is None for card in cards[1:]))
-        self.assertEqual(cards[0].footer.text, "Use /edit_form to view more days")
-        self.assertEqual(len(cards[0].fields), 0)
-        self.assertIn(f"<t:{most.start}:F>", cards[1].description)
+        self.assertTrue(all(card.footer.text is None for card in cards[2:]))
+        self.assertEqual(cards[0].description, "No scrim upcoming yet.")
+        self.assertEqual(cards[1].footer.text, "Use /edit_form to view more days")
+        self.assertEqual(len(cards[1].fields), 0)
+        self.assertIn(f"<t:{most.start}:F>", cards[2].description)
 
     async def test_board_shows_top_three_sessions_even_without_attendance_ties(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
@@ -541,8 +548,8 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(f"<t:{tied[1].start}:F>", embed.fields[2].value)
         embed = service.board_embed(tied[:2])
         self.assertEqual(len(embed.fields), 2)
-        self.assertEqual(len(service.board_embeds([])), 1)
-        self.assertEqual(len(service.board_embeds(tied[:2])), 3)
+        self.assertEqual(len(service.board_embeds([])), 2)
+        self.assertEqual(len(service.board_embeds(tied[:2])), 4)
 
     async def test_time_selection_confirms_only_the_exact_chosen_session(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
