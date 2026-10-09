@@ -14,6 +14,7 @@ from rionnag.instance import SingleInstance
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / "data" / "service"
+NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def write_json(path, value):
@@ -39,7 +40,7 @@ def stop_child(child):
         subprocess.run(
             ["taskkill.exe", "/PID", str(child.pid), "/T", "/F"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            creationflags=NO_WINDOW,
         )
         try:
             child.wait(timeout=15)
@@ -106,7 +107,7 @@ def supervise():
                             try:
                                 children[name] = subprocess.Popen(
                                     args, cwd=cwd, stdin=subprocess.DEVNULL, stdout=output, stderr=output,
-                                    creationflags=subprocess.CREATE_NO_WINDOW,
+                                    creationflags=NO_WINDOW,
                                 )
                             except OSError as exc:
                                 output.write(f"Could not start {name}: {type(exc).__name__}\n".encode())

@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-08 - restore GitHub test runs
+
+- Keep the Windows supervisor's hidden child processes while allowing its mocked lifecycle tests
+  to run on Linux, where the Windows process flag is unavailable.
+
 ## 2026-10-08 - reserve official scrim day
 
 - Once the owner confirms an official scrim, remove other hosting choices and collected finder
