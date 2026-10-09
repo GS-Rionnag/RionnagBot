@@ -585,13 +585,43 @@ class HostingService:
         summary.clear_fields()
         official = self.store.official_host(self.channel_id)
         embeds = [summary]
-        if official is not None and official > time.time():
-            booking = self.store.host_bookings(self.channel_id).get(official)
-            if booking:
-                embeds.insert(0, discord.Embed(
-                    title="Official upcoming scrim", color=config.COLOR,
-                    description=f"<t:{official}:F> – <t:{official + booking['duration']}:t>",
-                ))
+        status = discord.Embed(title="Scrim status", color=config.COLOR)
+        booking = self.store.host_bookings(self.channel_id).get(official)
+        if official is not None and official > time.time() and booking:
+            status.add_field(
+                name="Official upcoming scrim",
+                value=f"<t:{official}:F> – <t:{official + booking['duration']}:t>\n"
+                      "**Status: Officialized**",
+                inline=False,
+            )
+        adverts = self.store.host_adverts(self.channel_id)
+        notices = self.store.host_notices(self.channel_id)
+        ready = sorted((s for s in slots if len(s.confirmed) >= 6 and s.start != official),
+                       key=lambda s: (-len(s.confirmed), s.start))
+        for slot in ready[:5 - len(status.fields)]:
+            advert = adverts.get(slot.start)
+            notice = notices.get(slot.start)
+            if advert and advert["status"] == "sent" and advert["message_id"]:
+                state = "Advert sent"
+            elif advert and advert["status"] in {"queued", "sending"}:
+                state = "Advert queued"
+            elif advert and advert["status"] == "uncertain":
+                state = "Advert delivery uncertain"
+            elif advert and advert["status"] == "failed":
+                state = "Advert not sent (delivery failed)"
+            elif notice and notice["message_id"] and notice["status"] in {"pending", "accepted"}:
+                state = "Owner message sent · Advert not sent"
+            else:
+                state = "Advert not sent"
+            if not slot.ready:
+                state += " · Needs a valid 2–2–2 lineup"
+            status.add_field(
+                name=f"{len(slot.confirmed)} players confirmed for a scrim",
+                value=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n**Status: {state}**",
+                inline=False,
+            )
+        if status.fields:
+            embeds.insert(0, status)
         ranked = sorted((s for s in slots if s.confirmed), key=lambda s: (-len(s.confirmed), s.start))[:3]
         for field, slot in zip(fields, ranked):
             embed = discord.Embed(title=f"<t:{slot.start}:F>", color=config.COLOR, description=field.value)
@@ -614,7 +644,7 @@ class HostingService:
             fingerprint = json.dumps([embed.to_dict() for embed in embeds], sort_keys=True)
             if fingerprint == self.fingerprint and settings["message_id"]:
                 return
-            board_count = 2 if embeds[0].title == "Official upcoming scrim" else 1
+            board_count = 2 if embeds[0].title == "Scrim status" else 1
             message = None
             if settings["message_id"]:
                 try:

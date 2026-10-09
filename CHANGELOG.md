@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-08 - show ready scrim status in controls
+
+- Add a status embed above the HOST SCRIMS controls whenever at least six players confirm a
+  session. It shows each qualifying time and whether the owner message or advert was sent,
+  whether advert delivery is pending or failed, and when the scrim is officialized.
+
 ## 2026-10-08 - GitHub push notifications
 
 - Send repository push events through Discord's native GitHub integration to RIONNAG eSports `#changes`, showing commit messages and links. Keep the private webhook URL out of the repository.

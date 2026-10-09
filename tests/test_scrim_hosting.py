@@ -473,6 +473,27 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Best role:", value)
         self.assertIn("**Available players** (0)\nNone remaining.", value)
 
+    async def test_first_board_embed_tracks_six_player_advert_and_official_status(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        service.players = roster
+        slot = HostSlot(self.start, self.start + 7200, set(range(1, 7)), set(range(1, 7)),
+                        self.team, 0, True)
+        status = service.board_embeds([slot])[0]
+        self.assertEqual(status.title, "Scrim status")
+        self.assertEqual(status.fields[0].name, "6 players confirmed for a scrim")
+        self.assertIn(f"<t:{self.start}:F>", status.fields[0].value)
+        self.assertIn("Status: Advert not sent", status.fields[0].value)
+        generation = self.store.reserve_host_notice(service.channel_id, self.start)
+        self.store.update_host_notice(service.channel_id, self.start, generation, "pending", 55)
+        self.assertIn("Owner message sent", service.board_embeds([slot])[0].fields[0].value)
+        self.queue()
+        self.store.update_host_advert(service.channel_id, self.start, "sent", message_id=77)
+        self.assertIn("Status: Advert sent", service.board_embeds([slot])[0].fields[0].value)
+        self.store.book_host(service.channel_id, self.start, 7200, 99)
+        official = service.board_embeds([slot])[0]
+        self.assertEqual(official.fields[0].name, "Official upcoming scrim")
+        self.assertIn("Status: Officialized", official.fields[0].value)
+
     async def test_public_board_orders_confirmed_count_then_soonest_start(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
         service.players = roster
