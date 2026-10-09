@@ -1,5 +1,9 @@
 # Change timeline
 
+## 2026-10-08 - GitHub push notifications
+
+- Send repository push events through Discord's native GitHub integration to RIONNAG eSports `#changes`, showing commit messages and links. Keep the private webhook URL out of the repository.
+
 ## 2026-10-08 - flexible weekly availability
 
 - Let applicants save multiple time blocks on each day, with breaks and labeled next-day end times.
