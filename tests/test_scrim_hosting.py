@@ -156,6 +156,15 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("cannot change", times.embed().description)
         service.change_votes.assert_not_awaited()
 
+    async def test_time_picker_shows_confirmed_and_available_member_mentions(self):
+        slot = HostSlot(self.start, self.start + 7200, {1, 2, 3}, {1, 2}, {}, 0, False)
+        service = SimpleNamespace(store=self.store, channel_id=config.SCRIM_HOST_CHANNEL_ID)
+        view = SlotPicker(service, 99, [slot], "inspect", subject=2)
+        value = view.embed().fields[0].value
+        self.assertIn("Confirmed (2):", value)
+        self.assertIn("<@1> <@2>", value)
+        self.assertIn("Available (1):** <@3>", value)
+
     async def test_one_global_official_slot_and_durable_notice(self):
         cid = config.SCRIM_HOST_CHANNEL_ID
         self.store.book_host(cid, self.start, 7200, 99)

@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-08 - player mentions in scrim time choices
+
+- Show confirmed and remaining available member mentions beside each exact time after choosing a
+  scrim day, including the read-only picker for another member. Long lists show a remaining count.
+
 ## 2026-10-08 - inspect another member's scrim days
 
 - Add `/scrim_host_for member:` to open a private, read-only day and time picker using an eligible

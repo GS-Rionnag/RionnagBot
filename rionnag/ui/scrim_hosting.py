@@ -152,6 +152,13 @@ def day_groups(slots, zone):
     return dict(sorted(groups.items(), key=order))
 
 
+def mentions(ids, limit=8):
+    members = sorted(ids)
+    shown = " ".join(f"<@{mid}>" for mid in members[:limit]) or "None."
+    remaining = len(members) - limit
+    return f"{shown} +{remaining} more" if remaining > 0 else shown
+
+
 def lineup_text(slot):
     lines = [
         f"<t:{slot.start}:F> – <t:{slot.end}:t>",
@@ -424,11 +431,14 @@ class SlotPicker(HostingView):
         )
         slots = self.filtered()
         for index, slot in enumerate(slots[self.page * 10 : (self.page + 1) * 10], self.page * 10 + 1):
+            available = slot.available - slot.confirmed
             embed.add_field(
                 name=f"{index}. {'Ready' if slot.ready else 'Needs confirmations'}",
                 inline=False,
-                value=f"<t:{slot.start}:F> – <t:{slot.end}:t> · **{len(slot.confirmed)} confirmed**\n"
-                f"{6 - slot.secondary} best / {slot.secondary} secondary · {len(slot.available)} available",
+                value=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
+                f"**Confirmed ({len(slot.confirmed)}):** {mentions(slot.confirmed)}\n"
+                f"**Available ({len(available)}):** {mentions(available)}\n"
+                f"{6 - slot.secondary} best / {slot.secondary} secondary",
             )
         embed.set_footer(
             text=f"Page {self.page + 1}/{(len(slots) + 9) // 10} · Confirmed, available, then best roles"

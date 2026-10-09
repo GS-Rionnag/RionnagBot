@@ -72,7 +72,8 @@ The public board has only **Choose a day** and **My selections**. View lineups, 
 Host settings, and `/scrim_host_settings` have been removed. Hosting retains the saved session duration
 and advert destination, defaulting to two hours and the sole configured collector source channel.
 `/scrim_host_for member:` privately shows the same day and time choices for another eligible
-member based on their saved availability and time zone. Its controls are read-only.
+member based on their saved availability and time zone. Its controls are read-only. The time
+picker shows confirmed and remaining available member mentions for each exact session.
 There are no opponent rank limits. `/scrim_host` points members to the board.
 
 A separate ten-second loop checks for six confirmed players forming a valid 2–2–2 lineup at an exact
