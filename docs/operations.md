@@ -125,7 +125,11 @@ The board displays delivery status and advert links and flags a selected roster 
 leaves, resets, or changes their roles/availability. Published anonymous rank text remains the original
 snapshot; discuss replacements with the opponent yourself. Already published intervals do not trigger
 another approval or repost merely because more players confirm.
-Existing finder posts, votes, and voice/game tracking are independent. No form definition/version changes
+An official booking reserves its America/New_York calendar day. Other hosting sessions on that day
+disappear from board choices and cannot receive new confirmations or adverts. The official session
+remains visible and joinable through its own card or DM invitation. Finder posts on that day are
+withdrawn with their votes, and stale finder buttons reject votes. Existing external adverts are
+not automatically deleted. Voice/game tracking remains independent. No form definition/version changes
 or membership resets are needed. `python -m tools.inspect_hosting` checks board delivery without printing
 player answers or credentials.
 

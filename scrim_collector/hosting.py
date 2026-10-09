@@ -12,7 +12,7 @@ import discord
 
 from rionnag import config
 from rionnag.scrims.scrims import normalized_roles
-from rionnag.services.scrim_availability import covers_interval
+from rionnag.services.scrim_availability import covers_interval, same_scrim_day
 from rionnag.storage import Store
 
 log = logging.getLogger(__name__)
@@ -25,6 +25,8 @@ def invalid_request(store, job, players, live_members, owner_id, manager_role):
     settings = store.host_settings(job["channel_id"])
     if job["start"] in store.host_bookings(job["channel_id"]):
         return "Scrim is officially confirmed; advertising is closed"
+    if same_scrim_day(job["start"], store.official_host(job["channel_id"])):
+        return "Another scrim is official on this day; advertising is closed"
     content_matches = bool(re.fullmatch(
         rf"LFS [A-Za-z0-9 ]+ - [A-Za-z0-9 ]+ at <t:{job['start']}:F>", job["content"]
     )) or job["content"].splitlines()[0] == f"LFS at <t:{job['start']}:F>"

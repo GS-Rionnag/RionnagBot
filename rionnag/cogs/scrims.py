@@ -10,7 +10,9 @@ from rionnag import config
 from rionnag.scrims.scrim_discord import ScrimController
 from rionnag.scrims.scrim_feed import FeedStore
 from rionnag.scrims.scrim_feed_view import OfferPreview
+from rionnag.scrims.scrim_offer_rules import timestamp
 from rionnag.services.permissions import has_role
+from rionnag.services.scrim_availability import same_scrim_day
 from rionnag.services.scrim_opportunities import select_offers
 from rionnag.services.scrim_search import normalize_filter, rank_matches, rank_suggestions
 
@@ -121,7 +123,10 @@ class Scrims(commands.Cog):
         feed = FeedStore(config.ROOT / "data" / "scrim_feed.sqlite3")
         ranks = self.service.store.scrim_rank_filter(config.SCRIM_OPPORTUNITIES_CHANNEL_ID)
         snapshot = feed.identified_offers()
-        qualified = {key: offer for key, offer in snapshot.items() if rank_matches(offer, ranks)}
+        official = self.service.store.official_host(config.SCRIM_HOST_CHANNEL_ID)
+        qualified = {key: offer for key, offer in snapshot.items()
+                     if rank_matches(offer, ranks)
+                     and not same_scrim_day(timestamp(offer.get("Start_Time_timestamp")), official)}
         offers = [qualified[key] for key, count in select_offers(qualified).values()]
         if not offers:
             await interaction.response.send_message(

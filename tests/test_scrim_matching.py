@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
+from rionnag import config
 from rionnag.scrims.scrim_feed import FeedStore
+from rionnag.services.scrim_availability import same_scrim_day
 from rionnag.services.scrim_opportunities import (
     OpportunityPublisher,
     covers_interval,
@@ -34,6 +36,11 @@ def offer(start="2027-06-08T00:00:00Z", end=None):
 
 
 class MatchingTests(unittest.TestCase):
+    def test_official_day_uses_server_calendar_date(self):
+        official = instant("2027-06-08T01:00:00+00:00")
+        self.assertTrue(same_scrim_day(instant("2027-06-08T03:30:00+00:00"), official))
+        self.assertFalse(same_scrim_day(instant("2027-06-08T04:00:00+00:00"), official))
+
     def test_minimum_hour_and_full_advertised_duration(self):
         start, end = offer_interval(offer())
         self.assertEqual(end - start, 3600)
@@ -151,6 +158,20 @@ class PublisherTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.message.edit.call_args.kwargs["content"], "<@1> <@2> <@3> <@4> <@6> <@7>")
         self.assertFalse(self.message.edit.call_args.kwargs["allowed_mentions"].users)
         self.channel.send.assert_awaited_once()
+
+    async def test_official_day_withdraws_opportunity_and_rejects_old_vote(self):
+        await self.publisher.sync(self.now)
+        self.store.vote_opportunity(10, "3:0", 1, True)
+        official = instant("2027-06-08T01:00:00+00:00")
+        self.store.book_host(config.SCRIM_HOST_CHANNEL_ID, official, 7200, 99)
+        with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
+            interaction = self.interaction(2)
+            await self.publisher.vote(interaction, "3:0", True)
+        self.assertIn("no longer available", interaction.followup.send.call_args.args[0])
+        await self.publisher.sync(self.now)
+        self.message.delete.assert_awaited_once()
+        self.assertEqual(self.store.opportunity_posts(10)["3:0"]["status"], "inactive")
+        self.assertEqual(self.store.opportunity_votes(10, "3:0"), [])
 
     async def test_four_and_five_do_not_post_but_six_do(self):
         for mid in (5, 6, 7):

@@ -11,6 +11,14 @@ ZONES = {
 }
 
 
+def same_scrim_day(start, official):
+    """Compare session start dates in the server's scheduling time zone."""
+    if start is None or official is None:
+        return False
+    zone = ZoneInfo("America/New_York")
+    return datetime.fromtimestamp(start, zone).date() == datetime.fromtimestamp(official, zone).date()
+
+
 def local_boundary(wall, zone, is_start):
     """Skip nonexistent clocks; use the conservative side of ambiguous clocks."""
     values = []

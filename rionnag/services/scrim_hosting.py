@@ -13,7 +13,7 @@ import discord
 
 from rionnag import config
 from rionnag.scrims.scrims import Player, make_team, normalized_roles
-from rionnag.services.scrim_availability import covers_interval
+from rionnag.services.scrim_availability import covers_interval, same_scrim_day
 
 log = logging.getLogger(__name__)
 MARKER = "Rionnag scrim hosting board"
@@ -180,6 +180,8 @@ class HostingService:
             slot = next((s for s in self.snapshot() if s.start == start and s.ready), None)
             if not slot:
                 raise ValueError("This session no longer has a confirmed 2–2–2 team.")
+            if self.blocked_by_official(start):
+                raise ValueError("Another scrim is already official on that day.")
             if bump:
                 if not self.store.queue_host_bump(self.channel_id, start):
                     raise ValueError("No delivered advert, a bump is pending, or this scrim is booked.")
@@ -189,6 +191,13 @@ class HostingService:
                     self.channel_id, start, generation, "accepted", notice["message_id"]
                 )
         await self.sync()
+        if not bump:
+            cog = self.bot.get_cog("Scrims") if hasattr(self.bot, "get_cog") else None
+            if cog and cog.publisher:
+                try:
+                    await cog.publisher.sync()
+                except Exception:
+                    log.exception("Official booking finder refresh failed; minute loop will retry")
 
     async def answer_official_invite(self, member_id, start, accept):
         if self.store.official_host(self.channel_id) != start:
@@ -457,13 +466,22 @@ class HostingService:
 
     def snapshot(self, now=None):
         settings = self.store.host_settings(self.channel_id)
-        return generate_slots(
+        slots = generate_slots(
             self.players(),
             self.store.host_votes(self.channel_id),
             time.time() if now is None else now,
             settings["duration"],
             overrides=self.store.host_overrides(self.channel_id, settings["duration"]),
         )
+        official = self.store.official_host(self.channel_id)
+        return [slot for slot in slots if slot.start == official or not same_scrim_day(slot.start, official)]
+
+    def blocked_by_official(self, start):
+        official = self.store.official_host(self.channel_id)
+        return start != official and same_scrim_day(start, official)
+
+    def day_closed_for_choices(self, start):
+        return same_scrim_day(start, self.store.official_host(self.channel_id))
 
     def board_embed(self, slots):
         settings = self.store.host_settings(self.channel_id)
@@ -664,6 +682,8 @@ class HostingService:
 
     async def direct_join(self, member_id, start, duration, override=False):
         async with self.lock:
+            if self.blocked_by_official(start):
+                raise ValueError("Another scrim is already official on that day.")
             settings = self.store.host_settings(self.channel_id)
             players = {p["member_id"]: p for p in self.players()}
             if member_id not in players:
@@ -680,6 +700,10 @@ class HostingService:
 
     async def change_votes(self, member_id, starts, add, expected_duration=None, *, withdraw_starts=()):
         async with self.lock:
+            if add and any(self.day_closed_for_choices(start) for start in starts):
+                raise ValueError(
+                    "A scrim is already official on that day. Use its Join button or invitation."
+                )
             if (
                 add
                 and expected_duration is not None
@@ -701,6 +725,8 @@ class HostingService:
         if not self.manager(interaction):
             raise ValueError("Only the owner or Marvel Rivals Managers can publish adverts.")
         async with self.lock:
+            if self.blocked_by_official(start):
+                raise ValueError("Another scrim is already official on that day.")
             if start in self.store.host_bookings(self.channel_id):
                 raise ValueError("This scrim is officially confirmed; no new advert will be sent.")
             settings = self.store.host_settings(self.channel_id)

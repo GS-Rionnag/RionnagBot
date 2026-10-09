@@ -8,6 +8,7 @@ from discord.ext import commands, tasks
 from dotenv import dotenv_values
 
 from rionnag import config
+from rionnag.services.scrim_availability import same_scrim_day
 from rionnag.ui.scrim_hosting import DayPicker, HostingBoard
 
 
@@ -98,7 +99,9 @@ class ScrimHosting(commands.Cog):
                 "That member does not have a current eligible Marvel Rivals profile.", ephemeral=True
             )
             return
-        slots = [s for s in self.service.snapshot() if member.id in s.available]
+        official = self.service.store.official_host(self.service.channel_id)
+        slots = [s for s in self.service.snapshot()
+                 if member.id in s.available and not same_scrim_day(s.start, official)]
         if not slots:
             await interaction.response.send_message(
                 "No matching scrim sessions fit that member's saved availability yet.", ephemeral=True

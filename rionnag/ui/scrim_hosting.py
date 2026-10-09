@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 import discord
 
 from rionnag import config
-from rionnag.services.scrim_availability import ZONES
+from rionnag.services.scrim_availability import ZONES, same_scrim_day
 
 log = logging.getLogger(__name__)
 
@@ -159,6 +159,11 @@ def mentions(ids, limit=8):
     return f"{shown} +{remaining} more" if remaining > 0 else shown
 
 
+def open_days(service, slots):
+    official = service.store.official_host(service.channel_id)
+    return [slot for slot in slots if not same_scrim_day(slot.start, official)]
+
+
 def lineup_text(slot):
     lines = [
         f"<t:{slot.start}:F> – <t:{slot.end}:t>",
@@ -197,6 +202,8 @@ class HostingBoard(HostingView):
             slots = [
                 s for s in slots if interaction.user.id in (s.confirmed if mode == "remove" else s.available)
             ]
+        if mode == "add":
+            slots = open_days(self.service, slots)
         if mode == "publish":
             if not self.service.manager(interaction):
                 await interaction.followup.send(
@@ -294,6 +301,8 @@ class DayPicker(HostingView):
         slots = self.service.snapshot()
         if self.mode in {"add", "remove"}:
             slots = [s for s in slots if self.owner in (s.available if self.mode == "add" else s.confirmed)]
+        if self.mode in {"add", "inspect"}:
+            slots = open_days(self.service, slots)
         if self.mode == "inspect":
             slots = [s for s in slots if self.subject in s.available]
         if self.mode == "publish":
@@ -396,6 +405,8 @@ class SlotPicker(HostingView):
                 slots = [
                     s for s in slots if self.owner in (s.available if self.mode == "add" else s.confirmed)
                 ]
+            if self.mode in {"add", "inspect"}:
+                slots = open_days(self.service, slots)
             if self.mode == "inspect":
                 slots = [s for s in slots if self.subject in s.available]
             if self.mode == "publish":

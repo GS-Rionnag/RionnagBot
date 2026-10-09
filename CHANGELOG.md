@@ -1,5 +1,14 @@
 # Change timeline
 
+## 2026-10-08 - reserve official scrim day
+
+- Once the owner confirms an official scrim, remove other hosting choices and collected finder
+  opportunities starting on that New York calendar day. Hide the day from Choose a day and
+  `/scrim_host_for`; stale selection and vote controls cannot add interest. The official session
+  remains on the board and can still accept players through its own Join button or invitations.
+- Reject pending outbound adverts and bumps for other sessions on the reserved day. Finder posts
+  and their votes are withdrawn immediately after booking, with the minute refresh as a retry.
+
 ## 2026-10-08 - player mentions in scrim time choices
 
 - Show confirmed and remaining available member mentions beside each exact time after choosing a

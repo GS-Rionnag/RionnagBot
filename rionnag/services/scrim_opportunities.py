@@ -11,8 +11,14 @@ from datetime import UTC, datetime
 
 import discord
 
+from rionnag import config
 from rionnag.scrims.scrim_offer_rules import timestamp
-from rionnag.services.scrim_availability import ZONES, covers_interval, local_boundary  # noqa: F401
+from rionnag.services.scrim_availability import (  # noqa: F401
+    ZONES,
+    covers_interval,
+    local_boundary,
+    same_scrim_day,
+)
 from rionnag.services.scrim_search import rank_matches
 from rionnag.ui.scrim_opportunities import OpportunityVotes, matched_offer_embed
 
@@ -102,11 +108,13 @@ class OpportunityPublisher:
             return
         players = self.eligible_players(guild, form)
         offers, revisions = self.feed.opportunity_snapshot()
+        official = self.store.official_host(config.SCRIM_HOST_CHANNEL_ID)
         ranks = self.store.scrim_rank_filter(self.channel_id)
         posts = self.store.opportunity_posts(self.channel_id)
         matched = {key: match_offer(offer, players, now) for key, offer in offers.items()}
         qualified = {key: offer for key, offer in offers.items()
-                     if len(matched[key]) >= MIN_AVAILABLE_PLAYERS and rank_matches(offer, ranks)}
+                     if len(matched[key]) >= MIN_AVAILABLE_PLAYERS and rank_matches(offer, ranks)
+                     and not same_scrim_day(timestamp(offer.get("Start_Time_timestamp")), official)}
         selected = select_offers(qualified)
         # Keep a stable channel-message/button identity while its displayed source changes.
         anchors = {}
@@ -267,15 +275,18 @@ class OpportunityPublisher:
             offers, revisions = self.feed.opportunity_snapshot()
             source_key = (post["source_key"] or key) if post else key
             offer = offers.get(source_key)
+            official = self.store.official_host(config.SCRIM_HOST_CHANNEL_ID)
             members = match_offer(offer, players, time.time()) if offer else []
             ranks = self.store.scrim_rank_filter(self.channel_id)
             qualified = {k: o for k, o in offers.items()
                          if len(match_offer(o, players, time.time())) >= MIN_AVAILABLE_PLAYERS
-                         and rank_matches(o, ranks)}
+                         and rank_matches(o, ranks)
+                         and not same_scrim_day(timestamp(o.get("Start_Time_timestamp")), official)}
             selected = select_offers(qualified)
             current = selected.get(post_start(key, post, offers)) if post else None
             if (not post or post["status"] != "active" or post["message_id"] != interaction.message.id
                     or len(members) < MIN_AVAILABLE_PLAYERS
+                    or same_scrim_day(post_start(key, post, offers), official)
                     or not rank_matches(offer, ranks) or not current or current[0] != source_key
                     or post["source_revision"] not in (None, revisions.get(source_key))):
                 await interaction.followup.send(

@@ -165,6 +165,50 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("<@1> <@2>", value)
         self.assertIn("Available (1):** <@3>", value)
 
+    async def test_official_day_hides_other_slots_and_rejects_stale_selection(self):
+        cid = config.SCRIM_HOST_CHANNEL_ID
+        zone = ZoneInfo("America/New_York")
+        official = int(datetime(2026, 10, 10, 18, tzinfo=zone).timestamp())
+        other = official + 3600
+        next_day = official + 86400
+        slots = [HostSlot(start, start + 7200, set(self.team), set(), self.team, 0, True)
+                 for start in (official, other, next_day)]
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        service.players = roster
+        self.store.book_host(cid, official, 7200, 99)
+        with patch("rionnag.services.scrim_hosting.generate_slots", return_value=slots):
+            self.assertEqual([s.start for s in service.snapshot(now=official - 3600)],
+                             [official, next_day])
+        with self.assertRaisesRegex(ValueError, "already official"):
+            await service.change_votes(1, [other], True, 7200)
+        with self.assertRaisesRegex(ValueError, "already official"):
+            await service.change_votes(1, [official], True, 7200)
+        with self.assertRaisesRegex(ValueError, "already official"):
+            await service.direct_join(1, other, 7200)
+        service.manager = lambda interaction: True
+        with self.assertRaisesRegex(ValueError, "already official"):
+            await service.publish(SimpleNamespace(), other, ())
+        self.assertEqual(self.store.host_votes(cid), {})
+        board = HostingBoard(service)
+        service.snapshot = lambda: slots
+        interaction = SimpleNamespace(
+            user=SimpleNamespace(id=1), response=SimpleNamespace(defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()),
+        )
+        await board.open(interaction, "add")
+        picker = interaction.followup.send.call_args.kwargs["view"]
+        self.assertEqual({s.start for group in picker.groups.values() for s in group}, {next_day})
+
+    async def test_official_day_blocks_pending_other_advert(self):
+        self.queue()
+        from rionnag.services.scrim_availability import same_scrim_day
+
+        before = self.start - 3600
+        official = before if same_scrim_day(before, self.start) else self.start + 3600
+        self.store.book_host(config.SCRIM_HOST_CHANNEL_ID, official, 7200, 99)
+        job = self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
+        self.assertIn("official on this day", invalid_request(self.store, job, {}, {}, 99, 88))
+
     async def test_one_global_official_slot_and_durable_notice(self):
         cid = config.SCRIM_HOST_CHANNEL_ID
         self.store.book_host(cid, self.start, 7200, 99)
