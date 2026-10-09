@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-08 - flexible weekly availability
+
+- Let applicants save multiple time blocks on each day, with breaks and labeled next-day end times.
+- Keep overnight spill tied to its starting day, so the following day's own blocks remain independent.
+- Read existing single-window schedules and show all blocks in forms, profiles, and scrim matching.
+
 ## 2026-10-08 - restore GitHub test runs
 
 - Keep the Windows supervisor's hidden child processes while allowing its mocked lifecycle tests

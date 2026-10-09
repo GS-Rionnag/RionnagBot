@@ -11,6 +11,29 @@ ZONES = {
 }
 
 
+def day_windows(value):
+    """Read both legacy single windows and the current list of windows."""
+    if isinstance(value, dict):
+        return [value]
+    return value if isinstance(value, list) else []
+
+
+def window_hours(window):
+    if not isinstance(window, dict):
+        return None
+    start, end = window.get("start"), window.get("end")
+    if type(start) is not int or type(end) is not int or not 0 <= start < 24:
+        return None
+    # Legacy windows used an end clock earlier than the start for overnight.
+    if end == start:
+        return None
+    if 0 <= end <= 24 and end < start:
+        end += 24
+    if not start < end <= start + 24 or end > 48:
+        return None
+    return start, end
+
+
 def same_scrim_day(start, official):
     """Compare session start dates in the server's scheduling time zone."""
     if start is None or official is None:
@@ -41,13 +64,13 @@ def covers_interval(answers, start, end):
     intervals = []
     date = first
     while date <= last:
-        window = days.get(date.strftime("%A"))
-        if isinstance(window, dict):
-            a, b = window.get("start"), window.get("end")
-            if type(a) is int and type(b) is int and 0 <= a < 24 and 0 <= b <= 24 and a != b:
+        for window in day_windows(days.get(date.strftime("%A"))):
+            hours = window_hours(window)
+            if hours:
+                a, b = hours
                 midnight = datetime.combine(date, datetime.min.time())
                 left = local_boundary(midnight + timedelta(hours=a), zone, True)
-                right = local_boundary(midnight + timedelta(hours=b + (24 if b <= a else 0)), zone, False)
+                right = local_boundary(midnight + timedelta(hours=b), zone, False)
                 if left is not None and right is not None and right > left:
                     intervals.append((left, right))
         date += timedelta(days=1)

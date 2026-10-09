@@ -27,7 +27,7 @@ def form_profile_embed(member, form, answers, now=None):
     embed.add_field(name="Current time", value=clock)
     days = answers.get("availability_days", {})
     embed.add_field(name="Days and times free",
-                    value=(schedule_text(days, time_zone, current)
+                    value=(schedule_text(days, time_zone, current, limit=1024)
                            or answers.get("availability") or "Not saved")[:1024],
                     inline=False)
     embed.set_footer(text="Availability displays in your Discord local time zone.")

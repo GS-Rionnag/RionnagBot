@@ -287,7 +287,10 @@ class Applications:
             if q["key"] == "availability" and row["answers"].get("availability_days"):
                 from rionnag.ui.availability import schedule_text
 
-                value = schedule_text(row["answers"]["availability_days"], row["answers"].get("time_zone"))
+                value = schedule_text(
+                    row["answers"]["availability_days"], row["answers"].get("time_zone"),
+                    limit=1000,
+                )
             escaped = discord.utils.escape_markdown(value)[:1024]
             if len(embed.fields) < 24 and len(embed) + len(q["label"]) + len(escaped) < 3000:
                 embed.add_field(name=q["label"], value=escaped, inline=False)

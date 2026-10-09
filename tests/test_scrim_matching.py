@@ -76,6 +76,31 @@ class MatchingTests(unittest.TestCase):
         a["availability_days"]["Tuesday"]["start"] = 1
         self.assertFalse(covers_interval(a, start, start+3600))
 
+    def test_separate_blocks_have_breaks_and_next_day_spill(self):
+        a = answers(start=9, end=12)
+        a["availability_days"]["Monday"] = [
+            {"start": 9, "end": 12}, {"start": 15, "end": 25}
+        ]
+        a["availability_days"]["Tuesday"] = [{"start": 2, "end": 17}]
+        def interval(hour):
+            start = instant(f"2027-06-07T{hour:02d}:00:00-04:00")
+            return covers_interval(a, start, start + 3600)
+        self.assertTrue(interval(9))
+        self.assertFalse(interval(13))
+        self.assertTrue(interval(23))
+        self.assertTrue(covers_interval(
+            a, instant("2027-06-08T00:00:00-04:00"),
+            instant("2027-06-08T01:00:00-04:00")
+        ))
+        self.assertFalse(covers_interval(
+            a, instant("2027-06-08T01:00:00-04:00"),
+            instant("2027-06-08T02:00:00-04:00")
+        ))
+        self.assertTrue(covers_interval(
+            a, instant("2027-06-08T02:00:00-04:00"),
+            instant("2027-06-08T03:00:00-04:00")
+        ))
+
     def test_dst_uses_scrim_date_and_conservative_transition_boundaries(self):
         summer = instant("2027-06-08T00:00:00+00:00")
         winter = instant("2027-01-05T01:00:00+00:00")
@@ -94,7 +119,7 @@ class MatchingTests(unittest.TestCase):
         start, end = offer_interval(offer())
         for a in ({}, {"time_zone": "Unknown", "availability_days": {"Monday": {"start": 20, "end": 22}}},
                   {"time_zone": "Eastern Time (ET)", "availability_days": "everyday"},
-                  answers(start=True), answers(end=30)):
+                  answers(start=True), answers(end=49)):
             self.assertFalse(covers_interval(a, start, end))
 
     def test_embed_shows_date_source_and_assumed_hour_without_private_answers(self):

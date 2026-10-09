@@ -64,7 +64,7 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
             window = TimeWindow(view, day, start, end)
             await window.save_day(self.interaction)
         days = self.store.member(42)["answers"]["availability_days"]
-        self.assertEqual(days["Friday"], dict(start=22, end=24))
+        self.assertEqual(days["Friday"], [dict(start=22, end=24)])
         self.assertIn("<t:", schedule_text(days))
         view = AvailabilityView(self.modal)
         self.assertEqual(len(view.days), 2)
@@ -75,16 +75,34 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_reopen_prefills_selected_day_hours(self):
         self.modal.answers["availability_days"] = {"Monday": {"start": 18, "end": 22}}
-        window = TimeWindow(AvailabilityView(self.modal), "Monday")
+        window = TimeWindow(AvailabilityView(self.modal), "Monday", index=0)
         self.assertEqual([o.value for o in window.start.options if o.default], ["18"])
         self.assertEqual([o.value for o in window.end.options if o.default], ["22"])
 
-    async def test_remove_day_acknowledges_before_waiting_for_save_lock(self):
+    async def test_legacy_overnight_prefills_as_next_day(self):
+        self.modal.answers["availability_days"] = {"Monday": {"start": 23, "end": 1}}
+        window = TimeWindow(AvailabilityView(self.modal), "Monday", index=0)
+        self.assertEqual(window.end_hour, 25)
+        self.assertEqual([o.value for o in window.end.options if o.default], ["25"])
+
+    async def test_multiple_blocks_and_overnight_keep_next_day_independent(self):
+        for day, start, end in [
+            ("Monday", 9, 12), ("Monday", 15, 25), ("Tuesday", 2, 17)
+        ]:
+            await TimeWindow(AvailabilityView(self.modal), day, start, end).save_day(self.interaction)
+        days = self.store.member(42)["answers"]["availability_days"]
+        self.assertEqual(days["Monday"], [{"start": 9, "end": 12}, {"start": 15, "end": 25}])
+        self.assertEqual(days["Tuesday"], [{"start": 2, "end": 17}])
+        self.assertIn("next day", schedule_text(days))
+        with self.assertRaisesRegex(ValueError, "overlapping"):
+            await TimeWindow(AvailabilityView(self.modal), "Monday", 11, 16).save_day(self.interaction)
+
+    async def test_remove_block_acknowledges_before_waiting_for_save_lock(self):
         self.modal.answers["availability_days"] = {"Monday": {"start": 18, "end": 22}}
         view = AvailabilityView(self.modal)
-        view.children[1]._values = ["Monday"]
+        window = TimeWindow(view, "Monday", index=0)
         async with self.app.lock(42):
-            task = asyncio.create_task(view.remove_day(self.interaction))
+            task = asyncio.create_task(window.remove_block(self.interaction))
             await asyncio.sleep(0)
             self.interaction.response.defer.assert_awaited_once()
             self.assertFalse(task.done())
@@ -103,7 +121,7 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
         await task
         self.assertEqual(
             self.store.member(42)["answers"]["availability_days"],
-            {"Friday": {"start": 18, "end": 22}},
+            {"Friday": [{"start": 18, "end": 22}]},
         )
 
     async def test_double_finish_acknowledges_without_waiting_for_member_lock(self):
@@ -185,13 +203,13 @@ class PickerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_start_filters_end_times_and_clears_too_early_end(self):
         window = TimeWindow(AvailabilityView(self.modal), "Monday", 15, 17)
-        self.assertEqual([int(option.value) for option in window.end.options], list(range(16, 25)))
+        self.assertEqual([int(option.value) for option in window.end.options], list(range(16, 40)))
         window.start._values = ["18"]
         await window.choose_start(self.interaction)
         changed = self.interaction.response.edit_message.call_args.kwargs["view"]
         self.assertIsNone(changed.end_hour)
         self.assertTrue(changed.children[2].disabled)
-        self.assertEqual([int(option.value) for option in changed.end.options], list(range(19, 25)))
+        self.assertEqual([int(option.value) for option in changed.end.options], list(range(19, 43)))
 
     async def test_wrong_user_cannot_change_schedule(self):
         self.interaction.user.id = 99
