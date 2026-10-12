@@ -1,5 +1,16 @@
 # Change timeline
 
+## 2026-10-12 - daily scrim board and shared Marvel Rivals access
+
+- Replace separate finder posts and the vote summary with one daily opportunities message. Its
+  time picker keeps per-start confirmations, saved availability overrides, and source fallback.
+- Invite available players after three confirmations. Prompt the owner when six form a valid
+  lineup; owner confirmation makes the scrim official and sends invitations and reminders.
+- Keep the Bots testing channels visible and read-only, with voice joining blocked for members.
+  Onboarding repair now preserves those permissions.
+- Keep the general Marvel Rivals role when promoting to manager and add it to existing completed
+  managers during reconciliation and form restoration.
+
 ## 2026-10-08 - show hosting status on Scrim Controls
 
 - Put the hosted scrim status above Waiting for players on the existing Scrim Controls message.

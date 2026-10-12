@@ -40,6 +40,23 @@ class Store:
                     channel_id INTEGER PRIMARY KEY, min_rank TEXT NOT NULL, max_rank TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS scrim_vote_summaries (
                     channel_id INTEGER PRIMARY KEY, message_id INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS scrim_finder_board (
+                    channel_id INTEGER PRIMARY KEY, message_id INTEGER, day TEXT,
+                    fingerprint TEXT);
+                CREATE TABLE IF NOT EXISTS scrim_finder_notices (
+                    channel_id INTEGER, start INTEGER, generation INTEGER NOT NULL DEFAULT 1,
+                    status TEXT NOT NULL, message_id INTEGER, source_key TEXT,
+                    PRIMARY KEY(channel_id,start));
+                CREATE TABLE IF NOT EXISTS scrim_finder_bookings (
+                    channel_id INTEGER, start INTEGER, duration INTEGER, confirmed_by INTEGER,
+                    PRIMARY KEY(channel_id,start));
+                CREATE TABLE IF NOT EXISTS scrim_finder_overrides (
+                    channel_id INTEGER, offer_key TEXT, member_id INTEGER, duration INTEGER,
+                    PRIMARY KEY(channel_id,offer_key,member_id));
+                CREATE TABLE IF NOT EXISTS scrim_finder_notifications (
+                    channel_id INTEGER, start INTEGER, member_id INTEGER, kind TEXT,
+                    duration INTEGER, status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
+                    PRIMARY KEY(channel_id,start,member_id,kind,duration));
                 CREATE TABLE IF NOT EXISTS scrim_host_settings (
                     channel_id INTEGER PRIMARY KEY, message_id INTEGER,
                     duration INTEGER NOT NULL DEFAULT 7200,
@@ -90,6 +107,9 @@ class Store:
             ):
                 if name not in columns:
                     db.execute(f"ALTER TABLE scrim_opportunity_posts ADD COLUMN {name} {kind}")
+            columns = {row[1] for row in db.execute("PRAGMA table_info(scrim_finder_notices)")}
+            if "source_key" not in columns:
+                db.execute("ALTER TABLE scrim_finder_notices ADD COLUMN source_key TEXT")
 
     @contextmanager
     def connection(self):
@@ -152,6 +172,8 @@ class Store:
             )
             db.execute("DELETE FROM members WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_opportunity_votes WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_finder_overrides WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_finder_notifications WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_votes WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_overrides WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_invites WHERE member_id=?", (member_id,))
@@ -583,6 +605,79 @@ class Store:
                 )
             ]
 
+    def finder_board(self, channel_id):
+        with self.connection() as db:
+            row = db.execute("SELECT * FROM scrim_finder_board WHERE channel_id=?", (channel_id,)).fetchone()
+            return dict(row) if row else None
+
+    def save_finder_board(self, channel_id, message_id, day, fingerprint):
+        with self.connection() as db:
+            db.execute("INSERT OR REPLACE INTO scrim_finder_board VALUES(?,?,?,?)",
+                       (channel_id, message_id, day, fingerprint))
+
+    def finder_notices(self, channel_id):
+        with self.connection() as db:
+            return {row["start"]: dict(row) for row in db.execute(
+                "SELECT * FROM scrim_finder_notices WHERE channel_id=?", (channel_id,))}
+
+    def save_finder_notice(self, channel_id, start, generation, status, message_id=None,
+                           source_key=None):
+        with self.connection() as db:
+            db.execute("INSERT OR REPLACE INTO scrim_finder_notices VALUES(?,?,?,?,?,?)",
+                       (channel_id, start, generation, status, message_id, source_key))
+
+    def finder_bookings(self, channel_id):
+        with self.connection() as db:
+            return {row["start"]: dict(row) for row in db.execute(
+                "SELECT * FROM scrim_finder_bookings WHERE channel_id=?", (channel_id,))}
+
+    def book_finder(self, channel_id, start, duration, owner):
+        with self.connection() as db:
+            db.execute("INSERT OR IGNORE INTO scrim_finder_bookings VALUES(?,?,?,?)",
+                       (channel_id, start, duration, owner))
+
+    def finder_overrides(self, channel_id, offer_key):
+        with self.connection() as db:
+            return {row["member_id"]: row["duration"] for row in db.execute(
+                "SELECT member_id,duration FROM scrim_finder_overrides "
+                "WHERE channel_id=? AND offer_key=?", (channel_id, offer_key))}
+
+    def set_finder_override(self, channel_id, offer_key, member_id, duration):
+        with self.connection() as db:
+            db.execute("INSERT OR REPLACE INTO scrim_finder_overrides VALUES(?,?,?,?)",
+                       (channel_id, offer_key, member_id, duration))
+
+    def clear_finder_override(self, channel_id, offer_key, member_id=None):
+        with self.connection() as db:
+            if member_id is None:
+                db.execute("DELETE FROM scrim_finder_overrides WHERE channel_id=? AND offer_key=?",
+                           (channel_id, offer_key))
+            else:
+                db.execute("DELETE FROM scrim_finder_overrides WHERE channel_id=? "
+                           "AND offer_key=? AND member_id=?", (channel_id, offer_key, member_id))
+
+    def finder_notifications(self, channel_id):
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM scrim_finder_notifications WHERE channel_id=?", (channel_id,))]
+
+    def finder_notification(self, channel_id, start, member_id, kind, duration):
+        with self.connection() as db:
+            db.execute("INSERT OR IGNORE INTO scrim_finder_notifications "
+                       "(channel_id,start,member_id,kind,duration) VALUES(?,?,?,?,?)",
+                       (channel_id, start, member_id, kind, duration))
+            return dict(db.execute("SELECT * FROM scrim_finder_notifications WHERE "
+                                   "channel_id=? AND start=? AND member_id=? AND kind=? AND duration=?",
+                                   (channel_id, start, member_id, kind, duration)).fetchone())
+
+    def complete_finder_notification(self, channel_id, start, member_id, kind, duration,
+                                     status, message_id=None):
+        with self.connection() as db:
+            db.execute("UPDATE scrim_finder_notifications SET status=?, "
+                       "message_id=COALESCE(?,message_id) WHERE channel_id=? AND start=? "
+                       "AND member_id=? AND kind=? AND duration=?",
+                       (status, message_id, channel_id, start, member_id, kind, duration))
+
     def vote_summary_message(self, channel_id):
         with self.connection() as db:
             row = db.execute(
@@ -608,7 +703,12 @@ class Store:
                     "WHERE channel_id=? AND offer_key=? AND member_id=?",
                     (channel_id, offer_key, member_id),
                 ).fetchone()
-                if count >= 6 and not exists:
+                booked = db.execute(
+                    "SELECT 1 FROM scrim_finder_bookings WHERE channel_id=? AND start="
+                    "(SELECT start_time FROM scrim_opportunity_posts WHERE channel_id=? AND offer_key=?)",
+                    (channel_id, channel_id, offer_key),
+                ).fetchone()
+                if count >= 6 and not exists and not booked:
                     raise ValueError("Six players have already voted for this scrim.")
                 db.execute(
                     "INSERT OR IGNORE INTO scrim_opportunity_votes VALUES(?,?,?)",

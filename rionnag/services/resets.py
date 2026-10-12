@@ -6,7 +6,7 @@ import discord
 
 from rionnag import config
 from rionnag.services.applications import COMPLETE
-from rionnag.services.permissions import game_member, removable_roles
+from rionnag.services.permissions import game_member, has_role, removable_roles
 
 log = logging.getLogger(__name__)
 
@@ -74,6 +74,15 @@ class Resets:
                                 if role.id != config.VISITOR_ROLE_ID
                             ],
                         )
+                    if (row["game"] == "marvel-rivals" and
+                            has_role(member, form["manager_role"]) and
+                            not has_role(member, form["team_role"])):
+                        team = member.guild.get_role(form["team_role"])
+                        if team is None:
+                            raise ValueError("Marvel Rivals role is missing; owner repair is required.")
+                        await member.add_roles(team, reason="Managers retain Marvel Rivals access")
+                        saved = self.store.member(member.id)["membership_roles"]
+                        self.store.update(member.id, membership_roles=sorted(set(saved + [team.id])))
                     visitor = member.guild.get_role(config.VISITOR_ROLE_ID)
                     if visitor in member.roles:
                         await member.remove_roles(visitor, reason="Team members cannot access tryout entry")

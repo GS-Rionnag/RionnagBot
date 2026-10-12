@@ -476,14 +476,21 @@ class HostingService:
             overrides=self.store.host_overrides(self.channel_id, settings["duration"]),
         )
         official = self.store.official_host(self.channel_id)
-        return [slot for slot in slots if slot.start == official or not same_scrim_day(slot.start, official)]
+        finder = self.store.finder_bookings(config.SCRIM_OPPORTUNITIES_CHANNEL_ID)
+        return [slot for slot in slots if
+                (slot.start == official or not same_scrim_day(slot.start, official))
+                and not any(same_scrim_day(slot.start, booked) for booked in finder)]
 
     def blocked_by_official(self, start):
         official = self.store.official_host(self.channel_id)
-        return start != official and same_scrim_day(start, official)
+        finder = self.store.finder_bookings(config.SCRIM_OPPORTUNITIES_CHANNEL_ID)
+        return (start != official and same_scrim_day(start, official)) or any(
+            same_scrim_day(start, booked) for booked in finder)
 
     def day_closed_for_choices(self, start):
-        return same_scrim_day(start, self.store.official_host(self.channel_id))
+        return same_scrim_day(start, self.store.official_host(self.channel_id)) or any(
+            same_scrim_day(start, booked) for booked in
+            self.store.finder_bookings(config.SCRIM_OPPORTUNITIES_CHANNEL_ID))
 
     def board_embed(self, slots):
         settings = self.store.host_settings(self.channel_id)

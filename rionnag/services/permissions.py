@@ -76,6 +76,40 @@ async def apply_server_policy(guild, forms, store):
         if not hasattr(channel, "overwrites"):
             continue
         overwrites = dict(channel.overwrites)
+        if channel.id == 1555658298211045446 or channel.category_id == 1555658298211045446:
+            # The Bots category and its testing channels are visible and read-only.
+            # Set this on each child too so repair preserves unsynced channels.
+            everyone = overwrites.get(guild.default_role, discord.PermissionOverwrite())
+            everyone.view_channel = True
+            everyone.read_message_history = True
+            everyone.send_messages = False
+            everyone.send_messages_in_threads = False
+            everyone.create_public_threads = False
+            everyone.create_private_threads = False
+            everyone.connect = False
+            everyone.speak = False
+            overwrites[guild.default_role] = everyone
+            for role in guild.roles:
+                if role.is_default() or role.managed or role.id == config.OWNER_ROLE_ID:
+                    continue
+                overwrite = overwrites.get(role, discord.PermissionOverwrite())
+                overwrite.view_channel = None
+                overwrite.send_messages = False
+                overwrite.send_messages_in_threads = False
+                overwrite.create_public_threads = False
+                overwrite.create_private_threads = False
+                overwrite.connect = False
+                overwrite.speak = False
+                overwrites[role] = overwrite
+            bot = overwrites.get(guild.me, discord.PermissionOverwrite())
+            bot.view_channel = True
+            bot.read_message_history = True
+            bot.send_messages = True
+            bot.connect = True
+            overwrites[guild.me] = bot
+            if channel.overwrites != overwrites:
+                await channel.edit(overwrites=overwrites, reason="Visible read-only Bots category")
+            continue
         everyone = overwrites.get(guild.default_role, discord.PermissionOverwrite())
         everyone.view_channel = False
         overwrites[guild.default_role] = everyone

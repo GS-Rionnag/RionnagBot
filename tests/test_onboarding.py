@@ -9,6 +9,7 @@ import discord
 
 from rionnag import config
 from rionnag.cogs.onboarding import Onboarding
+from rionnag.cogs.profiles import Profiles
 from rionnag.services.applications import Applications
 from rionnag.services.permissions import apply_server_policy, ticket_overwrites, visitor_eligible
 from rionnag.services.resets import Resets
@@ -148,6 +149,63 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
             ):
                 self.assertFalse(getattr(overwrite, permission))
 
+    async def test_bots_category_stays_visible_read_only_and_voice_closed(self):
+        bots = 1555658298211045446
+        channels = [
+            SimpleNamespace(id=bots, category_id=None, overwrites={}, edit=AsyncMock()),
+            SimpleNamespace(id=10, category_id=bots, overwrites={}, edit=AsyncMock()),
+            SimpleNamespace(id=11, category_id=bots, overwrites={}, edit=AsyncMock()),
+        ]
+        self.guild.channels = channels
+        self.guild.get_channel.return_value = None
+        await apply_server_policy(self.guild, self.forms, self.store)
+        for channel in channels:
+            overwrites = channel.edit.call_args.kwargs["overwrites"]
+            everyone = overwrites[self.guild.default_role]
+            self.assertTrue(everyone.view_channel)
+            self.assertTrue(everyone.read_message_history)
+            for flag in ("send_messages", "send_messages_in_threads", "create_public_threads",
+                         "create_private_threads", "connect", "speak"):
+                self.assertFalse(getattr(everyone, flag))
+            for key in ("team_role", "tryout_role", "manager_role"):
+                self.assertIsNone(overwrites[self.roles[self.form[key]]].view_channel)
+                self.assertFalse(overwrites[self.roles[self.form[key]]].send_messages)
+                self.assertFalse(overwrites[self.roles[self.form[key]]].connect)
+            self.assertTrue(overwrites[self.guild.me].send_messages)
+
+    async def test_existing_manager_recovers_general_marvel_role(self):
+        self.member.roles.append(self.roles[self.form["manager_role"]])
+        self.store.update(42, status="accepted", game="marvel-rivals", version=1,
+                          answers=self.answers, membership_roles=[self.form["manager_role"]])
+        with patch.object(self.app, "notify", AsyncMock()), patch.object(
+            self.app, "close_ticket", AsyncMock()
+        ):
+            await Resets(self.app).reconcile_member(self.member)
+        self.member.add_roles.assert_awaited()
+        self.assertIn(self.roles[self.form["team_role"]], self.member.add_roles.call_args.args)
+        self.assertIn(self.form["team_role"], self.store.member(42)["membership_roles"])
+
+    async def test_promoting_team_member_keeps_general_marvel_role(self):
+        self.member.roles.append(self.roles[self.form["team_role"]])
+        self.store.update(42, status="accepted", game="marvel-rivals", version=1,
+                          answers=self.answers, membership_roles=[self.form["team_role"]])
+        reviewer = Mock(spec=discord.Member)
+        reviewer.roles = [self.roles[self.form["manager_role"]]]
+        self.guild.fetch_member = AsyncMock(side_effect=lambda mid: reviewer if mid == 99 else self.member)
+        interaction = SimpleNamespace(
+            user=SimpleNamespace(id=99), guild=self.guild,
+            response=SimpleNamespace(defer=AsyncMock()),
+            followup=SimpleNamespace(send=AsyncMock()),
+        )
+        self.member.mention = "<@42>"
+        await Profiles.promote.callback(Profiles(self.app), interaction, self.member)
+        self.member.add_roles.assert_awaited_once_with(
+            self.roles[self.form["manager_role"]], reason="Game manager promotion")
+        self.member.remove_roles.assert_not_awaited()
+        saved = self.store.member(42)["membership_roles"]
+        self.assertIn(self.form["manager_role"], saved)
+        self.assertIn(self.form["team_role"], saved)
+
     async def test_owner_reset_removes_manager_but_preserves_rionnag(self):
         self.member.roles += [
             self.roles[config.OWNER_ROLE_ID],
@@ -190,7 +248,9 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         )
         with patch.object(self.app, "close_ticket", new_callable=AsyncMock):
             await self.app.restore_member(self.member, self.form, self.answers)
-        self.assertIn(self.roles[self.form["manager_role"]], self.member.add_roles.call_args.args)
+        added = [role for call in self.member.add_roles.await_args_list for role in call.args]
+        self.assertIn(self.roles[self.form["manager_role"]], added)
+        self.assertIn(self.roles[self.form["team_role"]], added)
         self.assertEqual(self.store.member(42)["status"], "accepted")
         self.assertIsNone(self.store.member(42)["restore_roles"])
         self.member.send.assert_awaited_once()
@@ -319,7 +379,9 @@ class WorkflowTests(unittest.IsolatedAsyncioTestCase):
         ):
             await self.app.submit(interaction, 42, "marvel-rivals", self.answers, 1)
         review.assert_not_awaited()
-        self.assertIn(self.roles[self.form["manager_role"]], self.member.add_roles.call_args.args)
+        added = [role for call in self.member.add_roles.await_args_list for role in call.args]
+        self.assertIn(self.roles[self.form["manager_role"]], added)
+        self.assertIn(self.roles[self.form["team_role"]], added)
 
     async def test_new_member_and_visitor_use_same_submission(self):
         self.guild.owner_id = 99

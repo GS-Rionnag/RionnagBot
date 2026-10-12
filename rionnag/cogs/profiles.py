@@ -100,16 +100,22 @@ class Profiles(commands.Cog):
                 raise ValueError("This member does not have a role that can be promoted.")
             await interaction.response.defer(ephemeral=True)
             await member.add_roles(interaction.guild.get_role(form[new]), reason="Game manager promotion")
-            await member.remove_roles(interaction.guild.get_role(form[old]), reason="Game manager promotion")
+            if new != "manager_role":
+                await member.remove_roles(interaction.guild.get_role(form[old]),
+                                          reason="Game manager promotion")
             role_ids = [
                 role.id
                 for role in member.roles
-                if role.id not in {form[old], config.VISITOR_ROLE_ID}
+                if role.id not in ({form[old]} if new != "manager_role" else set())
+                and role.id != config.VISITOR_ROLE_ID
                 and not role.is_default()
                 and not role.managed
                 and role.id != config.OWNER_ROLE_ID
             ]
-            self.service.store.update(member.id, membership_roles=list(set(role_ids + [form[new]])))
+            saved_roles = set(role_ids + [form[new]])
+            if new == "manager_role":
+                saved_roles.add(form["team_role"])
+            self.service.store.update(member.id, membership_roles=sorted(saved_roles))
             await interaction.followup.send(f"Promoted {member.mention}.", ephemeral=True)
 
     async def cog_app_command_error(self, interaction, error):

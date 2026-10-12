@@ -18,11 +18,13 @@ The owner's completed form is automatically accepted even after the initial wipe
 
 Accepted members do not retain Visitor. Discord combines role overwrites so a Visitor allow can override team denies; this invariant hides tryout entry. Runtime checks also reject team/tryout/managers even if manually given Visitor.
 
-Ordinary channels deny @everyone visibility. Main/Marvel category access comes from membership roles. Bot-making stays restricted to Rionnag/admin access. Repairs preserve unrelated capabilities and completed members' scrim admission overwrites; unfinished members' individual visibility bypasses are removed. Managed roles and @everyone cannot be removed. Rionnag stays deliberately.
+Ordinary channels deny @everyone visibility. Main/Marvel category access comes from membership roles. The Bots category and its testing text and voice channels are visible to everyone, but deny member posting, thread creation, and voice connection. The bot has explicit access there. Repairs keep those settings and preserve completed members' scrim admission overwrites; unfinished members' individual visibility bypasses are removed. Managed roles and @everyone cannot be removed. Rionnag stays deliberately.
 
 The scrim finder channel (1555989494451146802) has owner-managed overwrites and is excluded from automatic onboarding channel-permission repair. Its hidden testing visibility remains until the owner changes it; restarting or routine repair must not grant game-role visibility there. The bot keeps access to post and maintain opportunities. Owner/Administrator bypass behavior still applies.
 
-The finder is currently visible to everyone at the owner's request. Marvel Rivals team and tryout roles cannot send messages, send in threads, or create threads there. Marvel Rivals managers can do all three, including when they also hold a team/tryout role. Eligible registered players can continue using vote buttons without Send Messages permission. Bot posting and owner/Administrator access remain available.
+The finder gives Marvel Rivals team, tryout, and manager roles the same read-only access. They cannot send messages, send in threads, or create threads there. The owner controls finder channel overwrites separately from onboarding repair. Eligible registered players use private buttons without Send Messages permission. Bot posting and owner/Administrator access remain available.
+
+Marvel Rivals managers also hold the general Marvel Rivals role (the configured team role). Promotion keeps that role; reconciliation adds it to existing completed managers, and form restoration adds it to saved manager roles. General Marvel Rivals channel access therefore includes managers. Only explicit manager-specific permissions, such as application review and owner/manager commands, distinguish them.
 
 Marvel roles: team 1554272432309797015, tryout 1554275227901632512, manager 1554281222023421992. Applications category 1555725074693099580; entry 1555730197939101737; Main category 1555732719583895622; Marvel category 1555382746992353290.
 

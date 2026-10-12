@@ -445,6 +445,14 @@ class Applications:
             )
         if roles:
             await member.add_roles(*roles, reason="Updated game form completed: restore saved membership")
+        restored_ids = set(row["restore_roles"])
+        if row["game"] == "marvel-rivals" and form["manager_role"] in restored_ids:
+            team = member.guild.get_role(form["team_role"])
+            if team is None:
+                raise ValueError("Configured Marvel Rivals role is missing.")
+            if form["team_role"] not in restored_ids:
+                await member.add_roles(team, reason="Managers retain Marvel Rivals access")
+                restored_ids.add(form["team_role"])
         self.store.save_profile(member.guild.id, member.id, form, answers)
         self.store.update(
             member.id,
@@ -453,7 +461,7 @@ class Applications:
             restore_roles=None,
             restore_status=None,
             reset_target=None,
-            membership_roles=row["restore_roles"],
+            membership_roles=sorted(restored_ids),
             dm_pending=(
                 f"Your updated {form['name']} application was accepted automatically. "
                 "Your roles are restored."
