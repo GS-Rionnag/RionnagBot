@@ -57,6 +57,9 @@ class Store:
                     channel_id INTEGER, start INTEGER, member_id INTEGER, kind TEXT,
                     duration INTEGER, status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
                     PRIMARY KEY(channel_id,start,member_id,kind,duration));
+                CREATE TABLE IF NOT EXISTS scrim_finder_declines (
+                    channel_id INTEGER, start INTEGER, end INTEGER, member_id INTEGER,
+                    PRIMARY KEY(channel_id,start,end,member_id));
                 CREATE TABLE IF NOT EXISTS scrim_host_settings (
                     channel_id INTEGER PRIMARY KEY, message_id INTEGER,
                     duration INTEGER NOT NULL DEFAULT 7200,
@@ -110,6 +113,9 @@ class Store:
             columns = {row[1] for row in db.execute("PRAGMA table_info(scrim_finder_notices)")}
             if "source_key" not in columns:
                 db.execute("ALTER TABLE scrim_finder_notices ADD COLUMN source_key TEXT")
+            db.execute("INSERT OR IGNORE INTO scrim_finder_declines(channel_id,start,end,member_id) "
+                       "SELECT channel_id,start,start+duration,member_id "
+                       "FROM scrim_finder_notifications WHERE status='declined'")
 
     @contextmanager
     def connection(self):
@@ -174,6 +180,7 @@ class Store:
             db.execute("DELETE FROM scrim_opportunity_votes WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_finder_overrides WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_finder_notifications WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_finder_declines WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_votes WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_overrides WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_invites WHERE member_id=?", (member_id,))
@@ -677,6 +684,27 @@ class Store:
                        "message_id=COALESCE(?,message_id) WHERE channel_id=? AND start=? "
                        "AND member_id=? AND kind=? AND duration=?",
                        (status, message_id, channel_id, start, member_id, kind, duration))
+
+    def finder_declined(self, channel_id, start, end):
+        """Members who said no to any overlapping part of this interval."""
+        with self.connection() as db:
+            return {row[0] for row in db.execute(
+                "SELECT DISTINCT member_id FROM scrim_finder_declines "
+                "WHERE channel_id=? AND start<? AND end>?", (channel_id, end, start))}
+
+    def decline_finder_interval(self, channel_id, start, end, member_id, kind, duration):
+        """Record a No decision and the unavailable window in one transaction."""
+        with self.connection() as db:
+            row = db.execute("SELECT status FROM scrim_finder_notifications WHERE "
+                             "channel_id=? AND start=? AND member_id=? AND kind=? AND duration=?",
+                             (channel_id, start, member_id, kind, duration)).fetchone()
+            if row is None or row[0] != "sent":
+                raise ValueError("You already answered this invitation.")
+            db.execute("INSERT OR IGNORE INTO scrim_finder_declines VALUES(?,?,?,?)",
+                       (channel_id, start, end, member_id))
+            db.execute("UPDATE scrim_finder_notifications SET status='declined' WHERE "
+                       "channel_id=? AND start=? AND member_id=? AND kind=? AND duration=?",
+                       (channel_id, start, member_id, kind, duration))
 
     def vote_summary_message(self, channel_id):
         with self.connection() as db:

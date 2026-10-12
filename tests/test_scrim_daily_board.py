@@ -177,6 +177,52 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
             10, instant(offer()["Start_Time_timestamp"]), 7, "interest", 7200)
         self.assertEqual(notice["status"], "accepted")
 
+    async def test_no_removes_availability_and_prevents_repeat_invites(self):
+        async def history(**kwargs):
+            if False:
+                yield None
+
+        dm = SimpleNamespace(history=history, send=AsyncMock(return_value=SimpleNamespace(id=77)))
+        member = SimpleNamespace(bot=False, roles=[SimpleNamespace(id=7)],
+                                 create_dm=AsyncMock(return_value=dm))
+        original = self.guild.get_member
+        self.guild.get_member = lambda mid: member if mid == 7 else original(mid)
+        await self.publisher.sync(self.now)
+        for mid in (1, 2, 3):
+            self.store.vote_opportunity(10, "3:0", mid, True)
+        await self.publisher.sync(self.now)
+        dm.send.assert_awaited_once()
+        start, end = instant(offer()["Start_Time_timestamp"]), instant(offer()["End_Time_timestamp"])
+        with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
+            await self.publisher.answer_invite(7, start, end - start, "interest", False)
+        self.assertEqual(self.store.finder_declined(10, start, end), {7})
+        self.assertEqual(self.store.finder_declined(10, start + 1800, end + 1800), {7})
+        self.assertEqual(self.store.finder_declined(10, end, end + 3600), set())
+        fields = self.message.edit.call_args.kwargs["embeds"][1].fields
+        available = next(field for field in fields if field.name.startswith("Available players"))
+        self.assertNotIn("<@7>", available.value)
+        self.store.vote_opportunity(10, "3:0", 3, False)
+        await self.publisher.sync(self.now)
+        self.store.vote_opportunity(10, "3:0", 3, True)
+        await self.publisher.sync(self.now)
+        dm.send.assert_awaited_once()
+        self.publisher = OpportunityPublisher(
+            self.bot, Store(self.store.path), FeedStore(self.feed.path),
+            {"marvel-rivals": self.form}, 1, 10)
+        await self.publisher.sync(self.now)
+        dm.send.assert_awaited_once()
+        with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
+            blocked = self.interaction(7)
+            await self.publisher.vote(blocked, "3:0", True)
+        self.assertIn("marked unavailable", blocked.followup.send.call_args.args[0])
+
+    async def test_old_no_decisions_migrate_to_unavailable_windows(self):
+        start = instant(offer()["Start_Time_timestamp"])
+        self.store.finder_notification(10, start, 7, "interest", 7200)
+        self.store.complete_finder_notification(10, start, 7, "interest", 7200, "declined")
+        reopened = Store(self.store.path)
+        self.assertEqual(reopened.finder_declined(10, start, start + 7200), {7})
+
     async def test_existing_per_time_post_is_removed_after_board_send(self):
         self.store.save_opportunity(10, "3:0", 77, "", "active",
                                     instant(offer()["Start_Time_timestamp"]))

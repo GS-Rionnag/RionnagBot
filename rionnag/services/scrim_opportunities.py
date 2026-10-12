@@ -118,9 +118,14 @@ class OpportunityPublisher:
         official = self.store.official_host(config.SCRIM_HOST_CHANNEL_ID)
         bookings = self.store.finder_bookings(self.channel_id)
         ranks = self.store.scrim_rank_filter(self.channel_id)
-        matched = {key: match_offer(offer, players, now) for key, offer in offers.items()}
+        scheduled = {key: match_offer(offer, players, now) for key, offer in offers.items()}
+        matched = {}
+        for key, offer in offers.items():
+            interval = offer_interval(offer)
+            declined = self.store.finder_declined(self.channel_id, *interval) if interval else set()
+            matched[key] = [mid for mid in scheduled[key] if mid not in declined]
         qualified = {key: offer for key, offer in offers.items()
-                     if len(matched[key]) >= MIN_AVAILABLE_PLAYERS and rank_matches(offer, ranks)
+                     if len(scheduled[key]) >= MIN_AVAILABLE_PLAYERS and rank_matches(offer, ranks)
                      and not same_scrim_day(timestamp(offer.get("Start_Time_timestamp")), official)
                      and not any(same_scrim_day(timestamp(offer.get("Start_Time_timestamp")), start)
                                  and timestamp(offer.get("Start_Time_timestamp")) != start
@@ -213,9 +218,11 @@ class OpportunityPublisher:
             key = anchors.get(start) or (source_key if source_key not in posts else f"time:{start}")
             interval = offer_interval(offer)
             overrides = self.store.finder_overrides(self.channel_id, key)
+            declined = self.store.finder_declined(self.channel_id, *interval)
             valid = {p["member_id"] for p in players if
-                     covers_interval(p["answers"], *interval)
-                     or overrides.get(p["member_id"]) == interval[1] - interval[0]}
+                     p["member_id"] not in declined and (
+                         covers_interval(p["answers"], *interval)
+                         or overrides.get(p["member_id"]) == interval[1] - interval[0])}
             self.store.clear_opportunity_votes(self.channel_id, key, valid)
             votes = self.store.opportunity_votes(self.channel_id, key)
             detail = matched_offer_embed(
@@ -422,6 +429,7 @@ class OpportunityPublisher:
             duration = interval[1] - interval[0]
             available = {p["member_id"] for p in players
                          if covers_interval(p["answers"], *interval)}
+            available -= self.store.finder_declined(self.channel_id, *interval)
             if start in bookings:
                 for mid in votes:
                     if mid in player_ids:
@@ -448,6 +456,11 @@ class OpportunityPublisher:
                 raise ValueError("This invitation is no longer available.")
             if notice["status"] in ("accepted", "declined"):
                 raise ValueError("You already answered this invitation.")
+            if not accept:
+                self.store.decline_finder_interval(
+                    self.channel_id, start, start + duration, member_id, kind, duration)
+                await self._sync()
+                return
             snapshot = self._snapshot(time.time())
             if not snapshot or start not in snapshot[-1]:
                 raise ValueError("This scrim opportunity is no longer available.")
@@ -455,6 +468,8 @@ class OpportunityPublisher:
             player = next((p for p in players if p["member_id"] == member_id), None)
             source_key = selected[start][0]
             interval = offer_interval(offers[source_key])
+            if member_id in self.store.finder_declined(self.channel_id, *interval):
+                raise ValueError("You marked this time unavailable.")
             if (player is None or interval[1] - interval[0] != duration
                     or not covers_interval(player["answers"], *interval)):
                 raise ValueError("Your eligibility or availability changed. Use the board to review.")
@@ -499,6 +514,11 @@ class OpportunityPublisher:
             interval = offer_interval(offer)
             duration = interval[1] - interval[0]
             player = next(p for p in players if p["member_id"] == interaction.user.id)
+            if add and interaction.user.id in self.store.finder_declined(self.channel_id, *interval):
+                await interaction.followup.send(
+                    "You declined a scrim invitation during this time, so you are marked unavailable.",
+                    ephemeral=True)
+                return
             available = covers_interval(player["answers"], *interval)
             if add and not available and not override:
                 await interaction.followup.send(

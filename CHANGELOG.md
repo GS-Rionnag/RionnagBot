@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-12 - remember declined scrim invitations
+
+- Treat a No response to a three-player or official finder invitation as unavailable for that
+  whole scrim interval. Remove the player from Available players and any stale confirmation.
+- Preserve declined intervals across restarts and source changes so the player is not invited
+  again when confirmations dip below three and later rise. Recover earlier saved No responses.
+
 ## 2026-10-12 - simplify scrim opportunity details
 
 - Remove the advert author and copied original post from daily scrim embeds while keeping the
