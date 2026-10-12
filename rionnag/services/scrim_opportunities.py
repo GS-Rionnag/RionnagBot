@@ -142,6 +142,8 @@ class OpportunityPublisher:
         posts = self.store.opportunity_posts(self.channel_id)
         result = []
         for start, (source_key, _) in sorted(selected.items()):
+            if start in self.store.finder_bookings(self.channel_id):
+                continue
             key = next((key for key, post in posts.items()
                         if post["status"] == "active" and post["start_time"] == start), source_key)
             result.append((key, datetime.fromtimestamp(start, SERVER_ZONE)
@@ -156,6 +158,8 @@ class OpportunityPublisher:
             return None
         _, _, offers, _, _, selected = snapshot
         start = post["start_time"]
+        if start in self.store.finder_bookings(self.channel_id):
+            return None
         current = selected.get(start)
         if not current or current[0] != post["source_key"]:
             return None
@@ -214,6 +218,7 @@ class OpportunityPublisher:
         detail_limit = 8 if len(selected) > 9 else 9
         embed_chars = len(embeds[0])
         for position, (start, (source_key, _count)) in enumerate(sorted(selected.items())):
+            booked = start in self.store.finder_bookings(self.channel_id)
             offer = offers[source_key]
             key = anchors.get(start) or (source_key if source_key not in posts else f"time:{start}")
             interval = offer_interval(offer)
@@ -225,21 +230,19 @@ class OpportunityPublisher:
                          or overrides.get(p["member_id"]) == interval[1] - interval[0])}
             self.store.clear_opportunity_votes(self.channel_id, key, valid)
             votes = self.store.opportunity_votes(self.channel_id, key)
-            detail = matched_offer_embed(
-                offer, matched[source_key], key, votes, now, players,
-                official=start in self.store.finder_bookings(self.channel_id),
-            )
-            if (position < detail_limit and embeds[-1].title != "More times today"
-                    and embed_chars + len(detail) < 5200):
-                embeds.append(detail)
-                embed_chars += len(detail)
-            else:
-                line = f"<t:{start}:t> · **{len(votes)}/6 confirmed** · [Advert]({offer['messageURL']})"
-                overflow = embeds[-1]
-                if overflow.title != "More times today":
-                    overflow = discord.Embed(title="More times today", color=config.COLOR)
-                    embeds.append(overflow)
-                overflow.description = ((overflow.description or "") + "\n" + line)[-4000:]
+            if not booked:
+                detail = matched_offer_embed(offer, matched[source_key], key, votes, now, players)
+                if (position < detail_limit and embeds[-1].title != "More times today"
+                        and embed_chars + len(detail) < 5200):
+                    embeds.append(detail)
+                    embed_chars += len(detail)
+                else:
+                    line = f"<t:{start}:t> · **{len(votes)}/6 confirmed** · [Advert]({offer['messageURL']})"
+                    overflow = embeds[-1]
+                    if overflow.title != "More times today":
+                        overflow = discord.Embed(title="More times today", color=config.COLOR)
+                        embeds.append(overflow)
+                    overflow.description = ((overflow.description or "") + "\n" + line)[-4000:]
             active.append((key, start, source_key, revisions[source_key],
                            source_author(offer, source_key), votes, offer))
         if len(embeds) == 1:

@@ -1,5 +1,12 @@
 # Change timeline
 
+## 2026-10-12 - remove confirmed scrim adverts
+
+- Queue removal of a delivered host advert when the owner officially confirms its scrim.
+  The collector deletes its own post and retries transient deletion failures.
+- Hide confirmed finder opportunities from the daily board and its time picker while retaining
+  the booking for player notifications. The original source advert belongs to its author.
+
 ## 2026-10-12 - show only scrim times in daily opportunity headings
 
 - Show the advertised start and optional end as Discord time-only timestamps in each

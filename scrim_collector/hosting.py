@@ -124,6 +124,9 @@ async def process_job(client, store, job, allowed):
 
 async def process_bump(client, store, bump, allowed):
     key = bump["channel_id"], bump["start"], bump["generation"]
+    if bump["start"] in store.host_bookings(bump["channel_id"]):
+        store.update_host_bump(*key, "failed", error="Scrim officially confirmed")
+        return
     job = store.host_adverts(bump["channel_id"]).get(bump["start"])
     if not job or job["destination"] not in allowed:
         store.update_host_bump(*key, "failed", error="Advert missing or destination not allowed")
@@ -161,6 +164,26 @@ async def process_bump(client, store, bump, allowed):
     store.complete_host_bump(*key, message.id)
 
 
+async def delete_confirmed_advert(client, store, job, allowed):
+    """Remove only the collector's own delivered advert; retry transient failures."""
+    if job["destination"] not in allowed or not job["message_id"]:
+        log.warning("Confirmed advert deletion needs manual review for %s", job["start"])
+        return
+    try:
+        channel = client.get_channel(job["destination"]) or await client.fetch_channel(job["destination"])
+        message = await channel.fetch_message(job["message_id"])
+        if message.author.id != client.user.id:
+            log.warning("Confirmed advert is not owned by collector for %s", job["start"])
+            return
+        await message.delete()
+    except discord.NotFound:
+        pass
+    except discord.HTTPException:
+        log.warning("Confirmed advert deletion failed; will retry for %s", job["start"])
+        return
+    store.update_host_advert(job["channel_id"], job["start"], "deleted")
+
+
 async def publish_requests(client):
     await client.wait_until_ready()
     store = Store(config.DATABASE)
@@ -168,6 +191,12 @@ async def publish_requests(client):
         raw = os.getenv("SCRIM_HOST_CHANNEL_IDS") or os.getenv("SCRIM_SOURCE_CHANNEL_IDS", "")
         allowed = {int(cid.strip()) for cid in raw.split(",") if cid.strip().isdigit()}
         for job in store.host_adverts(config.SCRIM_HOST_CHANNEL_ID).values():
+            if job["status"] == "delete_pending":
+                try:
+                    await delete_confirmed_advert(client, store, job, allowed)
+                except Exception:
+                    log.warning("Confirmed advert deletion failed; will retry", exc_info=False)
+                continue
             if job["status"] not in {"queued", "sending", "uncertain"}:
                 continue
             try:

@@ -313,6 +313,22 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]["message_id"], 77)
         channel.send.assert_not_awaited()
 
+    async def test_official_booking_deletes_delivered_host_advert(self):
+        from scrim_collector.hosting import delete_confirmed_advert
+
+        self.queue()
+        self.store.update_host_advert(config.SCRIM_HOST_CHANNEL_ID, self.start, "sent", message_id=77)
+        self.store.book_host(config.SCRIM_HOST_CHANNEL_ID, self.start, 7200, 99)
+        job = self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]
+        self.assertEqual(job["status"], "delete_pending")
+        message = SimpleNamespace(author=SimpleNamespace(id=99), delete=AsyncMock())
+        channel = SimpleNamespace(fetch_message=AsyncMock(return_value=message))
+        client = SimpleNamespace(get_channel=lambda cid: channel, user=SimpleNamespace(id=99))
+        await delete_confirmed_advert(client, self.store, job, {42})
+        message.delete.assert_awaited_once()
+        self.assertEqual(self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]["status"],
+                         "deleted")
+
     async def test_invalid_destination_never_sends(self):
         self.queue()
         job = self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID)[self.start]

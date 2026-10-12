@@ -203,6 +203,9 @@ class Store:
             db.execute("INSERT OR IGNORE INTO scrim_host_bookings VALUES(?,?,?,?)",
                        (channel_id, start, duration, owner))
             db.execute("INSERT OR REPLACE INTO scrim_host_official VALUES(?,?)", (channel_id, start))
+            db.execute("UPDATE scrim_host_adverts SET status='delete_pending',error=NULL "
+                       "WHERE channel_id=? AND start=? AND status='sent' AND message_id IS NOT NULL",
+                       (channel_id, start))
 
     def official_host(self, channel_id):
         with self.connection() as db:
@@ -259,8 +262,13 @@ class Store:
             db.execute("UPDATE scrim_host_bumps SET status='sent',message_id=?,error=NULL "
                        "WHERE channel_id=? AND start=? AND generation=?",
                        (message_id, channel_id, start, generation))
-            db.execute("UPDATE scrim_host_adverts SET status='sent',message_id=?,error=NULL "
-                       "WHERE channel_id=? AND start=?", (message_id, channel_id, start))
+            booked = db.execute(
+                "SELECT 1 FROM scrim_host_bookings WHERE channel_id=? AND start=?",
+                (channel_id, start),
+            ).fetchone()
+            db.execute("UPDATE scrim_host_adverts SET status=?,message_id=?,error=NULL "
+                       "WHERE channel_id=? AND start=?",
+                       ("delete_pending" if booked else "sent", message_id, channel_id, start))
 
     def reserve_host_invite(self, channel_id, start, member_id, duration):
         with self.connection() as db:
@@ -435,6 +443,11 @@ class Store:
 
     def update_host_advert(self, channel_id, start, status, message_id=None, error=None):
         with self.connection() as db:
+            if status == "sent" and db.execute(
+                "SELECT 1 FROM scrim_host_bookings WHERE channel_id=? AND start=?",
+                (channel_id, start),
+            ).fetchone():
+                status = "delete_pending"
             db.execute(
                 "UPDATE scrim_host_adverts SET status=?,message_id=?,error=? WHERE channel_id=? AND start=?",
                 (status, message_id, error, channel_id, start),

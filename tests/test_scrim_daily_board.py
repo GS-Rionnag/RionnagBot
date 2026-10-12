@@ -138,6 +138,9 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
             await self.publisher.book(self.interaction(100), notice["start"], notice["generation"])
         self.assertIn(notice["start"], self.store.finder_bookings(10))
         self.assertEqual(self.store.finder_notices(10)[notice["start"]]["status"], "booked")
+        self.assertEqual(await self.publisher.current_slots(), [])
+        board = self.channel.fetch_message.return_value
+        self.assertEqual(len(board.edit.call_args.kwargs["embeds"]), 1)
         with patch("rionnag.services.scrim_opportunities.time.time", return_value=self.now):
             with self.assertRaises(ValueError):
                 await self.publisher.book(self.interaction(100), notice["start"], notice["generation"])
