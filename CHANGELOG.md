@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-12 - simplify scrim opportunity details
+
+- Remove the advert author and copied original post from daily scrim embeds while keeping the
+  link to the original Discord message.
+
 ## 2026-10-12 - daily scrim board and shared Marvel Rivals access
 
 - Replace separate finder posts and the vote summary with one daily opportunities message. Its

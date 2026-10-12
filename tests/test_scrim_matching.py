@@ -127,11 +127,15 @@ class MatchingTests(unittest.TestCase):
             self.assertFalse(covers_interval(a, start, end))
 
     def test_embed_shows_date_source_and_assumed_hour_without_private_answers(self):
-        embed = matched_offer_embed(offer(), [1, 2, 3, 4], "3:0")
+        source = {**offer(), "authorID": "123", "messageContent": "Original advert text"}
+        embed = matched_offer_embed(source, [1, 2, 3, 4], "3:0")
         self.assertIn("End time not advertised", embed.description)
         self.assertNotIn("checked 1 hour", embed.description)
         self.assertIn(":F>", embed.description)
         self.assertIn("Available players (4)", {field.name for field in embed.fields})
+        self.assertIn("Original message", {field.name for field in embed.fields})
+        self.assertNotIn("Posted by", {field.name for field in embed.fields})
+        self.assertNotIn("Original post", {field.name for field in embed.fields})
         self.assertNotIn("Based on saved availability", embed.description)
         self.assertEqual(embed.url, offer()["messageURL"])
         self.assertEqual(embed.footer.text, "Scrim finder • 3:0")

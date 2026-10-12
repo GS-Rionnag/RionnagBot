@@ -38,14 +38,9 @@ def matched_offer_embed(offer, members, key, votes=(), now=None, scrim_count=1, 
     remaining = sorted(set(members) - set(votes))
     embed.add_field(name=f"Available players ({len(remaining)})",
                     value=" ".join(f"<@{mid}>" for mid in remaining) or "None remaining.", inline=False)
-    author = str(offer.get("authorID", ""))
-    if author.isdigit():
-        embed.add_field(name="Posted by", value=f"<@{author}>")
     if offer.get("messageURL"):
         embed.add_field(name="Original message", value=f"[View scrim offer]({offer['messageURL']})",
                         inline=False)
-    if offer.get("messageContent"):
-        embed.add_field(name="Original post", value=offer["messageContent"][:600], inline=False)
     source_id = urlsplit(offer.get("messageURL") or "").path.rstrip("/").rsplit("/", 1)[-1]
     if source_id.isascii() and source_id.isdigit() and 0 < int(source_id) < 2**64:
         posted = int(discord.utils.snowflake_time(int(source_id)).timestamp())
