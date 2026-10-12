@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-12 - show only scrim times in daily opportunity headings
+
+- Show the advertised start and optional end as Discord time-only timestamps in each
+  opportunity heading. Remove the number of adverts and the full date from the details.
+
 ## 2026-10-12 - remember declined scrim invitations
 
 - Treat a No response to a three-player or official finder invitation as unavailable for that

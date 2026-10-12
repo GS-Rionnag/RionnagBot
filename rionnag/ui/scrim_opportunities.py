@@ -11,17 +11,16 @@ from rionnag.scrims.scrim_offer_rules import timestamp
 BOARD_MARKER = "Rionnag daily scrim opportunities"
 
 
-def matched_offer_embed(offer, members, key, votes=(), now=None, scrim_count=1, players=(),
+def matched_offer_embed(offer, members, key, votes=(), now=None, players=(),
                         official=False):
     start = timestamp(offer["Start_Time_timestamp"])
     end = timestamp(offer.get("End_Time_timestamp"))
     now = time.time() if now is None else now
     embed = discord.Embed(
-        title=f"{scrim_count} Scrims Found!" if scrim_count > 1 else "Scrim Found!",
+        title=f"<t:{start}:t>" + (f" – <t:{end}:t>" if end is not None else ""),
         url=offer.get("messageURL"), color=config.COLOR,
         description=(f"Upcoming · Starts <t:{start}:R>" if now < start else "In progress")
-        + f"\n<t:{start}:F>"
-        + ("\nEnd time not advertised" if end is None else f" – <t:{end}:t>")
+        + ("\nEnd time not advertised" if end is None else "")
         + ("\n**Officially confirmed**" if official else ""),
     )
     ranks = list(dict.fromkeys(offer.get(k) for k in ("rank_minimum", "rank_maximum") if offer.get(k)))

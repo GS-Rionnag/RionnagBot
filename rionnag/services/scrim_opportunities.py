@@ -213,7 +213,7 @@ class OpportunityPublisher:
         active = []
         detail_limit = 8 if len(selected) > 9 else 9
         embed_chars = len(embeds[0])
-        for position, (start, (source_key, count)) in enumerate(sorted(selected.items())):
+        for position, (start, (source_key, _count)) in enumerate(sorted(selected.items())):
             offer = offers[source_key]
             key = anchors.get(start) or (source_key if source_key not in posts else f"time:{start}")
             interval = offer_interval(offer)
@@ -226,7 +226,7 @@ class OpportunityPublisher:
             self.store.clear_opportunity_votes(self.channel_id, key, valid)
             votes = self.store.opportunity_votes(self.channel_id, key)
             detail = matched_offer_embed(
-                offer, matched[source_key], key, votes, now, count, players,
+                offer, matched[source_key], key, votes, now, players,
                 official=start in self.store.finder_bookings(self.channel_id),
             )
             if (position < detail_limit and embeds[-1].title != "More times today"
