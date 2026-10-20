@@ -213,6 +213,25 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher.cleanup_completed_scrim_dms(self.now)
         old.delete.assert_awaited_once()
 
+    async def test_legacy_untracked_scrim_dms_are_deleted_by_history_scan(self):
+        start = self.now - 10800
+        old = SimpleNamespace(
+            author=SimpleNamespace(id=999),
+            embeds=[SimpleNamespace(footer=SimpleNamespace(
+                text=f"Scrim finder notice • 10:{start}:7:interest:7200"))],
+            delete=AsyncMock(), id=1234,
+        )
+        dm = SimpleNamespace(history=AsyncMock())
+
+        async def history(**kwargs):
+            yield old
+
+        dm.history = history
+        member = SimpleNamespace(bot=False, dm_channel=dm)
+        self.guild.members = [member]
+        await self.publisher._scan_legacy_scrim_dms(self.guild, self.now)
+        old.delete.assert_awaited_once()
+
     async def test_no_removes_availability_and_prevents_repeat_invites(self):
         async def history(**kwargs):
             if False:

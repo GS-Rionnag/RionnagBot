@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import re
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -86,6 +87,7 @@ class OpportunityPublisher:
         self.bot, self.store, self.feed, self.forms = bot, store, feed, forms
         self.guild_id, self.channel_id = guild_id, channel_id
         self.lock = asyncio.Lock()
+        self._legacy_dm_scan_done = False
 
     def register_views(self):
         board = self.store.finder_board(self.channel_id)
@@ -103,7 +105,7 @@ class OpportunityPublisher:
                     notice["kind"]), message_id=notice["message_id"])
 
     async def cleanup_completed_scrim_dms(self, now=None):
-        """Delete tracked bot scrim messages after the scrim has ended."""
+        """Delete completed bot scrim messages, including old messages predating stored IDs."""
         now = time.time() if now is None else now
         guild = self.bot.get_guild(self.guild_id)
         if guild is None:
@@ -132,6 +134,55 @@ class OpportunityPublisher:
                 log.info("Could not delete a completed scrim DM")
             except discord.HTTPException:
                 log.warning("Could not delete a completed scrim DM; will retry")
+        if not self._legacy_dm_scan_done:
+            await self._scan_legacy_scrim_dms(guild, now)
+            self._legacy_dm_scan_done = True
+
+    async def _scan_legacy_scrim_dms(self, guild, now):
+        """One-time history sweep for bot-authored scrim DMs without persisted message IDs."""
+        bot_id = self.bot.user.id
+        for member in getattr(guild, 'members', ()):
+            if member.bot:
+                continue
+            try:
+                dm = member.dm_channel or await member.create_dm()
+                async for message in dm.history(limit=None):
+                    if message.author.id != bot_id:
+                        continue
+                    footer = " ".join(embed.footer.text for embed in message.embeds
+                                      if embed.footer and embed.footer.text)
+                    if "scrim" not in footer.casefold():
+                        continue
+                    start, duration = self._scrim_dm_window(footer)
+                    if start is None or start + duration > now:
+                        continue
+                    await message.delete()
+                    self.store.forget_scrim_dm_message(message.id)
+            except discord.NotFound:
+                continue
+            except discord.Forbidden:
+                log.info("Could not scan a member's scrim DM history")
+            except discord.HTTPException:
+                log.warning("Could not scan a member's scrim DM history")
+
+    @staticmethod
+    def _scrim_dm_window(footer):
+        finder = re.search(r"Scrim finder notice\s*•\s*\d+:(\d+):\d+:[^:]+:(\d+)", footer)
+        if finder:
+            return int(finder[1]), int(finder[2])
+        invite = re.search(r"Scrim invitation\s*·\s*(\d+)\s*·\s*\d+\s*·\s*(\d+)", footer)
+        if invite:
+            return int(invite[1]), int(invite[2])
+        official = re.search(r"Official scrim notice\s*·\s*(\d+)\s*·\s*\d+\s*·", footer)
+        if official:
+            return int(official[1]), 7200
+        owner = re.search(r"Scrim finder owner\s*•\s*\d+:(\d+):", footer)
+        if owner:
+            return int(owner[1]), 7200
+        host = re.search(r"Scrim host approval\s*·\s*(\d+)\s*·", footer)
+        if host:
+            return int(host[1]), 7200
+        return None, 7200
 
     def eligible_players(self, guild, form):
         role_ids = {form[k] for k in ("tryout_role", "team_role", "manager_role")}

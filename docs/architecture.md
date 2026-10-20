@@ -19,7 +19,8 @@ response remains excluded from the available roster even after a later board joi
 
 Finder and hosting status/reminder DMs reuse one bot message per player and scrim, editing it as the
 status changes. Tracked bot-authored scrim messages are deleted after the session ends for every
-recipient; unrelated DM messages are not touched.
+recipient. On first startup after deployment, a one-time DM-history scan also removes older
+bot-authored scrim messages whose IDs were not recorded; unrelated DM messages are not touched.
 
 RionnagBot composes Store, Applications, and feature cogs. Onboarding handles joins, repairs, reloads, and persistent view registration. Profiles owns stats/promotion. Scrims adapts the retained scrim controller to the new profile store.
 
