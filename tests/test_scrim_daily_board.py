@@ -232,6 +232,27 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher._scan_legacy_scrim_dms(self.guild, self.now)
         old.delete.assert_awaited_once()
 
+    async def test_legacy_scrim_workflow_replies_are_deleted(self):
+        messages = [
+            SimpleNamespace(author=SimpleNamespace(id=999), content=content, embeds=[],
+                            delete=AsyncMock(), id=index)
+            for index, content in enumerate((
+                "Bump queued. The old advert will be deleted and reposted.",
+                "This session no longer has a confirmed 2–2–2 team.",
+            ), start=1)
+        ]
+        dm = SimpleNamespace()
+
+        async def history(**kwargs):
+            for message in messages:
+                yield message
+
+        dm.history = history
+        self.guild.members = [SimpleNamespace(bot=False, dm_channel=dm)]
+        await self.publisher._scan_legacy_scrim_dms(self.guild, self.now)
+        for message in messages:
+            message.delete.assert_awaited_once()
+
     async def test_no_removes_availability_and_prevents_repeat_invites(self):
         async def history(**kwargs):
             if False:

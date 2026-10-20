@@ -149,6 +149,23 @@ class OpportunityPublisher:
                 async for message in dm.history(limit=None):
                     if message.author.id != bot_id:
                         continue
+                    text = " ".join(filter(None, [
+                        getattr(message, "content", None),
+                        *(part for embed in getattr(message, "embeds", ()) for part in (
+                            getattr(embed, "title", None), getattr(embed, "description", None),
+                            (getattr(embed, "footer", None).text
+                             if getattr(embed, "footer", None) else None),
+                        )),
+                    ]))
+                    lowered = text.casefold()
+                    transient_scrim_reply = any(phrase in lowered for phrase in (
+                        "bump queued. the old advert will be deleted and reposted.",
+                        "this session no longer has a confirmed 2–2–2 team.",
+                    ))
+                    if transient_scrim_reply:
+                        await message.delete()
+                        self.store.forget_scrim_dm_message(message.id)
+                        continue
                     footer = " ".join(embed.footer.text for embed in message.embeds
                                       if embed.footer and embed.footer.text)
                     if "scrim" not in footer.casefold():

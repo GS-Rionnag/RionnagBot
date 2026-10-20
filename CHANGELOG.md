@@ -5,6 +5,7 @@
 - Update each player's existing scrim DM as their invitation, official status, and reminders change.
 - Delete tracked bot-authored scrim DMs after their session ends, for every recipient.
 - Scan older DM history once to remove past scrim messages whose IDs were not recorded.
+- Remove bot-authored scrim workflow replies such as queued bumps and stale-team errors from older DM history.
 
 ## 2026-10-20 - restore scrim confirmation controls
 
