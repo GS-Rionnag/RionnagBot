@@ -689,7 +689,8 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         )
         self.store.update_host_advert(service.channel_id, self.start, "sent", message_id=77)
         view = HostApproval(service, self.start, 1)
-        self.assertEqual([button.label for button in view.children], ["Bump post", "Confirm scrim"])
+        self.assertEqual([button.label for button in view.children],
+                         ["Remind unanswered players", "Bump post", "Confirm scrim"])
         advert = self.store.host_adverts(service.channel_id)[self.start]
         panel = service.owner_panel(slot, 1)
         self.assertIn(f"/{advert['destination']}/77)", panel.fields[0].value)
@@ -791,6 +792,46 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         message.edit.assert_awaited_once()
         self.assertEqual(self.store.host_invites(service.channel_id)[0]["message_id"], 106)
 
+    async def test_owner_reminder_targets_only_unanswered_available_players(self):
+        async def history(**kwargs):
+            if False:
+                yield None
+
+        users = {mid: SimpleNamespace(dm_channel=SimpleNamespace(
+            history=history, send=AsyncMock(return_value=SimpleNamespace(id=200 + mid))
+        )) for mid in range(1, 7)}
+        guild = SimpleNamespace(owner_id=99)
+        bot = SimpleNamespace(get_guild=lambda gid: guild, get_user=users.get,
+                              user=SimpleNamespace(id=44))
+        service = HostingService(bot, SimpleNamespace(store=self.store), None)
+        service.players = roster
+        slot = HostSlot(self.start, self.start + 7200, set(range(1, 7)), {1, 2, 3}, {}, 0, False)
+        service.snapshot = lambda: [slot]
+        generation = self.store.reserve_host_notice(service.channel_id, self.start)
+        self.store.update_host_notice(service.channel_id, self.start, generation, "pending", 900)
+        self.store.reserve_host_invite(service.channel_id, self.start, 4, 7200)
+        self.store.update_host_invite(service.channel_id, self.start, 4, 7200, "declined")
+        self.store.reserve_host_invite(service.channel_id, self.start, 5, 7200)
+        self.store.update_host_invite(service.channel_id, self.start, 5, 7200, "accepted")
+        interaction = SimpleNamespace(user=SimpleNamespace(id=99))
+        sent = await service.remind_unanswered(interaction, self.start, generation)
+        self.assertEqual(sent, 1)
+        users[4].dm_channel.send.assert_not_awaited()
+        users[5].dm_channel.send.assert_not_awaited()
+        users[6].dm_channel.send.assert_awaited_once()
+
+    async def test_declined_host_invite_remains_unavailable_after_rejoining(self):
+        service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
+        service.players = roster
+        service.store.reserve_host_invite(service.channel_id, self.start, 6, 7200)
+        service.store.update_host_invite(service.channel_id, self.start, 6, 7200, "declined")
+        service.store.set_host_vote(service.channel_id, self.start, 6, True)
+        with patch("rionnag.services.scrim_hosting.generate_slots") as generate:
+            generate.return_value = []
+            service.snapshot(now=self.start - 1800)
+            votes = generate.call_args.args[1]
+        self.assertNotIn(6, votes.get(self.start, set()))
+
     def approval_fixture(self):
         async def history(**kwargs):
             if False:
@@ -822,7 +863,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         view = dm.send.call_args.kwargs["view"]
         self.assertTrue(view.is_persistent())
         self.assertEqual([button.label for button in view.children],
-                         ["Enter ranks & send", "Bump post", "Confirm scrim"])
+                         ["Enter ranks & send", "Remind unanswered players", "Bump post", "Confirm scrim"])
         self.assertIn("Tank: <@1>, <@2>\nDPS: <@3>, <@4>\nSupport: <@5>, <@6>",
                       dm.send.call_args.kwargs["embed"].description)
         await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, False)
@@ -959,7 +1000,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.store.update_host_advert(service.channel_id, self.start, "sent", message_id=77)
         self.assertFalse(self.store.queue_host_bump(service.channel_id, self.start))
 
-    async def test_approval_expires_when_team_breaks_and_rearms_with_new_generation(self):
+    async def test_owner_notice_does_not_repeat_when_team_changes_and_returns(self):
         service, slot, dm = self.approval_fixture()
         await service.notify_ready()
         slot.ready = False
@@ -968,9 +1009,9 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID), {})
         slot.ready = True
         await service.notify_ready()
-        self.assertEqual(dm.send.await_count, 2)
-        self.assertEqual(self.store.host_notices(config.SCRIM_HOST_CHANNEL_ID)[self.start]["generation"], 2)
-        with self.assertRaisesRegex(ValueError, "no longer current"):
+        self.assertEqual(dm.send.await_count, 1)
+        self.assertEqual(self.store.host_notices(config.SCRIM_HOST_CHANNEL_ID)[self.start]["generation"], 1)
+        with self.assertRaisesRegex(ValueError, "already answered"):
             await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, True)
 
     async def test_six_confirmations_without_valid_roles_do_not_notify(self):

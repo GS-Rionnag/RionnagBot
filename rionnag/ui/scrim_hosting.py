@@ -546,7 +546,7 @@ class HostApproval(HostingView):
         super().__init__(timeout=None)
         self.service, self.start, self.generation = service, start, generation
         advert = service.store.host_adverts(service.channel_id).get(start)
-        send_controls = [] if advert and advert["status"] == "sent" else [
+        send_controls = [] if advert and advert["status"] in {"sent", "queued", "sending", "uncertain"} else [
             ("Enter ranks & send", True, discord.ButtonStyle.success),
         ]
         for label, send, style in send_controls:
@@ -583,6 +583,24 @@ class HostApproval(HostingView):
 
             button.callback = decide
             self.add_item(button)
+        remind = discord.ui.Button(
+            label="Remind unanswered players", row=0, style=discord.ButtonStyle.secondary,
+            custom_id=f"hosting-remind:{start}:{generation}",
+        )
+
+        async def reminder(interaction):
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            try:
+                sent = await service.remind_unanswered(interaction, start, generation)
+            except ValueError as exc:
+                await interaction.followup.send(str(exc), ephemeral=True)
+                return
+            await interaction.followup.send(
+                f"Reminder sent to {sent} unanswered available player(s).", ephemeral=True
+            )
+
+        remind.callback = reminder
+        self.add_item(remind)
         for label, bump in (("Bump post", True), ("Confirm scrim", False)):
             button = discord.ui.Button(
                 label=label, row=1, custom_id=f"hosting-manage:{start}:{generation}:{int(bump)}",

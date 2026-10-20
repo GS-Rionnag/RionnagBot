@@ -11,6 +11,12 @@ validates the queue against live membership and current saved profiles before de
 are reconciled through account history instead of automatic retries. Both runtimes share the pure
 scrim_availability module without importing the other Discord library's UI classes.
 
+The owner approval remains associated with its hosting start when player confirmations temporarily
+change, preventing repeated owner DMs after a withdrawal and rejoin. Its persistent controls refresh as
+the team returns. The owner can manually remind available, unanswered players from this panel; reminders
+reuse each existing invitation DM when possible. Confirmed and declined players are skipped, and a No
+response remains excluded from the available roster even after a later board join.
+
 RionnagBot composes Store, Applications, and feature cogs. Onboarding handles joins, repairs, reloads, and persistent view registration. Profiles owns stats/promotion. Scrims adapts the retained scrim controller to the new profile store.
 
 The shared per-user supervisor starts the main bot and, when its private token/source channels are configured, the scrim collector in its separate virtual environment. Each child has independent crash recovery after fifteen seconds; shared restart/stop controls both owned process trees. Status reports collector health separately from bot health. A collector lock per feed prevents duplicate instances. Restarted collectors catch up recent source history and resume persisted extraction, so the publisher does not silently operate on a stale feed after collector loss.

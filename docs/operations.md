@@ -97,7 +97,11 @@ The invitation shows the exact date/start and end as Discord timestamps with Yes
 that player after checking current eligibility, interval, duration, and schedule; No only declines the
 invitation. Each player receives at most one invitation per exact start/duration. Decisions and buttons
 survive restarts, interrupted deliveries recover from DM history, and closed DMs are marked undeliverable.
-Approval messages/decisions persist and their buttons restore after restart. Interrupted sends recover
+The owner can use **Remind unanswered players** on the approval DM to repeat invitations to players who
+are currently available and have not answered; Yes/No respondents are skipped. A No response remains off
+the available list after a later board join. The owner receives one approval DM per hosting start even if
+the lineup temporarily breaks and returns. Approval controls refresh as confirmations return. Approval
+messages/decisions persist and their buttons restore after restart. Interrupted sends recover
 through the owner's bot DM history using a stable marker. An expired or broken lineup cannot publish.
 
 The external text is `LFS Grandmaster - Celestial at <t:UNIX:F>` using the owner's entered rank range.

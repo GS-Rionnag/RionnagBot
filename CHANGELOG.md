@@ -1,5 +1,13 @@
 # Change timeline
 
+## 2026-10-20 - control scrim host reminders
+
+- Keep one owner approval per hosting start when the confirmed team changes, preventing a fresh owner DM
+  after a player withdraws and rejoins. Refresh the existing approval controls as the team returns.
+- Add an owner-only reminder action for available players who have not answered. Reuse their invitation
+  DM where possible; players who confirmed or declined are skipped.
+- Keep a No response excluded from the public available list even if that player later joins from the board.
+
 ## 2026-10-12 - remove confirmed scrim adverts
 
 - Queue removal of a delivered host advert when the owner officially confirms its scrim.

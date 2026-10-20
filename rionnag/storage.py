@@ -76,6 +76,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS scrim_host_invites (
                     channel_id INTEGER, start INTEGER, member_id INTEGER, duration INTEGER,
                     status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
+                    declined INTEGER NOT NULL DEFAULT 0,
                     PRIMARY KEY(channel_id,start,member_id,duration));
                 CREATE TABLE IF NOT EXISTS scrim_host_bookings (
                     channel_id INTEGER, start INTEGER, duration INTEGER, confirmed_by INTEGER,
@@ -110,6 +111,9 @@ class Store:
             ):
                 if name not in columns:
                     db.execute(f"ALTER TABLE scrim_opportunity_posts ADD COLUMN {name} {kind}")
+            invite_columns = {row[1] for row in db.execute("PRAGMA table_info(scrim_host_invites)")}
+            if "declined" not in invite_columns:
+                db.execute("ALTER TABLE scrim_host_invites ADD COLUMN declined INTEGER NOT NULL DEFAULT 0")
             columns = {row[1] for row in db.execute("PRAGMA table_info(scrim_finder_notices)")}
             if "source_key" not in columns:
                 db.execute("ALTER TABLE scrim_finder_notices ADD COLUMN source_key TEXT")
@@ -278,9 +282,10 @@ class Store:
     def update_host_invite(self, channel_id, start, member_id, duration, status, message_id=None):
         with self.connection() as db:
             db.execute(
-                "UPDATE scrim_host_invites SET status=?,message_id=COALESCE(?,message_id) "
+                "UPDATE scrim_host_invites SET status=?,message_id=COALESCE(?,message_id), "
+                "declined=CASE WHEN ?='declined' THEN 1 ELSE declined END "
                 "WHERE channel_id=? AND start=? AND member_id=? AND duration=?",
-                (status, message_id, channel_id, start, member_id, duration),
+                (status, message_id, status, channel_id, start, member_id, duration),
             )
 
     def host_cards(self, channel_id):

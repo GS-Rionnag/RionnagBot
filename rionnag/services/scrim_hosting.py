@@ -112,7 +112,7 @@ class HostingService:
             self.bot.add_view(SessionCard(self, position), message_id=message_id)
 
         for start, notice in self.store.host_notices(self.channel_id).items():
-            if notice["status"] in {"pending", "accepted"} and notice["message_id"]:
+            if notice["status"] in {"pending", "accepted", "declined"} and notice["message_id"]:
                 self.bot.add_view(
                     HostApproval(self, start, notice["generation"]), message_id=notice["message_id"]
                 )
@@ -133,7 +133,8 @@ class HostingService:
             description=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
             f"**{len(slot.confirmed)} players confirmed**\n{self.confirmed_roles(slot)}\n\n"
             + ("**Officially confirmed**\n" if booked else "")
-            + "Enter ranks to send an advert, bump its existing post, or officially confirm the scrim.",
+            + "Enter ranks to send an advert, remind unanswered available players, bump its existing post, "
+            "or officially confirm the scrim.",
         )
         advert = self.store.host_adverts(self.channel_id).get(slot.start)
         if advert and advert["status"] == "sent" and advert["message_id"]:
@@ -154,15 +155,18 @@ class HostingService:
             return
         notices = self.store.host_notices(self.channel_id)
         slots = {s.start: s for s in self.snapshot()}
-        if not any(n["message_id"] and n["status"] in {"pending", "accepted"} for n in notices.values()):
+        if not any(n["message_id"] and n["status"] in {"pending", "accepted", "declined"}
+                   for n in notices.values()):
             return
         owner = guild.owner or await self.bot.fetch_user(guild.owner_id)
         dm = owner.dm_channel or await owner.create_dm()
         for start, notice in notices.items():
             if (start not in slots or not notice["message_id"]
-                    or notice["status"] not in {"pending", "accepted"}):
+                    or notice["status"] not in {"pending", "accepted", "declined"}):
                 continue
             try:
+                if not hasattr(dm, "fetch_message"):
+                    continue
                 message = await dm.fetch_message(notice["message_id"])
                 await message.edit(embed=self.owner_panel(slots[start], notice["generation"]),
                                    view=HostApproval(self, start, notice["generation"]))
@@ -286,20 +290,17 @@ class HostingService:
             slots = {s.start: s for s in self.snapshot() if s.ready and s.start not in booked}
             notices = self.store.host_notices(self.channel_id)
             adverts = self.store.host_adverts(self.channel_id)
-            for start, notice in notices.items():
-                if start not in slots and notice["status"] in {"pending", "declined"}:
-                    self.store.update_host_notice(self.channel_id, start, notice["generation"], "expired")
             needed = [
                 slot
                 for start, slot in slots.items()
                 if start not in adverts
                 and (
                     start not in notices
-                    or notices[start]["status"] == "expired"
                     or (notices[start]["status"] == "pending" and not notices[start]["message_id"])
                 )
             ]
             if not needed:
+                await self.refresh_owner_panels()
                 return
             owner = guild.owner or await self.bot.fetch_user(guild.owner_id)
             dm = owner.dm_channel or await owner.create_dm()
@@ -373,6 +374,56 @@ class HostingService:
                         )
                     except discord.HTTPException:
                         log.warning("Scrim invitation delivery failed; will recover and retry")
+
+    async def remind_unanswered(self, interaction, start, generation):
+        from rionnag.ui.scrim_hosting import ScrimInvite
+
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if not guild or interaction.user.id != guild.owner_id:
+            raise ValueError("Only the server owner can remind scrim players.")
+        notice = self.store.host_notices(self.channel_id).get(start)
+        if not notice or notice["generation"] != generation:
+            raise ValueError("This scrim request is no longer current.")
+        slot = next((s for s in self.snapshot() if s.start == start), None)
+        if not slot or len(slot.confirmed) < 3:
+            raise ValueError("At least three players must still be confirmed.")
+        duration = slot.end - slot.start
+        invites = {(i["start"], i["member_id"], i["duration"]): i
+                   for i in self.store.host_invites(self.channel_id)}
+        sent = 0
+        for mid in sorted(slot.available - slot.confirmed):
+            previous = invites.get((start, mid, duration))
+            if previous and (previous["status"] == "accepted" or previous["declined"]):
+                continue
+            self.store.reserve_host_invite(self.channel_id, start, mid, duration)
+            marker = f"Scrim invitation · {start} · {mid} · {duration}"
+            try:
+                user = self.bot.get_user(mid) or await self.bot.fetch_user(mid)
+                dm = user.dm_channel or await user.create_dm()
+                recovered = None
+                if previous and previous["message_id"]:
+                    try:
+                        recovered = await dm.fetch_message(previous["message_id"])
+                    except discord.HTTPException:
+                        recovered = None
+                embed = discord.Embed(
+                    title="Scrim availability reminder", color=config.COLOR,
+                    description=f"<t:{start}:F> – <t:{start + duration}:t>\n\n"
+                    f"{len(slot.confirmed)} players are confirmed. You are available but haven't answered. "
+                    "Can you join? Yes confirms your place; No marks you unavailable.",
+                )
+                embed.set_footer(text=marker)
+                view = ScrimInvite(self, mid, start, duration)
+                message = (await recovered.edit(embed=embed, view=view) if recovered else
+                           await dm.send(embed=embed, view=view,
+                                         allowed_mentions=discord.AllowedMentions.none()))
+                self.store.update_host_invite(self.channel_id, start, mid, duration, "pending", message.id)
+                sent += 1
+            except discord.Forbidden:
+                self.store.update_host_invite(self.channel_id, start, mid, duration, "undeliverable")
+            except discord.HTTPException:
+                log.warning("Scrim reminder delivery failed; will retry")
+        return sent
 
     async def answer_invite(self, member_id, start, duration, accept):
         async with self.invite_lock:
@@ -468,9 +519,14 @@ class HostingService:
 
     def snapshot(self, now=None):
         settings = self.store.host_settings(self.channel_id)
+        votes = self.store.host_votes(self.channel_id)
+        declined = {(i["start"], i["member_id"]) for i in self.store.host_invites(self.channel_id)
+                    if i["declined"]}
+        votes = {start: ids - {mid for invite_start, mid in declined if invite_start == start}
+                 for start, ids in votes.items()}
         slots = generate_slots(
             self.players(),
-            self.store.host_votes(self.channel_id),
+            votes,
             time.time() if now is None else now,
             settings["duration"],
             overrides=self.store.host_overrides(self.channel_id, settings["duration"]),
