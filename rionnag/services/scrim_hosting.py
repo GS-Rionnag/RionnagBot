@@ -251,27 +251,43 @@ class HostingService:
                         user = self.bot.get_user(mid) or await self.bot.fetch_user(mid)
                         dm = user.dm_channel or await user.create_dm()
                         recovered = None
+                        for previous in self.store.host_member_notifications(self.channel_id, start, mid):
+                            if previous["kind"] == kind:
+                                continue
+                            try:
+                                recovered = await dm.fetch_message(previous["message_id"])
+                            except discord.HTTPException:
+                                recovered = None
+                            if recovered is not None:
+                                break
                         async for message in dm.history(limit=100):
+                            if recovered is not None:
+                                break
                             if message.author.id == self.bot.user.id and any(
-                                e.footer and e.footer.text == marker for e in message.embeds
+                                e.footer and e.footer.text.startswith(
+                                    f"Official scrim notice Â· {start} Â· {mid} Â·")
+                                for e in message.embeds
                             ):
                                 recovered = message
                                 break
-                        if recovered is None:
-                            descriptions = {
+                        descriptions = {
                                 "confirmed": f"The scrim at <t:{start}:F> is officially confirmed.",
                                 "invite": f"The scrim at <t:{start}:F> is officially confirmed. "
                                           "Can you make it? Yes joins; No declines.",
                                 "day": f"You have a scrim today at <t:{start}:F>. Please be there on time.",
                                 "thirty": f"Your scrim starts in 30 minutes at <t:{start}:F>. "
                                           "Please get ready and join the scrim voice channel.",
-                            }
-                            embed = discord.Embed(title="Official Rionnag scrim",
-                                                  description=descriptions[kind], color=config.COLOR)
-                            embed.set_footer(text=marker)
+                        }
+                        embed = discord.Embed(title="Official Rionnag scrim",
+                                              description=descriptions[kind], color=config.COLOR)
+                        embed.set_footer(text=marker)
+                        view = OfficialInvite(self, mid, start) if kind == "invite" else None
+                        if recovered is None:
                             recovered = await dm.send(embed=embed,
-                                view=OfficialInvite(self, mid, start) if kind == "invite" else None,
+                                view=view,
                                 allowed_mentions=discord.AllowedMentions.none())
+                        else:
+                            await recovered.edit(embed=embed, view=view)
                         self.store.complete_host_notification(self.channel_id, start, mid, kind,
                                                               "sent", recovered.id)
                     except discord.Forbidden:

@@ -102,6 +102,37 @@ class OpportunityPublisher:
                     self, notice["member_id"], notice["start"], notice["duration"],
                     notice["kind"]), message_id=notice["message_id"])
 
+    async def cleanup_completed_scrim_dms(self, now=None):
+        """Delete tracked bot scrim messages after the scrim has ended."""
+        now = time.time() if now is None else now
+        guild = self.bot.get_guild(self.guild_id)
+        if guild is None:
+            return
+        channels = {}
+        seen = set()
+        for row in self.store.scrim_dm_messages(guild.owner_id):
+            message_id = row["message_id"]
+            if row["start"] + row["duration"] > now or message_id in seen:
+                continue
+            seen.add(message_id)
+            try:
+                dm = channels.get(row["member_id"])
+                if dm is None:
+                    user = self.bot.get_user(row["member_id"]) or await self.bot.fetch_user(row["member_id"])
+                    dm = user.dm_channel or await user.create_dm()
+                    channels[row["member_id"]] = dm
+                message = await dm.fetch_message(message_id)
+                if message.author.id == self.bot.user.id:
+                    await message.delete()
+                self.store.forget_scrim_dm_message(message_id)
+            except discord.NotFound:
+                self.store.forget_scrim_dm_message(message_id)
+                continue
+            except discord.Forbidden:
+                log.info("Could not delete a completed scrim DM")
+            except discord.HTTPException:
+                log.warning("Could not delete a completed scrim DM; will retry")
+
     def eligible_players(self, guild, form):
         role_ids = {form[k] for k in ("tryout_role", "team_role", "manager_role")}
         return [p for p in self.store.scrim_candidates(self.guild_id, "marvel-rivals", form["version"])
@@ -169,6 +200,7 @@ class OpportunityPublisher:
 
     async def sync(self, now=None):
         async with self.lock:
+            await self.cleanup_completed_scrim_dms(now)
             await self._sync(now)
 
     async def _sync(self, now=None):
@@ -403,17 +435,34 @@ class OpportunityPublisher:
             dm = await member.create_dm()
             existing = None
             recovered = False
+            for previous in self.store.finder_notifications(self.channel_id):
+                if (previous["start"] == start and previous["member_id"] == member_id
+                        and previous["message_id"] and previous["kind"] != kind):
+                    try:
+                        if hasattr(dm, "fetch_message"):
+                            existing = await dm.fetch_message(previous["message_id"])
+                    except discord.HTTPException:
+                        existing = None
+                    if existing is not None:
+                        recovered = True
+                        break
             async for candidate in dm.history(limit=30):
+                if existing is not None:
+                    break
                 if candidate.author.id == self.bot.user.id and any(
-                        e.footer.text == marker for e in candidate.embeds):
+                        e.footer and e.footer.text.startswith(
+                            f"Scrim finder notice • {self.channel_id}:{start}:{member_id}:")
+                        for e in candidate.embeds):
                     existing = candidate
                     recovered = True
                     break
+            view = FinderInvite(self, member_id, start, duration, kind) if kind in (
+                "interest", "official_invite") else None
             if existing is None:
-                view = FinderInvite(self, member_id, start, duration, kind) if kind in (
-                    "interest", "official_invite") else None
                 existing = await dm.send(embed=embed, view=view,
                                          allowed_mentions=discord.AllowedMentions.none())
+            else:
+                await existing.edit(embed=embed, view=view)
             self.store.complete_finder_notification(
                 self.channel_id, start, member_id, kind, duration, "sent", existing.id)
             if recovered and kind in ("interest", "official_invite"):

@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-20 - keep scrim DMs current and tidy
+
+- Update each player's existing scrim DM as their invitation, official status, and reminders change.
+- Delete tracked bot-authored scrim DMs after their session ends, for every recipient.
+
 ## 2026-10-20 - restore scrim confirmation controls
 
 - Keep the owner approval active after an advert is queued so Confirm scrim remains available.

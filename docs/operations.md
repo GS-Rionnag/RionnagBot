@@ -115,6 +115,8 @@ scrim on the hosting board. The bot first DMs confirmed players that the time is
 DMs available unconfirmed players with persistent Yes/No choices. Yes joins the scrim; No declines.
 Confirmed players receive a reminder on the scrim's calendar day in America/New_York and again
 30 minutes before its start. These DMs have durable identities and recover after a restart.
+For each player and scrim, status and reminder DMs update the same bot message as the booking changes.
+Bot-authored scrim DMs are automatically deleted after the booked session ends; other DM content is untouched.
 Existing panels refresh with these controls. Only the owner can operate them; readiness and notice generation
 are checked again. Bump post requires a delivered advert and no other pending bump. The posting account checks
 the current team and destination, deletes only the recorded own advert, and reposts its exact text. Durable

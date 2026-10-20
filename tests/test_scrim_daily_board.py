@@ -180,6 +180,39 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
             10, instant(offer()["Start_Time_timestamp"]), 7, "interest", 7200)
         self.assertEqual(notice["status"], "accepted")
 
+    async def test_official_status_edits_existing_available_invite(self):
+        start = instant(offer()["Start_Time_timestamp"])
+        prior = self.store.finder_notification(10, start, 7, "interest", 7200)
+        self.store.complete_finder_notification(10, start, 7, "interest", 7200, "sent", 77)
+        existing = SimpleNamespace(id=77, author=SimpleNamespace(id=999), edit=AsyncMock(), embeds=[])
+        async def history(**kwargs):
+            if False:
+                yield None
+
+        dm = SimpleNamespace(fetch_message=AsyncMock(return_value=existing), history=history)
+        member = SimpleNamespace(create_dm=AsyncMock(return_value=dm), bot=False,
+                                 roles=[SimpleNamespace(id=7)])
+        self.guild.get_member = lambda mid: member
+        await self.publisher._deliver_player_notice(
+            self.guild, start, 7, "official", 7200, offer())
+        existing.edit.assert_awaited_once()
+        self.assertEqual(existing.edit.call_args.kwargs["embed"].title, "Your scrim is official")
+        self.assertIsNone(existing.edit.call_args.kwargs["view"])
+        official = self.store.finder_notification(10, start, 7, "official", 7200)
+        self.assertEqual(official["message_id"], prior["message_id"] or 77)
+
+    async def test_completed_scrim_dm_messages_are_deleted(self):
+        start = self.now - 10800
+        self.store.host_notification(10, start, 7, "confirmed")
+        self.store.complete_host_notification(10, start, 7, "confirmed", "sent", 77)
+        old = SimpleNamespace(author=SimpleNamespace(id=999), delete=AsyncMock())
+        dm = SimpleNamespace(fetch_message=AsyncMock(return_value=old))
+        user = SimpleNamespace(dm_channel=dm, create_dm=AsyncMock(return_value=dm))
+        self.bot.get_user = lambda mid: user if mid == 7 else None
+        self.bot.fetch_user = AsyncMock(return_value=user)
+        await self.publisher.cleanup_completed_scrim_dms(self.now)
+        old.delete.assert_awaited_once()
+
     async def test_no_removes_availability_and_prevents_repeat_invites(self):
         async def history(**kwargs):
             if False:

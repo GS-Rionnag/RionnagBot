@@ -17,6 +17,10 @@ the team returns. The owner can manually remind available, unanswered players fr
 reuse each existing invitation DM when possible. Confirmed and declined players are skipped, and a No
 response remains excluded from the available roster even after a later board join.
 
+Finder and hosting status/reminder DMs reuse one bot message per player and scrim, editing it as the
+status changes. Tracked bot-authored scrim messages are deleted after the session ends for every
+recipient; unrelated DM messages are not touched.
+
 RionnagBot composes Store, Applications, and feature cogs. Onboarding handles joins, repairs, reloads, and persistent view registration. Profiles owns stats/promotion. Scrims adapts the retained scrim controller to the new profile store.
 
 The shared per-user supervisor starts the main bot and, when its private token/source channels are configured, the scrim collector in its separate virtual environment. Each child has independent crash recovery after fifteen seconds; shared restart/stop controls both owned process trees. Status reports collector health separately from bot health. A collector lock per feed prevents duplicate instances. Restarted collectors catch up recent source history and resume persisted extraction, so the publisher does not silently operate on a stale feed after collector loss.

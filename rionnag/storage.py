@@ -226,11 +226,45 @@ class Store:
                              "AND member_id=? AND kind=?", (channel_id, start, member_id, kind)).fetchone()
             return dict(row)
 
+    def host_member_notifications(self, channel_id, start, member_id):
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM scrim_host_notifications WHERE channel_id=? AND start=? "
+                "AND member_id=? AND message_id IS NOT NULL",
+                (channel_id, start, member_id))]
+
     def complete_host_notification(self, channel_id, start, member_id, kind, status, message_id=None):
         with self.connection() as db:
             db.execute("UPDATE scrim_host_notifications SET status=?, message_id=COALESCE(?,message_id) "
                        "WHERE channel_id=? AND start=? AND member_id=? AND kind=?",
                        (status, message_id, channel_id, start, member_id, kind))
+
+    def scrim_dm_messages(self, owner_id=None):
+        """Tracked bot-authored player DMs, used to prune completed scrim conversations."""
+        with self.connection() as db:
+            rows = []
+            rows.extend(dict(row) for row in db.execute(
+                "SELECT start,member_id,message_id,duration FROM scrim_finder_notifications "
+                "WHERE message_id IS NOT NULL"))
+            rows.extend(dict(row) for row in db.execute(
+                "SELECT n.start,n.member_id,n.message_id,COALESCE(b.duration,7200) AS duration "
+                "FROM scrim_host_notifications n LEFT JOIN scrim_host_bookings b "
+                "ON b.channel_id=n.channel_id AND b.start=n.start WHERE n.message_id IS NOT NULL"))
+            rows.extend(dict(row) for row in db.execute(
+                "SELECT start,member_id,message_id,duration FROM scrim_host_invites "
+                "WHERE message_id IS NOT NULL"))
+            if owner_id is not None:
+                for table in ("scrim_finder_notices", "scrim_host_notices"):
+                    rows.extend(dict(row) for row in db.execute(
+                        f"SELECT start,? AS member_id,message_id,7200 AS duration FROM {table} "
+                        "WHERE message_id IS NOT NULL", (owner_id,)))
+            return rows
+
+    def forget_scrim_dm_message(self, message_id):
+        with self.connection() as db:
+            for table in ("scrim_finder_notifications", "scrim_host_notifications",
+                          "scrim_host_invites", "scrim_finder_notices", "scrim_host_notices"):
+                db.execute(f"UPDATE {table} SET message_id=NULL WHERE message_id=?", (message_id,))
 
     def host_bumps(self, channel_id):
         with self.connection() as db:
