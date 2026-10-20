@@ -239,6 +239,8 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
             for index, content in enumerate((
                 "Bump queued. The old advert will be deleted and reposted.",
                 "This session no longer has a confirmed 2–2–2 team.",
+                "Advert queued. Delivery status will appear on the scrim board.",
+                "Advert queued with your rank range.",
             ), start=1)
         ]
         dm = SimpleNamespace()

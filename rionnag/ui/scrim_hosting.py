@@ -580,6 +580,7 @@ class HostApproval(HostingView):
                     if send
                     else "Declined. No advert will be sent for this request.",
                     allowed_mentions=discord.AllowedMentions.none(),
+                    ephemeral=True,
                 )
 
             button.callback = decide
@@ -634,7 +635,8 @@ class HostApproval(HostingView):
                         await interaction.message.edit(embed=service.owner_panel(slot, generation))
                 await interaction.followup.send(
                     "Bump queued. The old advert will be deleted and reposted."
-                    if bump else "Scrim officially confirmed. The main board is updated."
+                    if bump else "Scrim officially confirmed. The main board is updated.",
+                    ephemeral=True,
                 )
 
             button.callback = manage

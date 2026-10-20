@@ -161,6 +161,10 @@ class OpportunityPublisher:
                     transient_scrim_reply = any(phrase in lowered for phrase in (
                         "bump queued. the old advert will be deleted and reposted.",
                         "this session no longer has a confirmed 2–2–2 team.",
+                        "advert queued. delivery status will appear on the scrim board.",
+                        "advert queued with your rank range.",
+                        "declined. no advert will be sent for this request.",
+                        "scrim officially confirmed. the main board is updated.",
                     ))
                     if transient_scrim_reply:
                         await message.delete()

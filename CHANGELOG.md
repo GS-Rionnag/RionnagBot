@@ -6,6 +6,7 @@
 - Delete tracked bot-authored scrim DMs after their session ends, for every recipient.
 - Scan older DM history once to remove past scrim messages whose IDs were not recorded.
 - Remove bot-authored scrim workflow replies such as queued bumps and stale-team errors from older DM history.
+- Make owner button acknowledgements ephemeral and remove previously persisted advert and bump confirmations.
 
 ## 2026-10-20 - restore scrim confirmation controls
 
