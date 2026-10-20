@@ -875,6 +875,16 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         )
         view.stop()
 
+    async def test_stale_owner_approval_expires_when_lineup_is_no_longer_ready(self):
+        service, _, dm = self.approval_fixture()
+        await service.notify_ready()
+        service.snapshot = lambda: []
+        await service.notify_ready()
+        self.assertEqual(
+            self.store.host_notices(service.channel_id)[self.start]["status"], "expired"
+        )
+        self.assertEqual(dm.send.await_count, 1)
+
     async def test_only_owner_yes_queues_anonymous_advert_once(self):
         service, slot, dm = self.approval_fixture()
         service.advert_ranks = AsyncMock(return_value=(("Grandmaster", "Celestial"),) * 6)

@@ -162,7 +162,7 @@ class HostingService:
         dm = owner.dm_channel or await owner.create_dm()
         for start, notice in notices.items():
             if (not notice["message_id"]
-                    or notice["status"] not in {"pending", "accepted", "declined"}):
+                    or notice["status"] not in {"pending", "accepted"}):
                 continue
             try:
                 if not hasattr(dm, "fetch_message"):
@@ -307,12 +307,17 @@ class HostingService:
             slots = {s.start: s for s in self.snapshot() if s.ready and s.start not in booked}
             notices = self.store.host_notices(self.channel_id)
             adverts = self.store.host_adverts(self.channel_id)
+            current_starts = set(slots)
+            for start, notice in notices.items():
+                if notice["status"] == "pending" and start not in current_starts:
+                    self.store.update_host_notice(self.channel_id, start, notice["generation"], "expired")
             needed = [
                 slot
                 for start, slot in slots.items()
                 if start not in adverts
                 and (
                     start not in notices
+                    or notices[start]["status"] == "expired"
                     or (notices[start]["status"] == "pending" and not notices[start]["message_id"])
                 )
             ]

@@ -244,19 +244,19 @@ class Store:
         with self.connection() as db:
             rows = []
             rows.extend(dict(row) for row in db.execute(
-                "SELECT start,member_id,message_id,duration FROM scrim_finder_notifications "
+                "SELECT start,member_id,message_id,duration,status FROM scrim_finder_notifications "
                 "WHERE message_id IS NOT NULL"))
             rows.extend(dict(row) for row in db.execute(
-                "SELECT n.start,n.member_id,n.message_id,COALESCE(b.duration,7200) AS duration "
+                "SELECT n.start,n.member_id,n.message_id,COALESCE(b.duration,7200) AS duration,n.status "
                 "FROM scrim_host_notifications n LEFT JOIN scrim_host_bookings b "
                 "ON b.channel_id=n.channel_id AND b.start=n.start WHERE n.message_id IS NOT NULL"))
             rows.extend(dict(row) for row in db.execute(
-                "SELECT start,member_id,message_id,duration FROM scrim_host_invites "
+                "SELECT start,member_id,message_id,duration,status FROM scrim_host_invites "
                 "WHERE message_id IS NOT NULL"))
             if owner_id is not None:
                 for table in ("scrim_finder_notices", "scrim_host_notices"):
                     rows.extend(dict(row) for row in db.execute(
-                        f"SELECT start,? AS member_id,message_id,7200 AS duration FROM {table} "
+                        f"SELECT start,? AS member_id,message_id,7200 AS duration,status FROM {table} "
                         "WHERE message_id IS NOT NULL", (owner_id,)))
             return rows
 

@@ -7,6 +7,8 @@
 - Scan older DM history once to remove past scrim messages whose IDs were not recorded.
 - Remove bot-authored scrim workflow replies such as queued bumps and stale-team errors from older DM history.
 - Make owner button acknowledgements ephemeral and remove previously persisted advert and bump confirmations.
+- Expire and delete owner approval embeds as soon as their six-player lineup is no longer ready.
+- Keep scanning legacy DM histories until all accessible member and owner DMs have been swept.
 
 ## 2026-10-20 - restore scrim confirmation controls
 

@@ -213,6 +213,18 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher.cleanup_completed_scrim_dms(self.now)
         old.delete.assert_awaited_once()
 
+    async def test_expired_owner_scrim_prompt_is_deleted_before_its_start_time(self):
+        start = self.now + 86400
+        generation = self.store.reserve_host_notice(10, start)
+        self.store.update_host_notice(10, start, generation, "expired", 78)
+        old = SimpleNamespace(author=SimpleNamespace(id=999), delete=AsyncMock())
+        dm = SimpleNamespace(fetch_message=AsyncMock(return_value=old))
+        user = SimpleNamespace(dm_channel=dm)
+        self.bot.get_user = lambda mid: user if mid == 100 else None
+        self.bot.fetch_user = AsyncMock(return_value=user)
+        await self.publisher.cleanup_completed_scrim_dms(self.now)
+        old.delete.assert_awaited_once()
+
     async def test_legacy_untracked_scrim_dms_are_deleted_by_history_scan(self):
         start = self.now - 10800
         old = SimpleNamespace(
@@ -254,6 +266,50 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher._scan_legacy_scrim_dms(self.guild, self.now)
         for message in messages:
             message.delete.assert_awaited_once()
+
+    async def test_legacy_six_player_owner_panel_is_removed_after_its_scrim(self):
+        start = self.now - 3 * 3600
+        old = SimpleNamespace(
+            author=SimpleNamespace(id=999), content="", id=8765, delete=AsyncMock(),
+            embeds=[SimpleNamespace(
+                title="Six players confirmed for a scrim",
+                description=f"<t:{start}:F> – <t:{start + 7200}:t>",
+                footer=SimpleNamespace(text="Legacy scrim approval"),
+            )],
+        )
+        dm = SimpleNamespace()
+
+        async def history(**kwargs):
+            yield old
+
+        dm.history = history
+        self.guild.members = [SimpleNamespace(id=100, bot=False, dm_channel=dm)]
+        await self.publisher._scan_legacy_scrim_dms(self.guild, self.now)
+        old.delete.assert_awaited_once()
+
+    async def test_legacy_owner_panel_from_replaced_generation_is_removed(self):
+        start = self.now + 86400
+        self.store.reserve_host_notice(config.SCRIM_HOST_CHANNEL_ID, start)
+        self.store.update_host_notice(config.SCRIM_HOST_CHANNEL_ID, start, 1, "expired")
+        self.store.reserve_host_notice(config.SCRIM_HOST_CHANNEL_ID, start)
+        self.store.update_host_notice(config.SCRIM_HOST_CHANNEL_ID, start, 2, "pending", 90)
+        old = SimpleNamespace(
+            author=SimpleNamespace(id=999), content="", id=89, delete=AsyncMock(),
+            embeds=[SimpleNamespace(
+                title="Six players confirmed for a scrim",
+                description=f"<t:{start}:F>",
+                footer=SimpleNamespace(text=f"Scrim host approval · {start} · 1"),
+            )],
+        )
+        dm = SimpleNamespace()
+
+        async def history(**kwargs):
+            yield old
+
+        dm.history = history
+        self.guild.members = [SimpleNamespace(id=100, bot=False, dm_channel=dm)]
+        await self.publisher._scan_legacy_scrim_dms(self.guild, self.now)
+        old.delete.assert_awaited_once()
 
     async def test_no_removes_availability_and_prevents_repeat_invites(self):
         async def history(**kwargs):

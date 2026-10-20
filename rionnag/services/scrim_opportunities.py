@@ -114,14 +114,26 @@ class OpportunityPublisher:
         seen = set()
         for row in self.store.scrim_dm_messages(guild.owner_id):
             message_id = row["message_id"]
-            if row["start"] + row["duration"] > now or message_id in seen:
+            obsolete = row.get("status") in {"declined", "expired", "undeliverable"}
+            if (not obsolete and row["start"] + row["duration"] > now) or message_id in seen:
                 continue
             seen.add(message_id)
             try:
                 dm = channels.get(row["member_id"])
                 if dm is None:
-                    user = self.bot.get_user(row["member_id"]) or await self.bot.fetch_user(row["member_id"])
-                    dm = user.dm_channel or await user.create_dm()
+                    get_user = getattr(self.bot, "get_user", lambda _: None)
+                    user = get_user(row["member_id"])
+                    if user is None:
+                        fetch_user = getattr(self.bot, "fetch_user", None)
+                        if fetch_user is None:
+                            continue
+                        user = await fetch_user(row["member_id"])
+                    dm = getattr(user, "dm_channel", None)
+                    if dm is None:
+                        create_dm = getattr(user, "create_dm", None)
+                        if create_dm is None:
+                            continue
+                        dm = await create_dm()
                     channels[row["member_id"]] = dm
                 message = await dm.fetch_message(message_id)
                 if message.author.id == self.bot.user.id:
@@ -135,18 +147,40 @@ class OpportunityPublisher:
             except discord.HTTPException:
                 log.warning("Could not delete a completed scrim DM; will retry")
         if not self._legacy_dm_scan_done:
-            await self._scan_legacy_scrim_dms(guild, now)
-            self._legacy_dm_scan_done = True
+            self._legacy_dm_scan_done = await self._scan_legacy_scrim_dms(guild, now)
 
     async def _scan_legacy_scrim_dms(self, guild, now):
         """One-time history sweep for bot-authored scrim DMs without persisted message IDs."""
         bot_id = self.bot.user.id
-        for member in getattr(guild, 'members', ()):
-            if member.bot:
+        members = {getattr(member, "id", index): member
+                   for index, member in enumerate(getattr(guild, "members", ()))}
+        complete = True
+        if guild.owner_id not in members:
+            owner = getattr(guild, "owner", None)
+            fetch_user = getattr(self.bot, "fetch_user", None)
+            if owner is None and fetch_user is not None:
+                owner = await fetch_user(guild.owner_id)
+            if owner is not None:
+                members[guild.owner_id] = owner
+            else:
+                complete = False
+        current_host_notices = self.store.host_notices(config.SCRIM_HOST_CHANNEL_ID)
+        for member in members.values():
+            if getattr(member, "bot", False):
                 continue
             try:
-                dm = member.dm_channel or await member.create_dm()
-                async for message in dm.history(limit=None):
+                dm = getattr(member, "dm_channel", None)
+                if dm is None:
+                    create_dm = getattr(member, "create_dm", None)
+                    if create_dm is None:
+                        complete = False
+                        continue
+                    dm = await create_dm()
+                history = getattr(dm, "history", None)
+                if history is None:
+                    complete = False
+                    continue
+                async for message in history(limit=None):
                     if message.author.id != bot_id:
                         continue
                     text = " ".join(filter(None, [
@@ -170,11 +204,26 @@ class OpportunityPublisher:
                         await message.delete()
                         self.store.forget_scrim_dm_message(message.id)
                         continue
-                    footer = " ".join(embed.footer.text for embed in message.embeds
+                    embeds = getattr(message, "embeds", ())
+                    footer = " ".join(embed.footer.text for embed in embeds
                                       if embed.footer and embed.footer.text)
-                    if "scrim" not in footer.casefold():
+                    host_approval = re.search(
+                        r"Scrim host approval\s*·\s*(\d+)\s*·\s*(\d+)", footer
+                    )
+                    if host_approval:
+                        notice = current_host_notices.get(int(host_approval[1]))
+                        if (not notice or notice["generation"] != int(host_approval[2])
+                                or notice["status"] not in {"pending", "accepted"}):
+                            await message.delete()
+                            self.store.forget_scrim_dm_message(message.id)
+                            continue
+                    if "scrim" not in text.casefold():
                         continue
                     start, duration = self._scrim_dm_window(footer)
+                    if start is None:
+                        match = re.search(r"<t:(\d+)(?::[tTdDfFR])?>", text)
+                        if match:
+                            start, duration = int(match[1]), 7200
                     if start is None or start + duration > now:
                         continue
                     await message.delete()
@@ -185,6 +234,8 @@ class OpportunityPublisher:
                 log.info("Could not scan a member's scrim DM history")
             except discord.HTTPException:
                 log.warning("Could not scan a member's scrim DM history")
+                complete = False
+        return complete
 
     @staticmethod
     def _scrim_dm_window(footer):
