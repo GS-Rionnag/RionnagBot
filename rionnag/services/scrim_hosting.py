@@ -161,14 +161,15 @@ class HostingService:
         owner = guild.owner or await self.bot.fetch_user(guild.owner_id)
         dm = owner.dm_channel or await owner.create_dm()
         for start, notice in notices.items():
-            if (start not in slots or not notice["message_id"]
+            if (not notice["message_id"]
                     or notice["status"] not in {"pending", "accepted", "declined"}):
                 continue
             try:
                 if not hasattr(dm, "fetch_message"):
                     continue
                 message = await dm.fetch_message(notice["message_id"])
-                await message.edit(embed=self.owner_panel(slots[start], notice["generation"]),
+                slot = slots.get(start) or HostSlot(start, start, set(), set(), {}, 0, False)
+                await message.edit(embed=self.owner_panel(slot, notice["generation"]),
                                    view=HostApproval(self, start, notice["generation"]))
             except discord.HTTPException:
                 log.warning("Could not refresh owner scrim controls; will retry")
@@ -446,7 +447,9 @@ class HostingService:
             raise ValueError("Only the server owner can answer this scrim approval.")
         async with self.notice_lock:
             notice = self.store.host_notices(self.channel_id).get(start)
-            if not notice or notice["generation"] != generation or notice["status"] != "pending":
+            if not notice or notice["generation"] != generation or notice["status"] not in {
+                "pending", "accepted", "declined"
+            }:
                 raise ValueError("This request was already answered or is no longer current.")
             if not send:
                 self.store.update_host_notice(self.channel_id, start, generation, "declined")
@@ -462,7 +465,6 @@ class HostingService:
             # Reuse the validated queue path, supplying the owner's guild context for a DM interaction.
             request = SimpleNamespace(user=interaction.user, guild=guild, guild_id=config.GUILD_ID)
             await self.publish(request, start, token, rank_range)
-            self.store.update_host_notice(self.channel_id, start, generation, "accepted")
 
     async def advert_ranks(self, slot):
         from rionnag.integrations.rivals import fetch_player_ranks, queued_lookup

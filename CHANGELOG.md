@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-20 - restore scrim confirmation controls
+
+- Keep the owner approval active after an advert is queued so Confirm scrim remains available.
+- Refresh approval controls during temporary lineup breaks and disable booking until a valid 2–2–2 returns.
+
 ## 2026-10-20 - control scrim host reminders
 
 - Keep one owner approval per hosting start when the confirmed team changes, preventing a fresh owner DM

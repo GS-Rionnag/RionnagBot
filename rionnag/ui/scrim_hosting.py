@@ -545,6 +545,7 @@ class HostApproval(HostingView):
     def __init__(self, service, start, generation):
         super().__init__(timeout=None)
         self.service, self.start, self.generation = service, start, generation
+        ready = next((slot.ready for slot in service.snapshot() if slot.start == start), False)
         advert = service.store.host_adverts(service.channel_id).get(start)
         send_controls = [] if advert and advert["status"] in {"sent", "queued", "sending", "uncertain"} else [
             ("Enter ranks & send", True, discord.ButtonStyle.success),
@@ -605,6 +606,7 @@ class HostApproval(HostingView):
             button = discord.ui.Button(
                 label=label, row=1, custom_id=f"hosting-manage:{start}:{generation}:{int(bump)}",
                 style=discord.ButtonStyle.primary if bump else discord.ButtonStyle.success,
+                disabled=not ready,
             )
 
             async def manage(interaction, bump=bump):

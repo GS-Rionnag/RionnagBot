@@ -887,8 +887,11 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(job["content"], f"LFS Grandmaster - Celestial at <t:{self.start}:F>")
         service.advert_ranks.assert_not_awaited()
         self.assertEqual(job["requested_by"], 99)
-        with self.assertRaisesRegex(ValueError, "already answered"):
+        with self.assertRaisesRegex(ValueError, "publication request"):
             await service.decide_notice(interaction, self.start, 1, True)
+        self.assertEqual(self.store.host_notices(service.channel_id)[self.start]["status"], "pending")
+        await service.manage_session(interaction, self.start, 1, False)
+        self.assertEqual(self.store.official_host(service.channel_id), self.start)
         await service.notify_ready()
         dm.send.assert_awaited_once()
 
@@ -1003,16 +1006,28 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
     async def test_owner_notice_does_not_repeat_when_team_changes_and_returns(self):
         service, slot, dm = self.approval_fixture()
         await service.notify_ready()
+        message = SimpleNamespace(edit=AsyncMock(), id=55)
+        dm.fetch_message = AsyncMock(return_value=message)
         slot.ready = False
-        with self.assertRaisesRegex(ValueError, "no longer has six"):
-            await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, True)
-        self.assertEqual(self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID), {})
+        slot.confirmed = set()
+        await service.refresh_owner_panels()
+        refreshed_view = message.edit.call_args.kwargs["view"]
+        self.assertIn("Confirm scrim", [button.label for button in refreshed_view.children])
+        self.assertTrue(next(button for button in refreshed_view.children
+                             if button.label == "Confirm scrim").disabled)
+        refreshed_view.stop()
+        slot.confirmed = set(service.players()[i]["member_id"] for i in range(6))
         slot.ready = True
+        service.advert_ranks = AsyncMock(return_value=("Grandmaster", "Celestial"))
+        await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, True)
+        self.assertIn(self.start, self.store.host_adverts(config.SCRIM_HOST_CHANNEL_ID))
         await service.notify_ready()
         self.assertEqual(dm.send.await_count, 1)
         self.assertEqual(self.store.host_notices(config.SCRIM_HOST_CHANNEL_ID)[self.start]["generation"], 1)
-        with self.assertRaisesRegex(ValueError, "already answered"):
-            await service.decide_notice(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, True)
+        slot.ready = True
+        refreshed_view = message.edit.call_args.kwargs["view"]
+        self.assertFalse(next(button for button in refreshed_view.children
+                              if button.label == "Confirm scrim").disabled)
 
     async def test_six_confirmations_without_valid_roles_do_not_notify(self):
         service, slot, dm = self.approval_fixture()
