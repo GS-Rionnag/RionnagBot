@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-21 - publish upcoming scrim listings without player pings
+
+- Show all future collected offers instead of hiding offers outside today or before six players matched.
+- Make the public board read-only: show time, rank, and source link without player mentions, signup controls,
+  or automatic DMs.
+
 ## 2026-10-21 - simplify scrim status messages
 
 - Remove advert delivery status from official scrim cards and avoid repeating the confirmed time.

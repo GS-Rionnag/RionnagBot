@@ -22,13 +22,10 @@ from rionnag.ui.scrim_opportunities import (
     BOARD_MARKER,
     FinderInvite,
     FinderOwnerApproval,
-    OpportunityBoard,
     ScheduleOverride,
-    matched_offer_embed,
 )
 
 log = logging.getLogger(__name__)
-MIN_AVAILABLE_PLAYERS = 6
 SERVER_ZONE = ZoneInfo("America/New_York")
 
 
@@ -88,21 +85,11 @@ class OpportunityPublisher:
         self.guild_id, self.channel_id = guild_id, channel_id
         self.lock = asyncio.Lock()
         self._legacy_dm_scan_done = False
+        self._static_board_refreshed = False
 
     def register_views(self):
-        board = self.store.finder_board(self.channel_id)
-        if board and board["message_id"]:
-            self.bot.add_view(OpportunityBoard(self), message_id=board["message_id"])
-        for start, notice in self.store.finder_notices(self.channel_id).items():
-            if notice["status"] == "pending" and notice["message_id"]:
-                self.bot.add_view(FinderOwnerApproval(self, start, notice["generation"]),
-                                  message_id=notice["message_id"])
-        for notice in self.store.finder_notifications(self.channel_id):
-            if (notice["kind"] in ("interest", "official_invite")
-                    and notice["status"] == "sent" and notice["message_id"]):
-                self.bot.add_view(FinderInvite(
-                    self, notice["member_id"], notice["start"], notice["duration"],
-                    notice["kind"]), message_id=notice["message_id"])
+        # The public opportunities channel is a read-only list, not a signup or ping surface.
+        return None
 
     async def cleanup_completed_scrim_dms(self, now=None):
         """Delete completed bot scrim messages, including old messages predating stored IDs."""
@@ -280,13 +267,13 @@ class OpportunityPublisher:
             declined = self.store.finder_declined(self.channel_id, *interval) if interval else set()
             matched[key] = [mid for mid in scheduled[key] if mid not in declined]
         qualified = {key: offer for key, offer in offers.items()
-                     if len(scheduled[key]) >= MIN_AVAILABLE_PLAYERS and rank_matches(offer, ranks)
+                     if rank_matches(offer, ranks)
                      and not same_scrim_day(timestamp(offer.get("Start_Time_timestamp")), official)
                      and not any(same_scrim_day(timestamp(offer.get("Start_Time_timestamp")), start)
                                  and timestamp(offer.get("Start_Time_timestamp")) != start
                                  for start in bookings)}
         selected = {start: value for start, value in select_offers(qualified).items()
-                    if start > now and server_day(start) == server_day(now)}
+                    if start > now}
         return guild, players, offers, revisions, matched, selected
 
     async def current_slots(self):
@@ -365,44 +352,37 @@ class OpportunityPublisher:
             self.store.clear_finder_override(self.channel_id, key)
 
         embeds = [discord.Embed(
-            title="TODAY'S SCRIM OPPORTUNITIES", color=config.COLOR,
-            description="Choose a scrim time below to confirm or withdraw. "
-                        "Times display in your Discord time zone. "
-                        "The server's day follows Eastern time."
+            title="Upcoming scrims", color=config.COLOR,
+            description="Collected scrims, ordered by start time. Times display in your Discord time zone."
         )]
         active = []
-        detail_limit = 8 if len(selected) > 9 else 9
-        embed_chars = len(embeds[0])
+        detail_limit = 9 if len(selected) <= 9 else 8
         for position, (start, (source_key, _count)) in enumerate(sorted(selected.items())):
-            booked = start in self.store.finder_bookings(self.channel_id)
             offer = offers[source_key]
             key = anchors.get(start) or (source_key if source_key not in posts else f"time:{start}")
             interval = offer_interval(offer)
-            overrides = self.store.finder_overrides(self.channel_id, key)
-            declined = self.store.finder_declined(self.channel_id, *interval)
-            valid = {p["member_id"] for p in players if
-                     p["member_id"] not in declined and (
-                         covers_interval(p["answers"], *interval)
-                         or overrides.get(p["member_id"]) == interval[1] - interval[0])}
-            self.store.clear_opportunity_votes(self.channel_id, key, valid)
-            votes = self.store.opportunity_votes(self.channel_id, key)
-            if not booked:
-                detail = matched_offer_embed(offer, matched[source_key], key, votes, now, players)
-                if (position < detail_limit and embeds[-1].title != "More times today"
-                        and embed_chars + len(detail) < 5200):
-                    embeds.append(detail)
-                    embed_chars += len(detail)
-                else:
-                    line = f"<t:{start}:t> · **{len(votes)}/6 confirmed** · [Advert]({offer['messageURL']})"
-                    overflow = embeds[-1]
-                    if overflow.title != "More times today":
-                        overflow = discord.Embed(title="More times today", color=config.COLOR)
-                        embeds.append(overflow)
-                    overflow.description = ((overflow.description or "") + "\n" + line)[-4000:]
+            ranks = list(dict.fromkeys(offer.get(name) for name in ("rank_minimum", "rank_maximum")
+                                       if offer.get(name)))
+            description = (f"Ends <t:{interval[1]}:t>" if interval else "End time not listed.")
+            embed = discord.Embed(title=f"<t:{start}:F>", description=description, color=config.COLOR)
+            embed.add_field(name="Opponent rank", value=" to ".join(ranks) or "Not specified")
+            if offer.get("messageURL"):
+                embed.add_field(name="Original post", value=f"[View scrim advert]({offer['messageURL']})")
+            if position < detail_limit:
+                embeds.append(embed)
+            else:
+                overflow = embeds[-1]
+                if overflow.title != "More scrims":
+                    overflow = discord.Embed(title="More scrims", color=config.COLOR)
+                    embeds.append(overflow)
+                line = f"<t:{start}:F> · {(' to '.join(ranks) or 'Rank not specified')}"
+                if offer.get("messageURL"):
+                    line += f" · [Advert]({offer['messageURL']})"
+                overflow.description = ((overflow.description or "") + "\n" + line)[-4000:]
             active.append((key, start, source_key, revisions[source_key],
-                           source_author(offer, source_key), votes, offer))
+                           source_author(offer, source_key), [], offer))
         if len(embeds) == 1:
-            embeds[0].description += "\n\nNo matching scrims remain today."
+            embeds[0].description += "\n\nNo upcoming scrims found."
         embeds[0].set_footer(text=BOARD_MARKER)
         fingerprint = hashlib.sha256(json.dumps(
             [embed.to_dict() for embed in embeds], sort_keys=True).encode()).hexdigest()
@@ -421,12 +401,13 @@ class OpportunityPublisher:
                         message = candidate
                         break
             if message is None:
-                message = await channel.send(embeds=embeds, view=OpportunityBoard(self),
+                message = await channel.send(embeds=embeds,
                                              allowed_mentions=discord.AllowedMentions.none())
-            elif not board or board["fingerprint"] != fingerprint:
-                await message.edit(embeds=embeds, view=OpportunityBoard(self),
+            elif not board or board["fingerprint"] != fingerprint or not self._static_board_refreshed:
+                await message.edit(embeds=embeds, view=None,
                                    allowed_mentions=discord.AllowedMentions.none())
             self.store.save_finder_board(self.channel_id, message.id, server_day(now), fingerprint)
+            self._static_board_refreshed = True
             for key, start, source_key, revision, author, _, _ in active:
                 self.store.save_opportunity(self.channel_id, key, message.id, fingerprint, "active",
                                             start, source_key, revision, author)
@@ -457,8 +438,6 @@ class OpportunityPublisher:
                 log.warning("Could not remove old vote summary; will retry")
             else:
                 self.store.save_vote_summary_message(self.channel_id, message.id)
-        await self._sync_owner_notices(guild, players, active)
-        await self._sync_player_notifications(guild, players, active, now)
 
     async def _sync_owner_notices(self, guild, players, active):
         notices = self.store.finder_notices(self.channel_id)
