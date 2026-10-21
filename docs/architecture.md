@@ -21,6 +21,8 @@ stating that the scrim is not yet confirmed. Official booking sends a separate c
 Official notices let confirmed players withdraw with Can't make it; durable owner DMs show the updated
 confirmed roster grouped by saved role. Only the server owner sees the Cancel scrim control on their
 official notice, and cancellation requires explicit confirmation.
+Official hosting cards show the scrim time once and omit advert-delivery details after booking. Owner
+approval text stays concise and lists the players and roles without repeating the booked status.
 
 Finder and hosting status/reminder DMs reuse one bot message per player and scrim, editing it as the
 status changes. Tracked bot-authored scrim messages are deleted after the session ends for every

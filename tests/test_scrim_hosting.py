@@ -574,9 +574,9 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         slots[0].confirmed.add(1)
         embed = service.board_embed(slots)
         self.assertEqual(len(embed.fields), 1)
-        self.assertIn("1 confirmed", embed.fields[0].value)
+        self.assertIn("Players (1)", embed.fields[0].value)
         self.assertIn("Tank: <@1>", embed.fields[0].value)
-        self.assertIn("**Available players** (5)\n<@2> <@3> <@4> <@5> <@6>", embed.fields[0].value)
+        self.assertIn("**Still available (5)**\n<@2> <@3> <@4> <@5> <@6>", embed.fields[0].value)
         self.assertNotIn("6 available", embed.fields[0].value)
 
     async def test_confirmed_players_group_by_best_role_in_tank_dps_support_order(self):
@@ -586,7 +586,7 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         value = service.board_embed([slot]).fields[0].value
         self.assertIn("Tank: <@1>, <@2>\nDPS: <@3>, <@4>\nSupport: <@5>, <@6>", value)
         self.assertNotIn("Best role:", value)
-        self.assertIn("**Available players** (0)\nNone remaining.", value)
+        self.assertIn("**Still available (0)**\nNone remaining.", value)
 
     async def test_first_board_embed_tracks_six_player_advert_and_official_status(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
@@ -612,6 +612,11 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         official = service.board_embeds([slot])[0]
         self.assertEqual(official.fields[0].name, "Official upcoming scrim")
         self.assertIn("Status: Officialized", official.fields[0].value)
+        hosted = service.board_embeds([slot])
+        official_card = next(embed for embed in hosted if embed.title == f"<t:{self.start}:F>")
+        self.assertEqual(official_card.description.count(f"<t:{self.start}:F>"), 1)
+        self.assertIn("Official scrim", official_card.description)
+        self.assertNotIn("Advert:", official_card.description)
 
     async def test_public_board_orders_confirmed_count_then_soonest_start(self):
         service = HostingService(SimpleNamespace(), SimpleNamespace(store=self.store), None)
@@ -1119,7 +1124,10 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         await service.manage_session(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, False)
         booking = Store(self.store.path).host_bookings(service.channel_id)[self.start]
         self.assertEqual(booking["confirmed_by"], 99)
-        self.assertIn("Officially confirmed", service.owner_panel(slot, 1).description)
+        confirmed_panel = service.owner_panel(slot, 1)
+        self.assertEqual(confirmed_panel.title, "Scrim confirmed")
+        self.assertNotIn("Officially confirmed", confirmed_panel.description)
+        self.assertEqual(confirmed_panel.description.count(f"<t:{self.start}:F>"), 1)
         with self.assertRaises(ValueError):
             await service.publish(SimpleNamespace(user=SimpleNamespace(id=99), guild_id=config.GUILD_ID,
                                                   guild=service.bot.get_guild(config.GUILD_ID)),

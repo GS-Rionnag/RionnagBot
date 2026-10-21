@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-21 - simplify scrim status messages
+
+- Remove advert delivery status from official scrim cards and avoid repeating the confirmed time.
+- Shorten owner approval text and clarify player counts and remaining availability.
+
 ## 2026-10-21 - add official scrim attendance controls
 
 - Put an owner-only Cancel scrim action on the owner's official notice.

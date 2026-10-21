@@ -138,15 +138,13 @@ class HostingService:
 
     def owner_panel(self, slot, generation):
         booked = slot.start in self.store.host_bookings(self.channel_id)
+        timing = (f"Official scrim\n<t:{slot.start}:F> – <t:{slot.end}:t>"
+                  if booked else f"<t:{slot.start}:F> – <t:{slot.end}:t>")
         embed = discord.Embed(
-            title="Six players confirmed for a scrim", color=config.COLOR,
-            description=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
-            f"**{len(slot.confirmed)} players confirmed**\n{self.confirmed_roles(slot)}\n\n"
-            + ("**Officially confirmed**\n" if booked else "")
-            + ("This scrim is officially confirmed. Use Cancel scrim if plans change."
-               if booked else
-               "Enter ranks to send an advert, remind unanswered available players, bump its existing post, "
-               "or officially confirm the scrim."),
+            title=("Scrim confirmed" if booked else "Scrim ready to host"), color=config.COLOR,
+            description=f"{timing}\n\n"
+            f"**Players ({len(slot.confirmed)})**\n{self.confirmed_roles(slot)}"
+            + ("" if booked else "\n\nChoose an action below to continue."),
         )
         advert = self.store.host_adverts(self.channel_id).get(slot.start)
         if advert and advert["status"] == "sent" and advert["message_id"]:
@@ -834,16 +832,16 @@ class HostingService:
             ]
             value = (
                 f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
-                f"**{len(slot.confirmed)} confirmed**\n"
+                f"**Players ({len(slot.confirmed)})**\n"
                 + "\n".join(names)
-                + f"\n**Available players** ({len(slot.available - slot.confirmed)})\n"
+                + f"\n\n**Still available ({len(slot.available - slot.confirmed)})**\n"
                 + (
                     " ".join(f"<@{mid}>" for mid in sorted(slot.available - slot.confirmed))
                     or "None remaining."
                 )
             )
             if slot.start in self.store.host_bookings(self.channel_id):
-                value = "**Officially confirmed**\n" + value
+                value = "**Official scrim**\n" + value
             if len(embed.fields) >= 18 or len(embed) + len(value) > 5500:
                 break
             embed.add_field(
@@ -889,7 +887,7 @@ class HostingService:
                 else ""
             )
             index = next(i for i, s in enumerate(confirmed_slots) if s.start == start)
-            if index < len(embed.fields):
+            if start not in self.store.host_bookings(self.channel_id) and index < len(embed.fields):
                 field = embed.fields[index]
                 embed.set_field_at(
                     index,
