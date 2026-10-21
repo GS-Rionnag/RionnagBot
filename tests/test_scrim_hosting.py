@@ -16,6 +16,7 @@ from rionnag.ui.scrim_hosting import (
     DayPicker,
     HostApproval,
     HostingBoard,
+    ScrimInvite,
     SessionCard,
     SlotPicker,
     day_groups,
@@ -710,6 +711,23 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         prompt = warning.kwargs["view"]
         await prompt.children[0].callback(interaction)
         self.assertEqual(service.direct_join.call_args.kwargs, {"override": True})
+        view.stop()
+
+    async def test_answered_host_invitation_deletes_the_useless_dm(self):
+        service = SimpleNamespace(answer_invite=AsyncMock())
+        view = ScrimInvite(service, 7, self.start, 7200)
+        message = SimpleNamespace(delete=AsyncMock(), edit=AsyncMock())
+        interaction = SimpleNamespace(
+            user=SimpleNamespace(id=7),
+            response=SimpleNamespace(defer=AsyncMock()),
+            message=message,
+        )
+
+        await view.children[0].callback(interaction)
+
+        service.answer_invite.assert_awaited_once_with(7, self.start, 7200, True)
+        message.delete.assert_awaited_once()
+        message.edit.assert_not_awaited()
         view.stop()
 
     async def test_delivered_owner_panel_hides_send_and_no(self):

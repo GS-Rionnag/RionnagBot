@@ -102,12 +102,13 @@ class ScrimInvite(HostingView):
                     return
                 await interaction.response.defer()
                 await service.answer_invite(owner, start, duration, accept)
-                for item in self.children:
-                    item.disabled = True
-                await interaction.edit_original_response(
-                    content="You're confirmed for this scrim." if accept else "Invitation declined.",
-                    view=self,
-                )
+                try:
+                    await interaction.message.delete()
+                except discord.HTTPException:
+                    await interaction.message.edit(
+                        content="You're confirmed for this scrim." if accept else "Invitation declined.",
+                        embed=None, view=None,
+                    )
 
             button.callback = answer
             self.add_item(button)

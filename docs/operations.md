@@ -95,7 +95,8 @@ the interval stays ready. If readiness is lost and later regained, a fresh reque
 At three confirmed players, another ten-second loop invites the remaining available players by DM.
 The invitation shows the exact date/start and end as Discord timestamps with Yes/No buttons. Yes confirms
 that player after checking current eligibility, interval, duration, and schedule; No only declines the
-invitation. Each player receives at most one invitation per exact start/duration. Decisions and buttons
+invitation. The bot deletes the invitation DM after either answer. Each player receives at most one
+invitation per exact start/duration. Decisions and buttons
 survive restarts, interrupted deliveries recover from DM history, and closed DMs are marked undeliverable.
 The owner can use **Remind unanswered players** on the approval DM to repeat invitations to players who
 are currently available and have not answered; Yes/No respondents are skipped. A No response remains off

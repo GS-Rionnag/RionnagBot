@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-21 - remove answered scrim invitations
+
+- Delete a player's hosted scrim invitation after they accept or decline; if deletion fails,
+  clear the embed and buttons so the obsolete invitation is no longer visible.
+
 ## 2026-10-21 - separate and expire thirty-minute scrim reminders
 
 - Send the 30-minute reminder as a new DM and delete the earlier official notice after delivery.
