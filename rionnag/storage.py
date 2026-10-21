@@ -852,7 +852,11 @@ class Store:
 
     def save_vote_summary_message(self, channel_id, message_id):
         with self.connection() as db:
-            db.execute("INSERT OR REPLACE INTO scrim_vote_summaries VALUES(?,?)", (channel_id, message_id))
+            if message_id is None:
+                db.execute("DELETE FROM scrim_vote_summaries WHERE channel_id=?", (channel_id,))
+            else:
+                db.execute("INSERT OR REPLACE INTO scrim_vote_summaries VALUES(?,?)",
+                           (channel_id, message_id))
 
     def vote_opportunity(self, channel_id, offer_key, member_id, add):
         with self.connection() as db:

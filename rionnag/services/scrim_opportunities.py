@@ -1,4 +1,4 @@
-"""Match today's collected offers and maintain one interactive finder board."""
+"""Match collected offers and maintain one silent listing per scrim time."""
 
 from __future__ import annotations
 
@@ -330,14 +330,17 @@ class OpportunityPublisher:
         anchors = {}
         for key, post in sorted(posts.items(), key=lambda item: (
                 item[1]["status"] == "inactive", item[1]["message_id"] is None, item[0])):
+            if board_id is not None and post["message_id"] == board_id:
+                continue
             start = post_start(key, post, offers)
             if start in selected:
                 anchors.setdefault(start, key)
 
-        # Old per-time posts and the former vote summary are removed after a
-        # board exists. A failed deletion is retried on the next refresh.
+        active_keys = set(anchors.values())
+        # Remove stale posts only after distinguishing them from the old
+        # consolidated board, which may have been stored against every time.
         for key, post in posts.items():
-            if key in anchors.values():
+            if key in active_keys:
                 continue
             if post["message_id"] and post["message_id"] != board_id:
                 try:
@@ -351,93 +354,83 @@ class OpportunityPublisher:
             self.store.save_opportunity(self.channel_id, key, None, None, "inactive", reset_votes=True)
             self.store.clear_finder_override(self.channel_id, key)
 
-        embeds = [discord.Embed(
-            title="Upcoming scrims", color=config.COLOR,
-            description="Collected scrims, ordered by start time. Times display in your Discord time zone."
-        )]
-        active = []
-        detail_limit = 9 if len(selected) <= 9 else 8
-        for position, (start, (source_key, _count)) in enumerate(sorted(selected.items())):
+        active_ids = set()
+        for start, (source_key, count) in sorted(selected.items()):
             offer = offers[source_key]
             key = anchors.get(start) or (source_key if source_key not in posts else f"time:{start}")
             interval = offer_interval(offer)
             ranks = list(dict.fromkeys(offer.get(name) for name in ("rank_minimum", "rank_maximum")
                                        if offer.get(name)))
-            description = (f"Ends <t:{interval[1]}:t>" if interval else "End time not listed.")
-            embed = discord.Embed(title=f"<t:{start}:F>", description=description, color=config.COLOR)
-            embed.add_field(name="Opponent rank", value=" to ".join(ranks) or "Not specified")
-            if offer.get("messageURL"):
-                embed.add_field(name="Original post", value=f"[View scrim advert]({offer['messageURL']})")
-            if position < detail_limit:
-                embeds.append(embed)
+            description = f"<t:{start}:F>"
+            if interval:
+                description += f" – <t:{interval[1]}:t>"
             else:
-                overflow = embeds[-1]
-                if overflow.title != "More scrims":
-                    overflow = discord.Embed(title="More scrims", color=config.COLOR)
-                    embeds.append(overflow)
-                line = f"<t:{start}:F> · {(' to '.join(ranks) or 'Rank not specified')}"
-                if offer.get("messageURL"):
-                    line += f" · [Advert]({offer['messageURL']})"
-                overflow.description = ((overflow.description or "") + "\n" + line)[-4000:]
-            active.append((key, start, source_key, revisions[source_key],
-                           source_author(offer, source_key), [], offer))
-        if len(embeds) == 1:
-            embeds[0].description += "\n\nNo upcoming scrims found."
-        embeds[0].set_footer(text=BOARD_MARKER)
-        fingerprint = hashlib.sha256(json.dumps(
-            [embed.to_dict() for embed in embeds], sort_keys=True).encode()).hexdigest()
-
-        message = None
-        try:
-            if board_id:
-                try:
-                    message = await channel.fetch_message(board_id)
-                except discord.NotFound:
-                    pass
-            if message is None:
-                async for candidate in channel.history(limit=100):
-                    if candidate.author.id == self.bot.user.id and any(
-                            embed.footer.text == BOARD_MARKER for embed in candidate.embeds):
-                        message = candidate
-                        break
-            if message is None:
-                message = await channel.send(embeds=embeds,
-                                             allowed_mentions=discord.AllowedMentions.none())
-            elif not board or board["fingerprint"] != fingerprint or not self._static_board_refreshed:
-                await message.edit(embeds=embeds, view=None,
-                                   allowed_mentions=discord.AllowedMentions.none())
-            self.store.save_finder_board(self.channel_id, message.id, server_day(now), fingerprint)
-            self._static_board_refreshed = True
-            for key, start, source_key, revision, author, _, _ in active:
-                self.store.save_opportunity(self.channel_id, key, message.id, fingerprint, "active",
-                                            start, source_key, revision, author)
-            old_ids = {posts[key]["message_id"] for key, *_ in active if key in posts
-                       and posts[key]["message_id"] not in (None, message.id)}
-            for old_id in old_ids:
-                try:
-                    old_message = await channel.fetch_message(old_id)
-                    await old_message.delete()
-                except discord.NotFound:
-                    pass
-            async for candidate in channel.history(limit=100):
-                if (candidate.id != message.id and candidate.author.id == self.bot.user.id
-                        and any(embed.footer.text == BOARD_MARKER for embed in candidate.embeds)):
-                    await candidate.delete()
-        except discord.HTTPException:
-            log.warning("Daily scrim board delivery failed; will retry", exc_info=False)
-            return
-
-        old_summary = self.store.vote_summary_message(self.channel_id)
-        if old_summary and old_summary != message.id:
+                description += " · End time not listed"
+            embed = discord.Embed(
+                title=f"{count} scrim{'s' if count != 1 else ''} found at <t:{start}:t>",
+                description=description, color=config.COLOR)
+            embed.add_field(name="Opponent rank", value=" to ".join(ranks) or "Not specified")
+            available = matched.get(source_key, [])
+            embed.add_field(
+                name=f"Available players ({len(available)})",
+                value=", ".join(f"<@{mid}>" for mid in available) or "None listed",
+                inline=False)
+            if offer.get("messageURL"):
+                embed.add_field(name="Scrim advert", value=f"[View advert]({offer['messageURL']})",
+                                inline=False)
+            embed.set_footer(text=f"Scrim listing • {key}")
+            fingerprint = hashlib.sha256(json.dumps(embed.to_dict(), sort_keys=True).encode()).hexdigest()
+            message = None
+            previous = posts.get(key)
             try:
-                summary = await channel.fetch_message(old_summary)
-                await summary.delete()
+                if previous and previous["message_id"] and previous["message_id"] != board_id:
+                    try:
+                        message = await channel.fetch_message(previous["message_id"])
+                    except discord.NotFound:
+                        pass
+                if message is None:
+                    async for candidate in channel.history(limit=100):
+                        if (candidate.author.id == self.bot.user.id and any(
+                                item.footer.text == f"Scrim listing • {key}"
+                                for item in candidate.embeds)):
+                            message = candidate
+                            break
+                if message is None:
+                    message = await channel.send(
+                        embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                elif previous is None or previous["fingerprint"] != fingerprint:
+                    await message.edit(embed=embed, view=None,
+                                       allowed_mentions=discord.AllowedMentions.none())
+                self.store.save_opportunity(
+                    self.channel_id, key, message.id, fingerprint, "active", start,
+                    source_key, revisions[source_key], source_author(offer, source_key))
+                active_ids.add(message.id)
+            except discord.HTTPException:
+                log.warning("Scrim listing delivery failed; will retry", exc_info=False)
+                return
+
+        # The former combined board and vote summary are no longer useful.
+        legacy_ids = {mid for mid in (board_id, self.store.vote_summary_message(self.channel_id))
+                      if mid and mid not in active_ids}
+        for old_id in legacy_ids:
+            try:
+                old_message = await channel.fetch_message(old_id)
+                await old_message.delete()
             except discord.NotFound:
                 pass
             except discord.HTTPException:
-                log.warning("Could not remove old vote summary; will retry")
-            else:
-                self.store.save_vote_summary_message(self.channel_id, message.id)
+                log.warning("Could not remove legacy combined scrim listing; will retry")
+                return
+        try:
+            async for candidate in channel.history(limit=100):
+                if (candidate.id not in active_ids and candidate.author.id == self.bot.user.id
+                        and any(item.footer.text == BOARD_MARKER for item in candidate.embeds)):
+                    await candidate.delete()
+        except discord.HTTPException:
+            log.warning("Could not remove legacy combined scrim listing; will retry")
+            return
+        self.store.save_finder_board(self.channel_id, None, server_day(now), "")
+        self.store.save_vote_summary_message(self.channel_id, None)
 
     async def _sync_owner_notices(self, guild, players, active):
         notices = self.store.finder_notices(self.channel_id)

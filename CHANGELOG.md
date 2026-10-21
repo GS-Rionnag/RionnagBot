@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-21 - restore separate scrim opportunity posts
+
+- Publish one post per scrim start, showing how many adverts were found, the source advert, and players available during that session.
+- Keep player names visible without pinging them; remove the former combined board after separate posts are live.
+
 ## 2026-10-21 - publish upcoming scrim listings without player pings
 
 - Show all future collected offers instead of hiding offers outside today or before six players matched.

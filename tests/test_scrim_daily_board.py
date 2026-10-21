@@ -11,7 +11,6 @@ from rionnag import config
 from rionnag.scrims.scrim_feed import FeedStore
 from rionnag.services.scrim_opportunities import OpportunityPublisher
 from rionnag.storage import Store
-from rionnag.ui.scrim_opportunities import BOARD_MARKER
 
 
 def instant(value):
@@ -49,15 +48,30 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
                        "author_id": "11"}
         self.feed.put(self.source)
         self.feed.complete(self.feed.pending(), {"scrims": [{**offer(), "source_message_id": "3"}]})
-        self.message = SimpleNamespace(id=99, edit=AsyncMock(), delete=AsyncMock(),
-                                       author=SimpleNamespace(id=999), embeds=[])
+        self.sent_messages = {}
+
+        def make_message(message_id):
+            message = SimpleNamespace(id=message_id, edit=AsyncMock(), delete=AsyncMock(),
+                                      author=SimpleNamespace(id=999), embeds=[])
+            self.sent_messages[message_id] = message
+            return message
+
+        self.message = make_message(99)
+
+        async def send(**kwargs):
+            message = make_message(max(self.sent_messages) + 1)
+            message.embeds = [kwargs["embed"]] if kwargs.get("embed") else kwargs.get("embeds", [])
+            return message
+
+        async def fetch_message(message_id):
+            return self.sent_messages.get(message_id, self.message)
 
         async def history(**kwargs):
-            if False:
-                yield self.message
+            for message in self.sent_messages.values():
+                yield message
 
-        self.channel = SimpleNamespace(send=AsyncMock(return_value=self.message),
-                                       fetch_message=AsyncMock(return_value=self.message),
+        self.channel = SimpleNamespace(send=AsyncMock(side_effect=send),
+                                       fetch_message=AsyncMock(side_effect=fetch_message),
                                        history=history)
         self.owner = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=80)))
         self.guild = SimpleNamespace(
@@ -77,25 +91,30 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
             followup=SimpleNamespace(send=AsyncMock()),
         )
 
-    async def test_one_board_collects_todays_times_and_survives_restart(self):
+    async def test_scrims_are_separate_posts_with_counts_and_survive_restart(self):
         self.feed.put({"id": "4", "channel_id": "2", "url": "https://discord.com/channels/1/2/4",
                        "author_id": "12"})
         self.feed.complete(self.feed.pending(), {"scrims": [
             {**offer(start="2027-06-08T01:00:00Z", end="2027-06-08T02:00:00Z"),
              "source_message_id": "4"}]})
         await self.publisher.sync(self.now)
-        sent = self.channel.send.call_args.kwargs
-        self.assertEqual(len(sent["embeds"]), 3)
-        self.assertEqual(sent["embeds"][0].footer.text, BOARD_MARKER)
+        calls = self.channel.send.await_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all("embed" in call.kwargs and "embeds" not in call.kwargs for call in calls))
+        self.assertIn("1 scrim found at", calls[0].kwargs["embed"].title)
+        self.assertIn("Available players (7)", [f.name for f in calls[0].kwargs["embed"].fields])
         self.assertEqual(len(self.store.opportunity_posts(10)), 2)
-        self.assertEqual({p["message_id"] for p in self.store.opportunity_posts(10).values()}, {99})
+        self.assertEqual(len({p["message_id"] for p in self.store.opportunity_posts(10).values()}), 2)
+        for call in calls:
+            self.assertEqual(call.kwargs["allowed_mentions"].to_dict(),
+                             discord.AllowedMentions.none().to_dict())
+            self.assertNotIn("<@", str(call.kwargs.get("content", "")))
         self.publisher = OpportunityPublisher(
             self.bot, Store(self.store.path), FeedStore(self.feed.path),
             {"marvel-rivals": self.form}, 1, 10)
         await self.publisher.sync(self.now)
-        self.channel.send.assert_awaited_once()
-        self.message.edit.assert_awaited_once()
-        self.assertIsNone(self.message.edit.call_args.kwargs["view"])
+        self.assertEqual(self.channel.send.await_count, 2)
+        self.assertFalse(any(message.edit.await_count for message in self.sent_messages.values()))
 
     async def test_future_times_across_days_are_listed_without_player_mentions(self):
         self.guild.get_member = lambda _member_id: None
@@ -104,16 +123,16 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
             {**offer(start="2027-06-09T00:00:00Z", end="2027-06-09T01:00:00Z"),
              "source_message_id": "4"}]})
         await self.publisher.sync(self.now)
-        sent = self.channel.send.call_args.kwargs
-        self.assertEqual(len(sent["embeds"]), 3)
-        self.assertIsNone(sent.get("view"))
-        self.assertEqual(sent["allowed_mentions"].to_dict(), discord.AllowedMentions.none().to_dict())
-        self.assertNotIn("<@", " ".join(embed.description or "" for embed in sent["embeds"]))
-        self.assertEqual(sent["embeds"][1].fields[0].name, "Opponent rank")
-        self.assertFalse(any(field.name.startswith("Available") for e in sent["embeds"]
-                             for field in e.fields))
+        calls = self.channel.send.await_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(all("embed" in call.kwargs for call in calls))
+        self.assertTrue(all(call.kwargs["allowed_mentions"].to_dict()
+                            == discord.AllowedMentions.none().to_dict() for call in calls))
+        self.assertTrue(all(any(field.name == "Opponent rank" for field in call.kwargs["embed"].fields)
+                            for call in calls))
+        self.assertTrue(all(any(field.name == "Available players (0)"
+                                for field in call.kwargs["embed"].fields) for call in calls))
         await self.publisher.sync(instant("2027-06-08T00:00:00+00:00"))
-        self.assertEqual(len(self.message.edit.call_args.kwargs["embeds"]), 2)
         self.assertEqual(self.store.opportunity_posts(10)["3:0"]["status"], "inactive")
 
     async def test_schedule_override_requires_explicit_yes(self):
@@ -142,9 +161,11 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher.sync(self.now)
         self.owner.send.assert_not_awaited()
         self.assertEqual(self.store.finder_notices(10), {})
-        self.assertNotIn("<@", " ".join(
-            embed.description or "" for embed in self.channel.send.call_args.kwargs["embeds"]
-        ))
+        listing = self.channel.send.await_args.kwargs["embed"]
+        available = next(field for field in listing.fields if field.name == "Available players (7)")
+        self.assertIn("<@1>", available.value)
+        self.assertEqual(self.channel.send.await_args.kwargs["allowed_mentions"].to_dict(),
+                         discord.AllowedMentions.none().to_dict())
 
     async def test_withdrawals_do_not_create_owner_prompts(self):
         await self.publisher.sync(self.now)
@@ -352,18 +373,18 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
         reopened = Store(self.store.path)
         self.assertEqual(reopened.finder_declined(10, start, start + 7200), {7})
 
-    async def test_existing_per_time_post_is_removed_after_board_send(self):
+    async def test_existing_per_time_post_is_reused(self):
         self.store.save_opportunity(10, "3:0", 77, "", "active",
                                     instant(offer()["Start_Time_timestamp"]))
         await self.publisher.sync(self.now)
-        self.message.delete.assert_awaited_once()
+        self.message.delete.assert_not_awaited()
         self.assertEqual(self.store.opportunity_posts(10)["3:0"]["message_id"], 99)
 
     async def test_host_official_day_suppresses_finder(self):
         self.store.book_host(config.SCRIM_HOST_CHANNEL_ID,
                              instant("2027-06-08T01:00:00+00:00"), 7200, 100)
         await self.publisher.sync(self.now)
-        self.assertEqual(len(self.channel.send.call_args.kwargs["embeds"]), 1)
+        self.channel.send.assert_not_awaited()
 
 
 if __name__ == "__main__":
