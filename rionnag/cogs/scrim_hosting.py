@@ -63,6 +63,7 @@ class ScrimHosting(commands.Cog):
     async def approvals(self):
         try:
             await self.service.notify_ready()
+            await self.service.notify_six_joined()
         except Exception:
             logging.getLogger(__name__).exception("Scrim owner notification failed; will retry")
 

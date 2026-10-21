@@ -414,6 +414,56 @@ class HostingService:
                 self.store.update_host_notice(self.channel_id, slot.start, generation, "pending", message.id)
         await self.refresh_scrim_controls()
 
+    async def notify_six_joined(self):
+        """Tell joined players when a six-player session is forming, before official approval."""
+        async with self.notification_lock:
+            bookings = self.store.host_bookings(self.channel_id)
+            notices = self.store.host_notices(self.channel_id)
+            for slot in self.snapshot():
+                if len(slot.confirmed) < 6 or slot.start in bookings:
+                    continue
+                notice = notices.get(slot.start)
+                if notice and notice["status"] == "cancelled":
+                    continue
+                text = (
+                    f"At least 6 players have joined the scrim at <t:{slot.start}:F>.\n\n"
+                    "The scrim is **NOT confirmed**. You will get another message once it is "
+                    "officially confirmed."
+                )
+                marker = f"Scrim six-player update · {slot.start}"
+                for member_id in sorted(slot.confirmed):
+                    record = self.store.reserve_host_milestone(
+                        self.channel_id, slot.start, member_id
+                    )
+                    if record["status"] != "pending":
+                        continue
+                    try:
+                        user = self.bot.get_user(member_id) or await self.bot.fetch_user(member_id)
+                        dm = user.dm_channel or await user.create_dm()
+                        message = None
+                        async for previous in dm.history(limit=100):
+                            if previous.author.id == self.bot.user.id and any(
+                                embed.footer and embed.footer.text == f"{marker} · {member_id}"
+                                for embed in previous.embeds
+                            ):
+                                message = previous
+                                break
+                        if message is None:
+                            embed = discord.Embed(description=text, color=config.COLOR)
+                            embed.set_footer(text=f"{marker} · {member_id}")
+                            message = await dm.send(
+                                embed=embed, allowed_mentions=discord.AllowedMentions.none()
+                            )
+                        self.store.complete_host_milestone(
+                            self.channel_id, slot.start, member_id, "sent", message.id
+                        )
+                    except discord.Forbidden:
+                        self.store.complete_host_milestone(
+                            self.channel_id, slot.start, member_id, "undeliverable"
+                        )
+                    except discord.HTTPException:
+                        log.warning("Six-player scrim update DM failed; will retry")
+
     async def invite_available(self):
         from rionnag.ui.scrim_hosting import ScrimInvite
 

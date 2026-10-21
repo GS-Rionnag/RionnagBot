@@ -87,6 +87,10 @@ class Store:
                     channel_id INTEGER, start INTEGER, member_id INTEGER, kind TEXT,
                     status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
                     PRIMARY KEY(channel_id,start,member_id,kind));
+                CREATE TABLE IF NOT EXISTS scrim_host_milestones (
+                    channel_id INTEGER, start INTEGER, member_id INTEGER,
+                    status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
+                    PRIMARY KEY(channel_id,start,member_id));
                 CREATE TABLE IF NOT EXISTS scrim_host_bumps (
                     channel_id INTEGER, start INTEGER, generation INTEGER, old_message_id INTEGER,
                     status TEXT, requested_at REAL, message_id INTEGER, error TEXT,
@@ -189,6 +193,7 @@ class Store:
             db.execute("DELETE FROM scrim_host_overrides WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_invites WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_notifications WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_host_milestones WHERE member_id=?", (member_id,))
 
     def host_invites(self, channel_id):
         with self.connection() as db:
@@ -259,6 +264,20 @@ class Store:
                 "SELECT * FROM scrim_host_notifications WHERE channel_id=? AND start=? "
                 "AND message_id IS NOT NULL", (channel_id, start))]
 
+    def reserve_host_milestone(self, channel_id, start, member_id):
+        with self.connection() as db:
+            db.execute("INSERT OR IGNORE INTO scrim_host_milestones(channel_id,start,member_id) "
+                       "VALUES(?,?,?)", (channel_id, start, member_id))
+            row = db.execute("SELECT * FROM scrim_host_milestones WHERE channel_id=? AND start=? "
+                             "AND member_id=?", (channel_id, start, member_id)).fetchone()
+            return dict(row)
+
+    def complete_host_milestone(self, channel_id, start, member_id, status, message_id=None):
+        with self.connection() as db:
+            db.execute("UPDATE scrim_host_milestones SET status=?, message_id=COALESCE(?,message_id) "
+                       "WHERE channel_id=? AND start=? AND member_id=?",
+                       (status, message_id, channel_id, start, member_id))
+
     def complete_host_notification(self, channel_id, start, member_id, kind, status, message_id=None):
         with self.connection() as db:
             db.execute("UPDATE scrim_host_notifications SET status=?, message_id=COALESCE(?,message_id) "
@@ -280,6 +299,11 @@ class Store:
             rows.extend(dict(row) for row in db.execute(
                 "SELECT start,member_id,message_id,NULL AS kind,duration,status FROM scrim_host_invites "
                 "WHERE message_id IS NOT NULL"))
+            rows.extend(dict(row) for row in db.execute(
+                "SELECT m.start,m.member_id,m.message_id,NULL AS kind,"
+                "COALESCE(s.duration,7200) AS duration,m.status FROM scrim_host_milestones m "
+                "LEFT JOIN scrim_host_settings s ON s.channel_id=m.channel_id "
+                "WHERE m.message_id IS NOT NULL"))
             if owner_id is not None:
                 for table in ("scrim_finder_notices", "scrim_host_notices"):
                     rows.extend(dict(row) for row in db.execute(

@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-21 - notify players when six join a hosted scrim
+
+- DM every player who joined once a session reaches six players, stating that it is not yet confirmed.
+- Notify later joiners while the six-player threshold remains active; wait for official booking before
+  sending the separate confirmed notice.
+
 ## 2026-10-21 - remove answered scrim invitations
 
 - Delete a player's hosted scrim invitation after they accept or decline; if deletion fails,

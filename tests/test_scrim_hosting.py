@@ -265,6 +265,43 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("officially confirmed", sent[0][1])
         self.assertIn("Can you make it?", sent[1][1])
 
+    async def test_six_joined_update_goes_to_every_joiner_once_before_confirmation(self):
+        async def history(**kwargs):
+            if False:
+                yield None
+
+        users = {
+            member_id: SimpleNamespace(dm_channel=SimpleNamespace(
+                history=history,
+                send=AsyncMock(return_value=SimpleNamespace(id=1000 + member_id)),
+            ))
+            for member_id in range(1, 8)
+        }
+        bot = SimpleNamespace(get_user=users.get, user=SimpleNamespace(id=44))
+        service = HostingService(bot, SimpleNamespace(store=self.store), None)
+        slot = HostSlot(
+            self.start, self.start + 7200, set(users), set(range(1, 7)), {}, 0, False
+        )
+        service.snapshot = lambda: [slot]
+
+        await service.notify_six_joined()
+        await service.notify_six_joined()
+
+        for member_id in range(1, 7):
+            dm = users[member_id].dm_channel
+            dm.send.assert_awaited_once()
+            description = dm.send.call_args.kwargs["embed"].description
+            self.assertIn("At least 6 players have joined", description)
+            self.assertIn("NOT confirmed", description)
+            self.assertIn("another message once", description)
+        users[7].dm_channel.send.assert_not_awaited()
+
+        slot.confirmed.add(7)
+        await service.notify_six_joined()
+        users[7].dm_channel.send.assert_awaited_once()
+        for member_id in range(1, 7):
+            users[member_id].dm_channel.send.assert_awaited_once()
+
     async def test_thirty_minute_notice_is_new_dm_and_replaces_prior_notice(self):
         async def history(**kwargs):
             if False:

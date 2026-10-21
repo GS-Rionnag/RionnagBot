@@ -16,6 +16,8 @@ change, preventing repeated owner DMs after a withdrawal and rejoin. Its persist
 the team returns. The owner can manually remind available, unanswered players from this panel; reminders
 reuse each existing invitation DM when possible. Confirmed and declined players are skipped, and a No
 response remains excluded from the available roster even after a later board join.
+Once at least six players join a hosting session, each current and later joiner receives one durable DM
+stating that the scrim is not yet confirmed. Official booking sends a separate confirmation notice.
 
 Finder and hosting status/reminder DMs reuse one bot message per player and scrim, editing it as the
 status changes. Tracked bot-authored scrim messages are deleted after the session ends for every

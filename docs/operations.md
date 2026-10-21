@@ -88,6 +88,8 @@ A separate ten-second loop checks for six confirmed players forming a valid 2–
 interval. It DMs the server owner with that date/time and **Enter ranks & send** / **No** buttons. Only the
 owner can answer. Enter ranks & send opens a minimum/maximum rank form, prefilled Grandmaster / Celestial.
 Submitting revalidates the current lineup and queues the rank-range advert; No publishes nothing.
+When six or more players have joined any session, each joiner receives one DM saying the scrim is not yet
+confirmed and that another message will arrive if it becomes official. Later joiners receive the same update.
 The DM is independent of the public board. The owner's DMs must permit
 bot messages; failed deliveries remain pending for retry. Declining suppresses repeated prompts while
 the interval stays ready. If readiness is lost and later regained, a fresh request invalidates old buttons.
