@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-21 - improve hosted scrim controls
+
+- Continue reminding other available players when one reminder delivery fails unexpectedly.
+- Add an owner-confirmed cancellation action for official upcoming scrims; clear the booking,
+  refresh the boards, and update the owner and player DMs.
+
 ## 2026-10-20 - keep scrim DMs current and tidy
 
 - Update each player's existing scrim DM as their invitation, official status, and reminders change.

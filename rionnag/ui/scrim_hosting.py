@@ -546,8 +546,11 @@ class HostApproval(HostingView):
         super().__init__(timeout=None)
         self.service, self.start, self.generation = service, start, generation
         ready = next((slot.ready for slot in service.snapshot() if slot.start == start), False)
+        booked = service.store.official_host(service.channel_id) == start
         advert = service.store.host_adverts(service.channel_id).get(start)
-        send_controls = [] if advert and advert["status"] in {"sent", "queued", "sending", "uncertain"} else [
+        send_controls = [] if booked or (advert and advert["status"] in {
+            "sent", "queued", "sending", "uncertain"
+        }) else [
             ("Enter ranks & send", True, discord.ButtonStyle.success),
         ]
         for label, send, style in send_controls:
@@ -587,7 +590,7 @@ class HostApproval(HostingView):
             self.add_item(button)
         remind = discord.ui.Button(
             label="Remind unanswered players", row=0, style=discord.ButtonStyle.secondary,
-            custom_id=f"hosting-remind:{start}:{generation}",
+            custom_id=f"hosting-remind:{start}:{generation}", disabled=booked,
         )
 
         async def reminder(interaction):
@@ -603,14 +606,32 @@ class HostApproval(HostingView):
 
         remind.callback = reminder
         self.add_item(remind)
-        for label, bump in (("Bump post", True), ("Confirm scrim", False)):
+        actions = (("Bump post", True), ("Confirm scrim", False))
+        if booked:
+            actions = (("Cancel scrim", None),)
+        for label, bump in actions:
             button = discord.ui.Button(
-                label=label, row=1, custom_id=f"hosting-manage:{start}:{generation}:{int(bump)}",
-                style=discord.ButtonStyle.primary if bump else discord.ButtonStyle.success,
-                disabled=not ready,
+                label=label, row=1,
+                custom_id=(f"hosting-cancel:{start}:{generation}" if bump is None else
+                           f"hosting-manage:{start}:{generation}:{int(bump)}"),
+                style=(discord.ButtonStyle.danger if bump is None else
+                       discord.ButtonStyle.primary if bump else discord.ButtonStyle.success),
+                disabled=not ready and bump is not None,
             )
 
             async def manage(interaction, bump=bump):
+                if bump is None:
+                    guild = service.bot.get_guild(config.GUILD_ID)
+                    if not guild or interaction.user.id != guild.owner_id:
+                        await interaction.response.send_message("Only the server owner can cancel a scrim.",
+                                                                ephemeral=True)
+                        return
+                    await interaction.response.send_message(
+                        f"Cancel the official scrim at <t:{start}:F>? Players will be notified.",
+                        view=CancelOfficial(service, start, generation, interaction.user.id),
+                        ephemeral=True,
+                    )
+                    return
                 if not bump:
                     guild = service.bot.get_guild(config.GUILD_ID)
                     if not guild or interaction.user.id != guild.owner_id:
@@ -661,4 +682,25 @@ class ConfirmOfficial(HostingView):
     @discord.ui.button(label="No", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction, button):
         await interaction.response.edit_message(content="Confirmation cancelled.", view=None)
+        self.stop()
+
+
+class CancelOfficial(HostingView):
+    def __init__(self, service, start, generation, owner):
+        super().__init__(timeout=300)
+        self.service, self.start, self.generation, self.owner = service, start, generation, owner
+
+    async def interaction_check(self, interaction):
+        return interaction.user.id == self.owner
+
+    @discord.ui.button(label="Yes, cancel scrim", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction, button):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        await self.service.cancel_session(interaction, self.start, self.generation)
+        await interaction.followup.send("Scrim cancelled. Players have been notified.", ephemeral=True)
+        self.stop()
+
+    @discord.ui.button(label="Keep scrim", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction, button):
+        await interaction.response.edit_message(content="Scrim remains official.", view=None)
         self.stop()

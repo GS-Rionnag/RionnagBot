@@ -211,6 +211,26 @@ class Store:
                        "WHERE channel_id=? AND start=? AND status='sent' AND message_id IS NOT NULL",
                        (channel_id, start))
 
+    def cancel_host(self, channel_id, start, generation):
+        """Remove an official booking while retaining its audit/DM identities."""
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT start FROM scrim_host_official WHERE channel_id=? AND start=?",
+                (channel_id, start),
+            ).fetchone()
+            if not row:
+                return False
+            db.execute("DELETE FROM scrim_host_official WHERE channel_id=? AND start=?",
+                       (channel_id, start))
+            db.execute("DELETE FROM scrim_host_bookings WHERE channel_id=? AND start=?",
+                       (channel_id, start))
+            db.execute("UPDATE scrim_host_notices SET status='cancelled' "
+                       "WHERE channel_id=? AND start=? AND generation=?",
+                       (channel_id, start, generation))
+            db.execute("UPDATE scrim_host_notifications SET status='cancelled' "
+                       "WHERE channel_id=? AND start=?", (channel_id, start))
+            return True
+
     def official_host(self, channel_id):
         with self.connection() as db:
             row = db.execute(
@@ -232,6 +252,12 @@ class Store:
                 "SELECT * FROM scrim_host_notifications WHERE channel_id=? AND start=? "
                 "AND member_id=? AND message_id IS NOT NULL",
                 (channel_id, start, member_id))]
+
+    def host_notifications_for_start(self, channel_id, start):
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM scrim_host_notifications WHERE channel_id=? AND start=? "
+                "AND message_id IS NOT NULL", (channel_id, start))]
 
     def complete_host_notification(self, channel_id, start, member_id, kind, status, message_id=None):
         with self.connection() as db:

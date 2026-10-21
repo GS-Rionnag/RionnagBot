@@ -123,6 +123,8 @@ the current team and destination, deletes only the recorded own advert, and repo
 phases recover interrupted deletion and uncertain delivery without blindly sending duplicates. The main
 board shows bump status and updates the advert link. Confirm scrim marks the interval officially booked,
 closes advertising/bumping and further player invitations for it, and updates the main board and owner DM.
+The owner can use Cancel scrim on that approval DM before the start time; this removes the official booking,
+refreshes the hosting and finder boards, and updates existing player notices with the cancellation.
 This does not start a tracked game, move members, or change their saved profiles.
 
 The shared collector handles an outbound queue in the private main database every ten seconds, separately

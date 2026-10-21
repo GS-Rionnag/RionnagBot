@@ -1013,6 +1013,40 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.store.update_host_advert(service.channel_id, self.start, "sent", message_id=77)
         self.assertFalse(self.store.queue_host_bump(service.channel_id, self.start))
 
+    async def test_owner_can_cancel_official_scrim_and_players_are_notified(self):
+        service, _, dm = self.approval_fixture()
+        await service.notify_ready()
+        await service.manage_session(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1, False)
+        player_message = SimpleNamespace(edit=AsyncMock())
+        owner_message = SimpleNamespace(
+            embeds=[dm.send.call_args.kwargs["embed"]], edit=AsyncMock()
+        )
+        dm.fetch_message = AsyncMock(side_effect=lambda message_id: {
+            55: owner_message, 88: player_message
+        }[message_id])
+        user = SimpleNamespace(dm_channel=dm, create_dm=AsyncMock(return_value=dm))
+        service.bot.get_user = lambda member_id: user
+        self.store.host_notification(service.channel_id, self.start, 7, "confirmed")
+        self.store.complete_host_notification(service.channel_id, self.start, 7, "confirmed", "sent", 88)
+
+        await service.cancel_session(SimpleNamespace(user=SimpleNamespace(id=99)), self.start, 1)
+
+        self.assertIsNone(self.store.official_host(service.channel_id))
+        self.assertNotIn(self.start, self.store.host_bookings(service.channel_id))
+        self.assertEqual(self.store.host_notices(service.channel_id)[self.start]["status"], "cancelled")
+        player_message.edit.assert_awaited_once()
+        self.assertIn("cancelled", player_message.edit.call_args.kwargs["embed"].description)
+        self.assertIsNone(player_message.edit.call_args.kwargs["view"])
+
+    async def test_official_owner_panel_offers_cancel_action(self):
+        service, _, _ = self.approval_fixture()
+        service.store.book_host(service.channel_id, self.start, 7200, 99)
+        view = HostApproval(service, self.start, 1)
+        self.assertEqual([button.label for button in view.children], [
+            "Remind unanswered players", "Cancel scrim"
+        ])
+        view.stop()
+
     async def test_owner_notice_does_not_repeat_when_team_changes_and_returns(self):
         service, slot, dm = self.approval_fixture()
         await service.notify_ready()

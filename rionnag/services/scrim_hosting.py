@@ -133,8 +133,10 @@ class HostingService:
             description=f"<t:{slot.start}:F> – <t:{slot.end}:t>\n"
             f"**{len(slot.confirmed)} players confirmed**\n{self.confirmed_roles(slot)}\n\n"
             + ("**Officially confirmed**\n" if booked else "")
-            + "Enter ranks to send an advert, remind unanswered available players, bump its existing post, "
-            "or officially confirm the scrim.",
+            + ("This scrim is officially confirmed. Use Cancel scrim if plans change."
+               if booked else
+               "Enter ranks to send an advert, remind unanswered available players, bump its existing post, "
+               "or officially confirm the scrim."),
         )
         advert = self.store.host_adverts(self.channel_id).get(slot.start)
         if advert and advert["status"] == "sent" and advert["message_id"]:
@@ -204,6 +206,53 @@ class HostingService:
                     await cog.publisher.sync()
                 except Exception:
                     log.exception("Official booking finder refresh failed; minute loop will retry")
+
+    async def cancel_session(self, interaction, start, generation):
+        guild = self.bot.get_guild(config.GUILD_ID)
+        if not guild or interaction.user.id != guild.owner_id:
+            raise ValueError("Only the server owner can cancel this scrim.")
+        booking = self.store.host_bookings(self.channel_id).get(start)
+        notice = self.store.host_notices(self.channel_id).get(start)
+        if (self.store.official_host(self.channel_id) != start or not booking
+                or not notice or notice["generation"] != generation):
+            raise ValueError("This is no longer the current official scrim.")
+        if start <= time.time():
+            raise ValueError("A scrim can only be cancelled before it starts.")
+        if not self.store.cancel_host(self.channel_id, start, generation):
+            raise ValueError("This scrim was already cancelled.")
+        owner = guild.owner or await self.bot.fetch_user(guild.owner_id)
+        dm = owner.dm_channel or await owner.create_dm()
+        if notice["message_id"]:
+            try:
+                message = await dm.fetch_message(notice["message_id"])
+                embed = message.embeds[0]
+                embed.description = (embed.description or "") + "\n\n**This scrim was cancelled.**"
+                await message.edit(embed=embed, view=None)
+            except discord.HTTPException:
+                log.warning("Could not update owner approval after scrim cancellation")
+        await self.sync()
+        await self.refresh_scrim_controls()
+        cog = self.bot.get_cog("Scrims") if hasattr(self.bot, "get_cog") else None
+        if cog and cog.publisher:
+            try:
+                await cog.publisher.sync()
+            except Exception:
+                log.exception("Cancelled booking finder refresh failed; minute loop will retry")
+        for record in self.store.host_notifications_for_start(self.channel_id, start):
+            try:
+                user = self.bot.get_user(record["member_id"])
+                if user is None:
+                    user = await self.bot.fetch_user(record["member_id"])
+                dm = user.dm_channel or await user.create_dm()
+                message = await dm.fetch_message(record["message_id"])
+                embed = discord.Embed(
+                    title="Scrim cancelled",
+                    description=f"The scrim scheduled for <t:{start}:F> has been cancelled.",
+                    color=config.COLOR,
+                )
+                await message.edit(embed=embed, view=None)
+            except (discord.HTTPException, AttributeError):
+                log.warning("Could not update a player DM after scrim cancellation")
 
     async def answer_official_invite(self, member_id, start, accept):
         if self.store.official_host(self.channel_id) != start:
@@ -445,6 +494,8 @@ class HostingService:
                 self.store.update_host_invite(self.channel_id, start, mid, duration, "undeliverable")
             except discord.HTTPException:
                 log.warning("Scrim reminder delivery failed; will retry")
+            except Exception:
+                log.exception("Unexpected failure while reminding a scrim player")
         return sent
 
     async def answer_invite(self, member_id, start, duration, accept):
