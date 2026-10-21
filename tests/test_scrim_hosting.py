@@ -16,6 +16,7 @@ from rionnag.ui.scrim_hosting import (
     DayPicker,
     HostApproval,
     HostingBoard,
+    OfficialNoticeControls,
     ScrimInvite,
     SessionCard,
     SlotPicker,
@@ -264,6 +265,35 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([mid for mid, _ in sent], [1, 2])
         self.assertIn("officially confirmed", sent[0][1])
         self.assertIn("Can you make it?", sent[1][1])
+
+    async def test_official_notice_has_owner_only_cancel_and_player_cannot_make_it(self):
+        service, _, _ = self.approval_fixture()
+        owner_view = OfficialNoticeControls(service, 99, self.start)
+        player_view = OfficialNoticeControls(service, 1, self.start)
+        self.assertEqual([button.label for button in owner_view.children],
+                         ["Can't make it", "Cancel scrim"])
+        self.assertEqual([button.label for button in player_view.children], ["Can't make it"])
+        self.assertTrue(owner_view.is_persistent())
+        self.assertTrue(player_view.is_persistent())
+        owner_view.stop()
+        player_view.stop()
+
+    async def test_cannot_make_it_removes_vote_and_messages_owner_updated_roles(self):
+        service, slot, dm = self.approval_fixture()
+        service.store.book_host(service.channel_id, self.start, 7200, 99)
+        for member_id in self.team:
+            self.store.set_host_vote(service.channel_id, self.start, member_id, True)
+        service.sync = AsyncMock()
+        service.refresh_scrim_controls = AsyncMock()
+
+        await service.cannot_make_official_scrim(1, self.start)
+
+        self.assertEqual(self.store.host_votes(service.channel_id)[self.start], {2, 3, 4, 5, 6})
+        dm.send.assert_awaited_once()
+        update = dm.send.call_args.kwargs["embed"].description
+        self.assertIn("<@1> could not make it", update)
+        self.assertIn("Updated joined players (5)", update)
+        self.assertIn("Tank: <@2>\nDPS: <@3>, <@4>\nSupport: <@5>, <@6>", update)
 
     async def test_six_joined_update_goes_to_every_joiner_once_before_confirmation(self):
         async def history(**kwargs):

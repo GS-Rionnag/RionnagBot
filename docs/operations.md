@@ -118,6 +118,9 @@ scrim on the hosting board. The bot first DMs confirmed players that the time is
 DMs available unconfirmed players with persistent Yes/No choices. Yes joins the scrim; No declines.
 Confirmed players receive a reminder on the scrim's calendar day in America/New_York and again
 30 minutes before its start. These DMs have durable identities and recover after a restart.
+Official player notices have a Can't make it control for confirmed attendees. It removes that player from
+the confirmed list and sends the owner a private update with the remaining players grouped by saved role.
+The server owner alone sees Cancel scrim on their official notice; cancellation requires a second confirmation.
 For each player and scrim, status and reminder DMs update the same bot message as the booking changes.
 Bot-authored scrim DMs are automatically deleted after the booked session ends; other DM content is untouched.
 The 30-minute reminder is a fresh message that replaces the previous official notice and is deleted when the

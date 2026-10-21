@@ -135,6 +135,44 @@ class OfficialInvite(HostingView):
 
             button.callback = answer
             self.add_item(button)
+        add_owner_cancel_button(self, service, owner, start)
+
+
+class OfficialNoticeControls(HostingView):
+    def __init__(self, service, recipient, start):
+        super().__init__(timeout=None)
+        self.service, self.recipient, self.start = service, recipient, start
+        button = discord.ui.Button(
+            label="Can't make it", style=discord.ButtonStyle.danger, row=0,
+            custom_id=f"hosting-cannot-make-it:{recipient}:{start}",
+        )
+
+        async def cannot_make_it(interaction):
+            if interaction.user.id != self.recipient:
+                await interaction.response.send_message(
+                    "This scrim notice belongs to another player.", ephemeral=True
+                )
+                return
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            try:
+                await self.service.cannot_make_official_scrim(self.recipient, self.start)
+            except ValueError as exc:
+                await interaction.followup.send(str(exc), ephemeral=True)
+                return
+            try:
+                await interaction.message.delete()
+            except discord.HTTPException:
+                await interaction.message.edit(
+                    content="You marked that you can't make this scrim.", embed=None, view=None
+                )
+            await interaction.followup.send(
+                "You were removed from the confirmed list. The owner has the updated roster.",
+                ephemeral=True,
+            )
+
+        button.callback = cannot_make_it
+        self.add_item(button)
+        add_owner_cancel_button(self, service, recipient, start)
 
 
 def day_groups(slots, zone):
@@ -705,3 +743,34 @@ class CancelOfficial(HostingView):
     async def cancel(self, interaction, button):
         await interaction.response.edit_message(content="Scrim remains official.", view=None)
         self.stop()
+
+
+def add_owner_cancel_button(view, service, recipient, start):
+    get_guild = getattr(service.bot, "get_guild", lambda _: None)
+    guild = get_guild(config.GUILD_ID)
+    if not guild or recipient != guild.owner_id:
+        return
+    button = discord.ui.Button(
+        label="Cancel scrim", style=discord.ButtonStyle.danger, row=1,
+        custom_id=f"hosting-official-cancel:{start}",
+    )
+
+    async def cancel(interaction):
+        if interaction.user.id != guild.owner_id:
+            await interaction.response.send_message(
+                "Only the server owner can cancel this scrim.", ephemeral=True
+            )
+            return
+        notice = service.store.host_notices(service.channel_id).get(start)
+        if not notice:
+            await interaction.response.send_message("This scrim request is no longer current.",
+                                                    ephemeral=True)
+            return
+        await interaction.response.send_message(
+            f"Cancel the official scrim at <t:{start}:F>? Players will be notified.",
+            view=CancelOfficial(service, start, notice["generation"], guild.owner_id),
+            ephemeral=True,
+        )
+
+    button.callback = cancel
+    view.add_item(button)

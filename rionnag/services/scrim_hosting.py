@@ -90,9 +90,17 @@ class HostingService:
         self.notice_lock = asyncio.Lock()
         self.invite_lock = asyncio.Lock()
         self.notification_lock = asyncio.Lock()
+        self.withdrawal_lock = asyncio.Lock()
+        self._official_controls_refreshed = False
 
     def register_approvals(self):
-        from rionnag.ui.scrim_hosting import HostApproval, OfficialInvite, ScrimInvite, SessionCard
+        from rionnag.ui.scrim_hosting import (
+            HostApproval,
+            OfficialInvite,
+            OfficialNoticeControls,
+            ScrimInvite,
+            SessionCard,
+        )
 
         for invite in self.store.host_invites(self.channel_id):
             if invite["status"] == "pending" and invite["message_id"]:
@@ -102,11 +110,13 @@ class HostingService:
         if official is not None:
             with self.store.connection() as db:
                 rows = db.execute("SELECT * FROM scrim_host_notifications WHERE channel_id=? AND start=? "
-                                  "AND kind='invite' AND status='sent' AND message_id IS NOT NULL",
+                                  "AND status='sent' AND message_id IS NOT NULL",
                                   (self.channel_id, official)).fetchall()
             for row in rows:
-                self.bot.add_view(OfficialInvite(self, row["member_id"], official),
-                                  message_id=row["message_id"])
+                view = (OfficialInvite(self, row["member_id"], official)
+                        if row["kind"] == "invite" else
+                        OfficialNoticeControls(self, row["member_id"], official))
+                self.bot.add_view(view, message_id=row["message_id"])
 
         for position, message_id in self.store.host_cards(self.channel_id).items():
             self.bot.add_view(SessionCard(self, position), message_id=message_id)
@@ -262,11 +272,84 @@ class HostingService:
             await self.direct_join(member_id, start, settings["duration"])
         else:
             await self.change_votes(member_id, [start], False)
+            self.store.host_notification(self.channel_id, start, member_id, "invite")
         self.store.complete_host_notification(self.channel_id, start, member_id, "invite",
                                               "accepted" if accept else "declined")
 
+    async def cannot_make_official_scrim(self, member_id, start):
+        if self.store.official_host(self.channel_id) != start:
+            raise ValueError("This is no longer the official scrim.")
+        votes = self.store.host_votes(self.channel_id).get(start, set())
+        if member_id not in votes:
+            raise ValueError("You are no longer listed as attending this scrim.")
+        await self.change_votes(member_id, [start], False)
+        self.store.host_notification(self.channel_id, start, member_id, "invite")
+        self.store.complete_host_notification(
+            self.channel_id, start, member_id, "invite", "declined"
+        )
+        players = {player["member_id"]: player for player in self.players()}
+        roster = [
+            [mid, players[mid]["answers"].get("preferred_role_1", "Unknown")]
+            for mid in sorted(self.store.host_votes(self.channel_id).get(start, set()))
+            if mid in players
+        ]
+        self.store.reserve_host_withdrawal(self.channel_id, start, member_id, roster)
+        await self.notify_host_withdrawals()
+
+    async def notify_host_withdrawals(self):
+        async with self.withdrawal_lock:
+            records = self.store.pending_host_withdrawals(self.channel_id)
+            if not records:
+                return
+            guild = self.bot.get_guild(config.GUILD_ID)
+            if guild is None:
+                return
+            owner = guild.owner or await self.bot.fetch_user(guild.owner_id)
+            dm = owner.dm_channel or await owner.create_dm()
+            for record in records:
+                start, member_id = record["start"], record["member_id"]
+                marker = f"Scrim could-not-attend · {start} · {member_id}"
+                try:
+                    message = None
+                    async for previous in dm.history(limit=100):
+                        if previous.author.id == self.bot.user.id and any(
+                            embed.footer and embed.footer.text == marker for embed in previous.embeds
+                        ):
+                            message = previous
+                            break
+                    if message is None:
+                        roster = json.loads(record["roster"])
+                        groups = {
+                            role: [mid for mid, saved_role in roster if saved_role == role]
+                            for role in ("Tank", "DPS", "Support")
+                        }
+                        lines = [
+                            f"{role}: " + ", ".join(f"<@{mid}>" for mid in members)
+                            for role, members in groups.items() if members
+                        ]
+                        description = (
+                            f"<@{member_id}> could not make it for <t:{start}:F>.\n\n"
+                            f"**Updated joined players ({len(roster)}):**\n" + ("\n".join(lines) or "None.")
+                        )
+                        embed = discord.Embed(
+                            title="Scrim attendance changed", description=description, color=config.COLOR
+                        )
+                        embed.set_footer(text=marker)
+                        message = await dm.send(
+                            embed=embed, allowed_mentions=discord.AllowedMentions.none()
+                        )
+                    self.store.complete_host_withdrawal(
+                        self.channel_id, start, member_id, "sent", message.id
+                    )
+                except discord.Forbidden:
+                    self.store.complete_host_withdrawal(
+                        self.channel_id, start, member_id, "undeliverable"
+                    )
+                except discord.HTTPException:
+                    log.warning("Owner scrim attendance update failed; will retry")
+
     async def notify_official(self):
-        from rionnag.ui.scrim_hosting import OfficialInvite
+        from rionnag.ui.scrim_hosting import OfficialInvite, OfficialNoticeControls
 
         async with self.notification_lock:
             start = self.store.official_host(self.channel_id)
@@ -275,6 +358,9 @@ class HostingService:
             booking = self.store.host_bookings(self.channel_id).get(start)
             if not booking:
                 return
+            if not self._official_controls_refreshed:
+                self._official_controls_refreshed = True
+                await self.refresh_official_controls(start)
             duration = booking["duration"]
             votes = self.store.host_votes(self.channel_id).get(start, set())
             players = {p["member_id"]: p for p in self.players()}
@@ -337,7 +423,8 @@ class HostingService:
                         embed = discord.Embed(title="Official Rionnag scrim",
                                               description=descriptions[kind], color=config.COLOR)
                         embed.set_footer(text=marker)
-                        view = OfficialInvite(self, mid, start) if kind == "invite" else None
+                        view = (OfficialInvite(self, mid, start) if kind == "invite" else
+                                OfficialNoticeControls(self, mid, start))
                         if recovered is None:
                             recovered = await dm.send(embed=embed,
                                 view=view,
@@ -360,6 +447,35 @@ class HostingService:
                                                               "undeliverable")
                     except discord.HTTPException:
                         log.warning("Official scrim DM failed; will retry")
+
+    async def refresh_official_controls(self, start):
+        from rionnag.ui.scrim_hosting import OfficialInvite, OfficialNoticeControls
+
+        failures = False
+        for record in self.store.host_notifications_for_start(self.channel_id, start):
+            if record["status"] != "sent":
+                continue
+            try:
+                user = self.bot.get_user(record["member_id"])
+                if user is None:
+                    user = await self.bot.fetch_user(record["member_id"])
+                dm = user.dm_channel or await user.create_dm()
+                message = await dm.fetch_message(record["message_id"])
+                view = (OfficialInvite(self, record["member_id"], start)
+                        if record["kind"] == "invite" else
+                        OfficialNoticeControls(self, record["member_id"], start))
+                embeds = getattr(message, "embeds", None) or []
+                if embeds:
+                    embed = embeds[0]
+                    if record["kind"] in {"confirmed", "day", "thirty"}:
+                        embed.title = "Scrim confirmed"
+                    await message.edit(embed=embed, view=view)
+                else:
+                    await message.edit(view=view)
+            except discord.HTTPException:
+                failures = True
+                log.warning("Could not add controls to an existing official scrim notice")
+        return not failures
 
     async def notify_ready(self):
         from rionnag.ui.scrim_hosting import HostApproval

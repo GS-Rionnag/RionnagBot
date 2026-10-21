@@ -64,6 +64,7 @@ class ScrimHosting(commands.Cog):
         try:
             await self.service.notify_ready()
             await self.service.notify_six_joined()
+            await self.service.notify_host_withdrawals()
         except Exception:
             logging.getLogger(__name__).exception("Scrim owner notification failed; will retry")
 

@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-21 - add official scrim attendance controls
+
+- Put an owner-only Cancel scrim action on the owner's official notice.
+- Let confirmed players mark that they cannot make it; remove their vote and DM the owner the updated
+  joined roster grouped by role.
+
 ## 2026-10-21 - notify players when six join a hosted scrim
 
 - DM every player who joined once a session reaches six players, stating that it is not yet confirmed.

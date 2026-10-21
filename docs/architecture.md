@@ -18,6 +18,9 @@ reuse each existing invitation DM when possible. Confirmed and declined players 
 response remains excluded from the available roster even after a later board join.
 Once at least six players join a hosting session, each current and later joiner receives one durable DM
 stating that the scrim is not yet confirmed. Official booking sends a separate confirmation notice.
+Official notices let confirmed players withdraw with Can't make it; durable owner DMs show the updated
+confirmed roster grouped by saved role. Only the server owner sees the Cancel scrim control on their
+official notice, and cancellation requires explicit confirmation.
 
 Finder and hosting status/reminder DMs reuse one bot message per player and scrim, editing it as the
 status changes. Tracked bot-authored scrim messages are deleted after the session ends for every

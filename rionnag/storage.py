@@ -91,6 +91,10 @@ class Store:
                     channel_id INTEGER, start INTEGER, member_id INTEGER,
                     status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
                     PRIMARY KEY(channel_id,start,member_id));
+                CREATE TABLE IF NOT EXISTS scrim_host_withdrawals (
+                    channel_id INTEGER, start INTEGER, member_id INTEGER,
+                    roster TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', message_id INTEGER,
+                    PRIMARY KEY(channel_id,start,member_id));
                 CREATE TABLE IF NOT EXISTS scrim_host_bumps (
                     channel_id INTEGER, start INTEGER, generation INTEGER, old_message_id INTEGER,
                     status TEXT, requested_at REAL, message_id INTEGER, error TEXT,
@@ -194,6 +198,7 @@ class Store:
             db.execute("DELETE FROM scrim_host_invites WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_notifications WHERE member_id=?", (member_id,))
             db.execute("DELETE FROM scrim_host_milestones WHERE member_id=?", (member_id,))
+            db.execute("DELETE FROM scrim_host_withdrawals WHERE member_id=?", (member_id,))
 
     def host_invites(self, channel_id):
         with self.connection() as db:
@@ -278,6 +283,29 @@ class Store:
                        "WHERE channel_id=? AND start=? AND member_id=?",
                        (status, message_id, channel_id, start, member_id))
 
+    def reserve_host_withdrawal(self, channel_id, start, member_id, roster):
+        with self.connection() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO scrim_host_withdrawals(channel_id,start,member_id,roster) "
+                "VALUES(?,?,?,?)", (channel_id, start, member_id, json.dumps(roster)),
+            )
+            row = db.execute("SELECT * FROM scrim_host_withdrawals WHERE channel_id=? AND start=? "
+                             "AND member_id=?", (channel_id, start, member_id)).fetchone()
+            return dict(row)
+
+    def pending_host_withdrawals(self, channel_id):
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM scrim_host_withdrawals WHERE channel_id=? AND status='pending'",
+                (channel_id,),
+            )]
+
+    def complete_host_withdrawal(self, channel_id, start, member_id, status, message_id=None):
+        with self.connection() as db:
+            db.execute("UPDATE scrim_host_withdrawals SET status=?,message_id=COALESCE(?,message_id) "
+                       "WHERE channel_id=? AND start=? AND member_id=?",
+                       (status, message_id, channel_id, start, member_id))
+
     def complete_host_notification(self, channel_id, start, member_id, kind, status, message_id=None):
         with self.connection() as db:
             db.execute("UPDATE scrim_host_notifications SET status=?, message_id=COALESCE(?,message_id) "
@@ -310,6 +338,11 @@ class Store:
                         f"SELECT start,? AS member_id,message_id,NULL AS kind,7200 AS duration,status "
                         f"FROM {table} "
                         "WHERE message_id IS NOT NULL", (owner_id,)))
+                rows.extend(dict(row) for row in db.execute(
+                    "SELECT w.start,? AS member_id,w.message_id,NULL AS kind,"
+                    "COALESCE(s.duration,7200) AS duration,w.status "
+                    "FROM scrim_host_withdrawals w LEFT JOIN scrim_host_settings s "
+                    "ON s.channel_id=w.channel_id WHERE w.message_id IS NOT NULL", (owner_id,)))
             return rows
 
     def forget_scrim_dm_message(self, message_id):
