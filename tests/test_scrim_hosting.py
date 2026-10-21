@@ -264,6 +264,36 @@ class HostingPersistenceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("officially confirmed", sent[0][1])
         self.assertIn("Can you make it?", sent[1][1])
 
+    async def test_thirty_minute_notice_is_new_dm_and_replaces_prior_notice(self):
+        async def history(**kwargs):
+            if False:
+                yield None
+
+        old = SimpleNamespace(id=77, delete=AsyncMock(), edit=AsyncMock())
+        new = SimpleNamespace(id=99, edit=AsyncMock())
+        dm = SimpleNamespace(
+            history=history, fetch_message=AsyncMock(return_value=old),
+            send=AsyncMock(return_value=new),
+        )
+        user = SimpleNamespace(dm_channel=dm)
+        bot = SimpleNamespace(get_user=lambda mid: user, user=SimpleNamespace(id=44))
+        service = HostingService(bot, SimpleNamespace(store=self.store), None)
+        service.players = lambda: [dict(member_id=1, answers={})]
+        self.store.book_host(service.channel_id, self.start, 7200, 99)
+        self.store.set_host_vote(service.channel_id, self.start, 1, True)
+        self.store.host_notification(service.channel_id, self.start, 1, "confirmed")
+        self.store.complete_host_notification(service.channel_id, self.start, 1, "confirmed", "sent", 77)
+
+        with patch("rionnag.services.scrim_hosting.time.time", return_value=self.start - 1800), \
+                patch("rionnag.services.scrim_hosting.covers_interval", return_value=True):
+            await service.notify_official()
+            await service.notify_official()
+
+        dm.send.assert_awaited_once()
+        self.assertIn("30 minutes", dm.send.call_args.kwargs["embed"].description)
+        old.delete.assert_awaited_once()
+        new.edit.assert_not_awaited()
+
     async def test_idempotent_persisted_queue_and_departure_cleanup(self):
         self.assertTrue(self.queue())
         self.assertFalse(self.queue())

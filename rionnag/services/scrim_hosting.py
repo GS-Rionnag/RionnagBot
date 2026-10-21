@@ -300,22 +300,29 @@ class HostingService:
                         user = self.bot.get_user(mid) or await self.bot.fetch_user(mid)
                         dm = user.dm_channel or await user.create_dm()
                         recovered = None
-                        for previous in self.store.host_member_notifications(self.channel_id, start, mid):
-                            if previous["kind"] == kind:
-                                continue
-                            try:
-                                recovered = await dm.fetch_message(previous["message_id"])
-                            except discord.HTTPException:
-                                recovered = None
-                            if recovered is not None:
-                                break
+                        previous_notices = self.store.host_member_notifications(self.channel_id, start, mid)
+                        if kind != "thirty":
+                            for previous in previous_notices:
+                                if previous["kind"] == kind:
+                                    continue
+                                try:
+                                    recovered = await dm.fetch_message(previous["message_id"])
+                                except discord.HTTPException:
+                                    recovered = None
+                                if recovered is not None:
+                                    break
                         async for message in dm.history(limit=100):
                             if recovered is not None:
                                 break
-                            if message.author.id == self.bot.user.id and any(
+                            if kind != "thirty" and message.author.id == self.bot.user.id and any(
                                 e.footer and e.footer.text.startswith(
                                     f"Official scrim notice Â· {start} Â· {mid} Â·")
                                 for e in message.embeds
+                            ):
+                                recovered = message
+                                break
+                            if kind == "thirty" and message.author.id == self.bot.user.id and any(
+                                e.footer and e.footer.text == marker for e in message.embeds
                             ):
                                 recovered = message
                                 break
@@ -335,10 +342,19 @@ class HostingService:
                             recovered = await dm.send(embed=embed,
                                 view=view,
                                 allowed_mentions=discord.AllowedMentions.none())
-                        else:
+                        elif kind != "thirty":
                             await recovered.edit(embed=embed, view=view)
                         self.store.complete_host_notification(self.channel_id, start, mid, kind,
                                                               "sent", recovered.id)
+                        if kind == "thirty":
+                            old_ids = {item["message_id"] for item in previous_notices
+                                       if item["kind"] != "thirty" and item["message_id"]}
+                            for old_id in old_ids - {recovered.id}:
+                                try:
+                                    old_message = await dm.fetch_message(old_id)
+                                    await old_message.delete()
+                                except discord.HTTPException:
+                                    pass
                     except discord.Forbidden:
                         self.store.complete_host_notification(self.channel_id, start, mid, kind,
                                                               "undeliverable")

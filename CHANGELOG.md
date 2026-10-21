@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-21 - separate and expire thirty-minute scrim reminders
+
+- Send the 30-minute reminder as a new DM and delete the earlier official notice after delivery.
+- Delete the 30-minute reminder when the scrim starts.
+
 ## 2026-10-21 - improve hosted scrim controls
 
 - Continue reminding other available players when one reminder delivery fails unexpectedly.
