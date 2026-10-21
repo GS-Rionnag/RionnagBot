@@ -1,5 +1,10 @@
 # Change timeline
 
+## 2026-10-21 - require six available players for opportunity posts
+
+- Publish a scrim opportunity only when at least six eligible players can attend its full time window.
+- Remove its listing if the available count drops below six; continue to display names without pings.
+
 ## 2026-10-21 - restore separate scrim opportunity posts
 
 - Publish one post per scrim start, showing how many adverts were found, the source advert, and players available during that session.

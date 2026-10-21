@@ -27,6 +27,7 @@ from rionnag.ui.scrim_opportunities import (
 
 log = logging.getLogger(__name__)
 SERVER_ZONE = ZoneInfo("America/New_York")
+MINIMUM_AVAILABLE_PLAYERS = 6
 
 
 def offer_interval(offer):
@@ -320,6 +321,8 @@ class OpportunityPublisher:
         if not snapshot:
             return
         guild, players, offers, revisions, matched, selected = snapshot
+        selected = {start: details for start, details in selected.items()
+                    if len(matched.get(details[0], ())) >= MINIMUM_AVAILABLE_PLAYERS}
         channel = guild.get_channel(self.channel_id)
         if channel is None:
             log.warning("Scrim opportunity channel is unavailable")

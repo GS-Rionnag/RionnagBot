@@ -116,24 +116,32 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.channel.send.await_count, 2)
         self.assertFalse(any(message.edit.await_count for message in self.sent_messages.values()))
 
-    async def test_future_times_across_days_are_listed_without_player_mentions(self):
+    async def test_opportunities_with_fewer_than_six_available_are_not_posted(self):
         self.guild.get_member = lambda _member_id: None
         self.feed.put({"id": "4", "channel_id": "2", "author_id": "12"})
         self.feed.complete(self.feed.pending(), {"scrims": [
             {**offer(start="2027-06-09T00:00:00Z", end="2027-06-09T01:00:00Z"),
              "source_message_id": "4"}]})
         await self.publisher.sync(self.now)
-        calls = self.channel.send.await_args_list
-        self.assertEqual(len(calls), 2)
-        self.assertTrue(all("embed" in call.kwargs for call in calls))
-        self.assertTrue(all(call.kwargs["allowed_mentions"].to_dict()
-                            == discord.AllowedMentions.none().to_dict() for call in calls))
-        self.assertTrue(all(any(field.name == "Opponent rank" for field in call.kwargs["embed"].fields)
-                            for call in calls))
-        self.assertTrue(all(any(field.name == "Available players (0)"
-                                for field in call.kwargs["embed"].fields) for call in calls))
-        await self.publisher.sync(instant("2027-06-08T00:00:00+00:00"))
-        self.assertEqual(self.store.opportunity_posts(10)["3:0"]["status"], "inactive")
+        self.channel.send.assert_not_awaited()
+        self.assertFalse(any(post["status"] == "active"
+                             for post in self.store.opportunity_posts(10).values()))
+
+    async def test_listing_appears_when_six_players_are_available(self):
+        original_get_member = self.guild.get_member
+        self.guild.get_member = lambda mid: None if mid in (6, 7) else original_get_member(mid)
+        await self.publisher.sync(self.now)
+        self.channel.send.assert_not_awaited()
+
+        self.guild.get_member = original_get_member
+        self.guild.get_member = lambda mid: None if mid == 7 else original_get_member(mid)
+        await self.publisher.sync(self.now)
+        self.channel.send.assert_awaited_once()
+        embed = self.channel.send.await_args.kwargs["embed"]
+        available = next(field for field in embed.fields if field.name == "Available players (6)")
+        self.assertIn("<@1>", available.value)
+        self.assertEqual(self.channel.send.await_args.kwargs["allowed_mentions"].to_dict(),
+                         discord.AllowedMentions.none().to_dict())
 
     async def test_schedule_override_requires_explicit_yes(self):
         await self.publisher.sync(self.now)
