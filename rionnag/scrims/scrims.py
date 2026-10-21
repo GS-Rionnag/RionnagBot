@@ -122,11 +122,11 @@ def random_team(players: list[Player], *, required_ids=(), prefer_real=False) ->
     )
 
 
-def reroll_team(players: list[Player], *, prefer_real=False) -> dict[int, str]:
+def reroll_team(players: list[Player], *, required_ids=(), prefer_real=False) -> dict[int, str]:
     """Explicit manager override: redraw everyone without changing durable counts."""
     shuffled = random.sample(players, len(players))
     candidates = [replace(p, played=0, last_played=0, joined=i) for i, p in enumerate(shuffled)]
-    return make_team(candidates, prefer_real=prefer_real)
+    return make_team(candidates, required_ids=required_ids, prefer_real=prefer_real)
 
 
 def substitute_one(players, current, history, protected=()):

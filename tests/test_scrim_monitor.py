@@ -73,6 +73,19 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
         await self.live(monitor, True)  # stale original battle ID cannot start round two
         self.assertEqual(len(self.store.export(data["id"])["matches"]), 1)
 
+    async def test_scrim_creator_is_the_only_live_detection_tracker(self):
+        data = await self.begin(start=False)
+        self.assertIn(1, data["roster"])
+        self.assertEqual(data["detection"]["tracker_member_id"], 1)
+        monitor = ScrimMonitor(self.controller)
+        with patch.object(
+            scrim_rivals,
+            "check_live",
+            return_value={"uid": "1", "custom": False, "battle_id": None, "payload": {}},
+        ) as check:
+            await monitor.probe("live", self.store.get(data["id"]))
+        self.assertEqual(check.call_args.args[0]["member_id"], 1)
+
     async def test_unknown_status_and_request_failure_do_not_end_game(self):
         data = await self.begin(start=False)
         monitor = ScrimMonitor(self.controller)
@@ -169,6 +182,28 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
             db.execute("UPDATE scrim_matches SET ended_at=? WHERE id=?", (time.time() - 3601, match["id"]))
         self.assertEqual([m["id"] for m in self.store.pending_matches()], [match["id"]])
 
+    async def test_history_rotates_from_scrim_creator_after_five_minutes(self):
+        data = await self.begin()
+        creator = data["detection"]["tracker_member_id"]
+        await self.controller.game_ended(self.guild, data)
+        match = self.store.pending_matches()[0]
+        monitor = ScrimMonitor(self.controller)
+        with patch.object(scrim_rivals, "recent_result", return_value=None) as initial:
+            await monitor.probe("history", self.store.get(data["id"]), match)
+        self.assertEqual(initial.call_args.args[0]["tracker_member_id"], creator)
+        state = self.store.get(data["id"])["imports"][str(match["id"])]
+        state["tracker_since"] = time.time() - 301
+        data = self.store.get(data["id"])
+        data["imports"][str(match["id"])] = state
+        self.store.save(data)
+        with patch.object(scrim_rivals, "recent_result", return_value=None) as fallback:
+            await monitor.probe("history", self.store.get(data["id"]), match)
+        ids = [p["member_id"] for p in match["roster"]]
+        expected = ids[(ids.index(creator) + 1) % len(ids)]
+        self.assertEqual(fallback.call_args.args[0]["tracker_member_id"], expected)
+        self.assertEqual(
+            self.store.get(data["id"])["imports"][str(match["id"])]["tracker_member_id"], expected
+        )
     async def test_changed_lineup_or_ended_session_discards_in_flight_response(self):
         data = await self.begin(start=False)
         monitor = ScrimMonitor(self.controller)

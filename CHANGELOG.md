@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-21 - pin scrim detection to the creator
+
+- Require the manager who starts a scrim to be among its starting players, then use only their account for live Custom-game detection.
+- Keep that player in the starting lineup through edits, rerolls, and substitutions.
+- Start completed-game history checks with that same player and rotate to another recorded starter after five minutes without verification.
+
 ## 2026-10-21 - require six available players for opportunity posts
 
 - Publish a scrim opportunity only when at least six eligible players can attend its full time window.

@@ -22,7 +22,10 @@ from rionnag.storage import Store
 class QueueTests(unittest.IsolatedAsyncioTestCase):
     async def test_forced_in_out_pair_survives_preview_and_apply_with_off_role_label(self):
         data = await self.begin(start=False)
-        outgoing = next(mid for mid, role in data["roster"].items() if role == "Tank")
+        outgoing = next(
+            mid for mid, role in data["roster"].items()
+            if role == "Tank" and mid != data.get("tracking_member_id")
+        )
         incoming = next(p.member_id for p in self.pool
                         if p.member_id not in data["roster"] and p.roles == ("DPS",))
         args = (self.lobby["id"], data["id"], data["revision"], "in", incoming, outgoing)
@@ -300,7 +303,7 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
             edit_original_response=AsyncMock(),
         )
 
-    async def click(self, action, *, user=999, revision=None):
+    async def click(self, action, *, user=1, revision=None):
         lobby = self.store.get_lobby(self.lobby["id"])
         sid = lobby["session_id"] or 0
         data = self.store.get(sid) if sid else None
@@ -335,7 +338,9 @@ class QueueTests(unittest.IsolatedAsyncioTestCase):
         return self.store.get(self.store.get_lobby(self.lobby["id"])["session_id"])
 
     async def edit_preview(self, data, *, user=999):
-        outgoing = next(iter(data["roster"]))
+        outgoing = next(
+            mid for mid in data["roster"] if mid != data.get("tracking_member_id")
+        )
         incoming = next(
             mid
             for mid, p in data["players"].items()

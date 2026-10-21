@@ -194,6 +194,8 @@ class ScrimController:
         data["revision"] = data.get("revision", 0) + 1
         data["detection"] = {
             **data.get("detection", {}),
+            "tracker_member_id": data.get("tracking_member_id")
+            or data.get("detection", {}).get("tracker_member_id"),
             "battle_id": evidence.get("battle_id"),
             "absent": {},
             "test_mode": bool(data.get("test_mode")),
@@ -214,7 +216,7 @@ class ScrimController:
         if battle_id:
             data.setdefault("finished_live_ids", []).append(battle_id)
         data["revision"] = data.get("revision", 0) + 1
-        data["detection"] = {}
+        data["detection"] = {"tracker_member_id": data.get("tracking_member_id")}
         data["protected_in"] = []
         data["note"] = "Game Ended · Recorded locally; verifying the latest custom match for statistics."
         if actor is not None:
@@ -322,6 +324,9 @@ class ScrimController:
                 _, data = self.edit_context(interaction, lid, sid, revision)
                 players, _ = self.eligible(interaction.guild, data)
                 roster = manual_lineup(players, data["roster"], data["players"], operation, first, second)
+                tracker = data.get("tracking_member_id")
+                if tracker is not None and tracker not in roster:
+                    raise ValueError("The scrim creator must remain in the starting lineup.")
                 description = (
                     self.lineup_change_text(data, roster)
                     + "\n\nEveryone stays in the scrim voice room."
@@ -342,6 +347,9 @@ class ScrimController:
                 lobby, data = self.edit_context(interaction, lid, sid, revision)
                 players, _ = self.eligible(interaction.guild, data)
                 roster = manual_lineup(players, data["roster"], data["players"], operation, first, second)
+                tracker = data.get("tracking_member_id")
+                if tracker is not None and tracker not in roster:
+                    raise ValueError("The scrim creator must remain in the starting lineup.")
                 if roster != expected:
                     raise ValueError(
                         "Available players or roles changed. Reopen Edit lineup for a fresh preview."
@@ -654,16 +662,26 @@ class ScrimController:
                             raise ValueError(
                                 "All queued players need saved roles. Use /edit_profile before starting."
                             )
+                        if interaction.user.id not in {player.member_id for player in players}:
+                            raise ValueError(
+                                "Join the Scrim voice room with a saved Marvel Rivals profile "
+                                "before starting."
+                            )
                         config = self.store.config(lobby["guild_id"], lobby["game"])
                         data = self.store.create(
                             lobby["guild_id"],
                             lobby["game"],
                             config,
                             players,
-                            random_team(players),
+                            random_team(players, required_ids={interaction.user.id}),
                             interaction.user.id,
                         )
-                        data.update(revision=0, protected_in=[])
+                        data.update(
+                            revision=0,
+                            protected_in=[],
+                            tracking_member_id=interaction.user.id,
+                            detection={"tracker_member_id": interaction.user.id},
+                        )
                         self.store.save(data)
                         lobby["session_id"] = data["id"]
                         lobby["ready_ids"] = []
@@ -706,7 +724,14 @@ class ScrimController:
                             raise ValueError("End the current game before making substitutions.")
                         players, _ = self.eligible(interaction.guild, data)
                         roster, incoming, outgoing = substitute_one(
-                            players, data["roster"], data["players"], data.get("protected_in", [])
+                            players,
+                            data["roster"],
+                            data["players"],
+                            [
+                                *data.get("protected_in", []),
+                                *([data["tracking_member_id"]]
+                                  if data.get("tracking_member_id") is not None else []),
+                            ],
                         )
                         data.setdefault("protected_in", []).append(incoming)
                         data["rotation_tick"] = data.get("rotation_tick", 0) + 1
@@ -725,7 +750,12 @@ class ScrimController:
                         if data["status"] != "prepared":
                             raise ValueError("End the current game before rerolling teams.")
                         players, _ = self.eligible(interaction.guild, data)
-                        roster = reroll_team(players, prefer_real=bool(data.get("test_mode")))
+                        tracker = data.get("tracking_member_id")
+                        roster = reroll_team(
+                            players,
+                            required_ids={tracker} if tracker is not None else (),
+                            prefer_real=bool(data.get("test_mode")),
+                        )
                         data["protected_in"] = []
                         data["note"] = (
                             "Full lineup rerolled from all available players, including substitutes."
@@ -791,7 +821,13 @@ class ScrimController:
             host_id,
             test_mode=True,
         )
-        data.update(revision=0, protected_in=[], manual_test=True)
+        data.update(
+            revision=0,
+            protected_in=[],
+            manual_test=True,
+            tracking_member_id=host_id,
+            detection={"tracker_member_id": host_id},
+        )
         data["players"].update({p.member_id: temporary["players"][p.member_id] for p in real_players})
         data["players"].update({item["member_id"]: item for item in pool})
         self.store.save(data)

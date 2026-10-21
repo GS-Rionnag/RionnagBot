@@ -11,6 +11,7 @@ from rionnag.scrims import scrim_rivals
 from rionnag.scrims.scrim_results import ScrimResultLogs
 
 logger = logging.getLogger(__name__)
+HISTORY_TRACKER_ROTATE_SECONDS = 300
 
 
 class ScrimMonitor:
@@ -82,12 +83,22 @@ class ScrimMonitor:
         roster = [person for person in roster if not person.get("simulated")]
         if not roster:
             return
+        member_ids = [p["member_id"] for p in roster]
+        detection = (match or {}).get("data", {}).get("detection", {})
+        if kind == "live":
+            detection = session.get("detection", {})
+        preferred = detection.get("tracker_member_id")
+        if kind == "live":
+            preferred = session.get("tracking_member_id", preferred)
+        if preferred not in member_ids:
+            preferred = store.history_tracker(guild.id, roster) or member_ids[0]
         tracker = state.get("tracker_member_id")
-        if tracker not in {p["member_id"] for p in roster}:
-            recorded = (match or {}).get("data", {}).get("detection", {}).get("tracker_member_id")
-            tracker = recorded if recorded in {p["member_id"] for p in roster} else (
-                store.history_tracker(guild.id, roster)
-            )
+        tracker_since = state.get("tracker_since", time.time())
+        if tracker not in member_ids:
+            tracker, tracker_since = preferred, time.time()
+        elif kind == "history" and time.time() - tracker_since >= HISTORY_TRACKER_ROTATE_SECONDS:
+            tracker = member_ids[(member_ids.index(tracker) + 1) % len(member_ids)]
+            tracker_since = time.time()
         person = next(p for p in roster if p["member_id"] == tracker)
         # API I/O is outside the guild lock; controls and voice events stay responsive.
         error = None
@@ -117,6 +128,8 @@ class ScrimMonitor:
                 return
             state = self.state(current, kind, match)
             state["tracker_member_id"] = tracker
+            if kind == "history":
+                state["tracker_since"] = tracker_since
             state["probe"] = probe + 1
             state["next_at"] = time.time() + (self.interval if kind == "live" else 15)
             if error:
