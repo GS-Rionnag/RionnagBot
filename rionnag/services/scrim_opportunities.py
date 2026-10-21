@@ -114,7 +114,7 @@ class OpportunityPublisher:
         seen = set()
         for row in self.store.scrim_dm_messages(guild.owner_id):
             message_id = row["message_id"]
-            obsolete = row.get("status") in {"declined", "expired", "undeliverable"}
+            obsolete = row.get("status") in {"accepted", "declined", "expired", "undeliverable"}
             deadline = row["start"] if row.get("kind") == "thirty" else row["start"] + row["duration"]
             if (not obsolete and deadline > now) or message_id in seen:
                 continue

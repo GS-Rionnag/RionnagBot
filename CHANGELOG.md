@@ -10,6 +10,7 @@
 
 - Delete a player's hosted scrim invitation after they accept or decline; if deletion fails,
   clear the embed and buttons so the obsolete invitation is no longer visible.
+- Remove already-answered invitation DMs left over from before this fix during the next cleanup.
 
 ## 2026-10-21 - separate and expire thirty-minute scrim reminders
 

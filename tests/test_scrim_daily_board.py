@@ -213,6 +213,17 @@ class DailyBoardTests(unittest.IsolatedAsyncioTestCase):
         await self.publisher.cleanup_completed_scrim_dms(self.now)
         old.delete.assert_awaited_once()
 
+    async def test_already_answered_host_invitation_dm_is_deleted_immediately(self):
+        start = self.now + 86400
+        self.store.reserve_host_invite(10, start, 7, 7200)
+        self.store.update_host_invite(10, start, 7, 7200, "accepted", 77)
+        old = SimpleNamespace(author=SimpleNamespace(id=999), delete=AsyncMock())
+        dm = SimpleNamespace(fetch_message=AsyncMock(return_value=old))
+        user = SimpleNamespace(dm_channel=dm, create_dm=AsyncMock(return_value=dm))
+        self.bot.get_user = lambda mid: user if mid == 7 else None
+        await self.publisher.cleanup_completed_scrim_dms(self.now)
+        old.delete.assert_awaited_once()
+
     async def test_thirty_minute_scrim_dm_is_deleted_when_scrim_starts(self):
         start = self.now
         self.store.host_notification(10, start, 7, "thirty")
