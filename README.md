@@ -1,6 +1,6 @@
 # RionnagBot
 
-A private Discord organization bot for **Rionnag**. The source is public; credentials, member answers, and runtime data are private. It serves exactly one server.
+A private Discord organization bot for **Rionnag**. The source is public; credentials, member answers, and runtime data are private. Its organization features serve only Rionnag. Separately installed guild extensions can share its connection with isolated commands in other servers.
 
 New members receive one private onboarding channel. They choose Visitor or complete a game application. Visitors can use Main → tryout to enter the same application flow. After submission, only the selected game's manager gains ticket access and Accept/Reject buttons. Acceptance grants the game tryout role; rejection grants Visitor. The bot sends the outcome by DM and deletes the completed ticket.
 

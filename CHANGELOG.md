@@ -1,5 +1,13 @@
 # Change timeline
 
+## 2026-10-29 - host separate guild command extensions
+
+- Discover installed `rionnag.guild_extensions` packages after syncing Rionnag's isolated commands.
+- Share the existing supervised connection with The Third Eye's separate trollbot project,
+  whose moderator-only uwu lock/unlock commands register only in that server.
+- Enable Message Content when extensions are installed so The Third Eye can replace locked
+  members' new messages through webhooks; Rionnag workflows remain scoped to Rionnag.
+
 ## 2026-10-21 - pin scrim detection to the creator
 
 - Require the manager who starts a scrim to be among its starting players, then use only their account for live Custom-game detection.

@@ -1,5 +1,11 @@
 # Architecture
 
+Optional installed packages expose extension modules through the `rionnag.guild_extensions`
+entry-point group. The host loads them after copying and syncing the Rionnag command tree
+and clearing global commands. Each extension registers and syncs only its own guild,
+and chains the existing interaction check for all other servers. The sibling trollbot
+project supplies The Third Eye's uwu commands without a second client or shared workflow data.
+
 Scrim hosting is composed separately in app.py using a HostingService, ScrimHosting cog, persistent board
 and private paginated views. It reuses accepted-player eligibility, conservative recurring-window coverage,
 and the role-constrained lineup solver without changing finder or live-session behavior. SQLite stores
