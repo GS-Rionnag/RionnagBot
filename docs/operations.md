@@ -1,13 +1,11 @@
 # Operations
 
-The Third Eye's separate command project is installed with
-`rtk proxy .venv\Scripts\python.exe -m pip install -e ../trollbot`.
-The normal shared restart loads its `rionnag.guild_extensions` entry point and syncs
-only that server's commands. Keep its checkout available while installed. It uses
-the existing bot identity and connection; do not start an independent bot process.
-Installed extensions enable the Message Content gateway intent. It is already enabled for
-the existing application. The Third Eye requires Manage Messages and Manage Webhooks for
-its moderator-only uwu locks; locks and code live in the separate trollbot checkout.
+The Third Eye's trollbot project now runs separately at the owner's request. It is
+uninstalled from this environment and must not be loaded by this bot. Control it from
+`../trollbot` with its own `.venv\Scripts\python.exe -m trollbot start|stop|status`.
+It reads this checkout's existing `.env` privately to reuse the bot identity, and syncs
+only The Third Eye's commands. This supervisor continues to manage only Rionnag and
+the collector. Trollbot has separate logs, saved uwu locks and a single-instance lock.
 
 The canonical Windows runtime is the per-user background supervisor in this workspace. It runs independently of chat terminals, starts both the bot and the configured scrim collector, restarts either child independently after 15 seconds, and starts hidden when the owner signs into Windows. No administrator rights are needed. Before-sign-in startup is not supported by this per-user setup; the PC must be awake and connected for Discord access.
 

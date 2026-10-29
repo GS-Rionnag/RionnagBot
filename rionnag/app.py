@@ -1,7 +1,6 @@
 """Small composition root: configuration, persistence, services, and cogs."""
 
 import logging
-from importlib.metadata import entry_points
 
 import discord
 from discord.ext import commands
@@ -24,7 +23,6 @@ class RionnagBot(commands.Bot):
         intents = discord.Intents.default()
         intents.members = True
         intents.voice_states = True
-        intents.message_content = bool(entry_points(group="rionnag.guild_extensions"))
         super().__init__(
             command_prefix=commands.when_mentioned,
             intents=intents,
@@ -60,10 +58,6 @@ class RionnagBot(commands.Bot):
         # Remove legacy public commands; each server gets its own registry.
         self.tree.clear_commands(guild=None)
         await self.tree.sync()
-        # Optional guild features live in separately installed projects. Load only
-        # after copying Rionnag's commands so the guild registries stay separate.
-        for extension in entry_points(group="rionnag.guild_extensions"):
-            await self.load_extension(extension.value)
 
     async def check_guild(self, interaction):
         return interaction.guild_id == config.GUILD_ID

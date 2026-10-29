@@ -1,5 +1,11 @@
 # Change timeline
 
+## 2026-10-29 - run The Third Eye independently
+
+- Remove trollbot from this environment and stop loading external guild extensions.
+- Run The Third Eye in its own environment/background process, sharing only the Discord identity.
+- Keep Rionnag's supervisor, collector and guild command registry independent.
+
 ## 2026-10-29 - host separate guild command extensions
 
 - Discover installed `rionnag.guild_extensions` packages after syncing Rionnag's isolated commands.
