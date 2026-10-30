@@ -1,91 +1,38 @@
-# Architecture
+# Shared bot architecture
 
-The sibling trollbot project runs The Third Eye's uwu commands in its own background
-process and environment, using the same Discord identity. It is no longer installed
-or loaded in this runtime. Each client handles only its configured server; trollbot
-syncs only The Third Eye's command registry and never clears Rionnag or global commands.
+One Discord identity and gateway connection loads independent server modules through
+`rionnag/servers/registry.py`. The existing installed Windows supervisor still owns the
+single bot process and its separate Rionnag scrim collector. No new service is required.
 
-Scrim hosting is composed separately in app.py using a HostingService, ScrimHosting cog, persistent board
-and private paginated views. It reuses accepted-player eligibility, conservative recurring-window coverage,
-and the role-constrained lineup solver without changing finder or live-session behavior. SQLite stores
-hosting settings, per-start commitments, a frozen selected roster, and an idempotent outbound queue.
-Persistent readiness notices DM the server owner when six confirmed players form a valid team. Only
-the owner's Yes queues an anonymous advert; declined and expired requests remain durable, and old
-approval generations cannot publish. The separate owner-account collector
-validates the queue against live membership and current saved profiles before delivery; uncertain sends
-are reconciled through account history instead of automatic retries. Both runtimes share the pure
-scrim_availability module without importing the other Discord library's UI classes.
+| Server | Guild | Module | Private data |
+| --- | --- | --- | --- |
+| RIONNAG eSports | 1554260744327929987 | rionnag/servers/rionnag | Existing data/rionnag.sqlite3 and scrim databases |
+| The Third Eye | 1549838808680374293 | rionnag/servers/third_eye | data/servers/third_eye/locks.sqlite3 |
 
-The owner approval remains associated with its hosting start when player confirmations temporarily
-change, preventing repeated owner DMs after a withdrawal and rejoin. Its persistent controls refresh as
-the team returns. The owner can manually remind available, unanswered players from this panel; reminders
-reuse each existing invitation DM when possible. Confirmed and declined players are skipped, and a No
-response remains excluded from the available roster even after a later board join.
-Once at least six players join a hosting session, each current and later joiner receives one durable DM
-stating that the scrim is not yet confirmed. Official booking sends a separate confirmation notice.
-Official notices let confirmed players withdraw with Can't make it; durable owner DMs show the updated
-confirmed roster grouped by saved role. Only the server owner sees the Cancel scrim control on their
-official notice, and cancellation requires explicit confirmation.
-Official hosting cards show the scrim time once and omit advert-delivery details after booking. Owner
-approval text stays concise and lists the players and roles without repeating the booked status.
+`app.py` builds the intents required by the enabled profiles, loads their setup functions,
+and syncs each guild's command registry separately. Every module registers cogs with an
+explicit guild. There are no global feature commands and global fallback is disabled.
+The command tree rejects unknown guilds, DMs and commands belonging to another guild,
+including nested commands. Guild-join sync runs only for a configured server.
 
-Finder and hosting status/reminder DMs reuse one bot message per player and scrim, editing it as the
-status changes. Tracked bot-authored scrim messages are deleted after the session ends for every
-recipient. On startup after deployment, a DM-history sweep also removes older
-bot-authored scrim messages whose IDs were not recorded; unrelated DM messages are not touched.
-The scan also removes known bot-authored workflow replies that become stale, such as queued bump
-no-longer-confirmed-team, advert-queued, and confirmation responses. Owner button acknowledgements
-are ephemeral so they do not remain as persistent DM history.
-Owner approval embeds are expired and deleted when their lineup stops being ready, even when the
-scheduled time has not arrived. Legacy sweeps include older scrim embeds with Discord timestamps and
-retry until accessible member histories have been scanned.
+Joining an unconfigured server does not enable any features there. Each event listener
+must guard its guild independently; application-command checks do not protect gateway events
+or persistent UI callbacks. Server-specific UI and workflow authorization remain in their
+own domain. Private DM interactions for Rionnag scrims retain their existing checks.
 
-RionnagBot composes Store, Applications, and feature cogs. Onboarding handles joins, repairs, reloads, and persistent view registration. Profiles owns stats/promotion. Scrims adapts the retained scrim controller to the new profile store.
+Rionnag's composition moved to servers/rionnag; its established domain imports, IDs, forms,
+database paths and workflow behavior remain stable. Root cogs/services/ui/scrims are legacy
+**Rionnag-only** code. Third Eye code is fully contained in its server package. See
+[Rionnag architecture](servers/rionnag/architecture.md) and
+[The Third Eye](servers/third_eye/README.md) for their independent contracts.
 
-The shared per-user supervisor starts the main bot and, when its private token/source channels are configured, the scrim collector in its separate virtual environment. Each child has independent crash recovery after fifteen seconds; shared restart/stop controls both owned process trees. Status reports collector health separately from bot health. A collector lock per feed prevents duplicate instances. Restarted collectors catch up recent source history and resume persisted extraction, so the publisher does not silently operate on a stale feed after collector loss.
+## Adding a server
 
-The scrim cog passes `Store.saved_uid` to the controller so accepted account identities come from the current member/profile registry, without querying the removed legacy account-claims table. Saved scrim channel mappings and lobby message IDs reconnect voice events to the existing dashboard; startup queues members already in waiting and edits that dashboard in place.
+1. Create `rionnag/servers/<key>/` with `setup(bot, profile)` and a scoped AGENTS.md.
+2. Add `ServerProfile(key, guild_id, module, message_content=...)` to the registry.
+3. Register cogs using `bot.add_cog(cog, guild=discord.Object(id=profile.guild_id))`.
+   Keep events/UI gated to that guild and use profile.data_dir for private persistence.
+4. Add server-specific docs under docs/servers/<key>/ and tests proving isolation.
+5. Test, invite the bot with the needed permissions and restart the existing service.
 
-The monitor probes only the scrim creator in live detection and skips simulated accounts and substitutes. The creator remains in the starting lineup through rerolls, edits, and substitutions. An all-simulated starting lineup correctly stays waiting even when a real substitute enters a Custom game.
-
-Each game pins the manager who starts the scrim as the live/history tracker, and that manager must be in the starting lineup. Persisted selection survives restart; completed-game retries begin with that same player and rotate to the next real starter after five minutes without a verified result. Completed-game retries use the recorded roster independently of current voice attendance or lineup changes. History fetches only the newest custom match from the primary provider, then verifies full details, identity, timing, and recorded teammates. Unverified completed games remain pending indefinitely, respecting provider cooldowns. The win-rate exact method is not used.
-
-The member registry is authoritative: roles alone do not prove completion. Members without completed data receive tickets during startup, joins, or repair, including the owner. Reconciliation retries every five minutes. Per-member locks serialize transitions; an OS lock prevents duplicate processes.
-
-Leaving the server erases the member registry entry, all form answers and embedded stats caches, role-restoration metadata, pending DMs, saved game profiles, and availability. The private ticket is deleted. Reconciliation also erases entries for members who left while the bot was offline. Rejoining starts fresh onboarding with no saved answers or automatic restoration.
-
-States: new → visitor, or new/visitor/rejected → pending → deciding → accepted/rejected. Changed forms move outdated entries to reset. Accepted members cache assignable roles and return to their former completed status after filling the current form. Draft/rejected answers never authorize automatic approval.
-
-All entrypoints use Applications.submit. Onboarding already has a private channel; visitors get one at submission. There is no user close/cancel action. The review panel has Accept, Reject, and an applicant-only Edit button. Managers cannot review themselves; the server owner has an explicit review override for any game.
-
-Pending applicants can reopen prefilled forms through the review panel's Edit button. Editing drafts stay in the ephemeral form session; the stored application remains unchanged until validated resubmission updates its original message. This button only edits pending applications, and a decision during editing invalidates the draft. Edits preserve pending status, manager access, and roles.
-
-Anyone can use `/edit_form` to edit their own saved current-version game data from any server channel. Accepted members update their saved profile without a ticket, review, or role changes; pending members update the existing application. Rejected/visitor records retain their status and do not gain acceptance. Drafts stay ephemeral until complete validation and account verification. A status change while editing invalidates the draft. Members undergoing a reset must finish the onboarding form first.
-
-Accepted/pending edits reuse the stored verified account when its username and UID are unchanged, avoiding provider search and verification queues. Changed accounts still require verification, and every save still checks account uniqueness. Finish acknowledges immediately before waiting for member locks, displays Saving, and ignores repeated clicks; failures reopen the availability controls for retry.
-
-Reset returners with saved acceptance are automatically restored without posting a review panel. The owner also receives automatic acceptance on fresh form completion after the initial wipe; they are not asked to approve themselves.
-
-SQLite stores status, game/version, JSON answers, channel/message IDs, restoration intent, and pending DMs. Reset snapshots are written before role removal and survive interrupted resets. Decisions first enter deciding so interrupted role changes can retry. Ticket topics identify members for recovery if Discord creation succeeds before SQLite saves. Failed DMs remain queued and results appear in tickets before deletion.
-
-Stable question keys preserve answers. UI collects four questions per modal, with a username search note at the top, persists each page, and continues through an ephemeral button. Marvel Rivals names are search queries: applicants choose the actual account from paginated results. Availability uses a day selector and start/end time selectors; applicants add/edit/remove multiple blocks per day, then press Finish & submit. Overnight blocks stay tied to their starting day, leaving the next day's own blocks independent. Structured days and a readable summary are cached. Reopening prefills saved answers and schedules. Stale forms cannot submit after version changes. Validation and public-account verification precede submission.
-
-Account uniqueness applies to pending applications, accepted members, decisions in progress, and reset members with saved role restoration. Rejected/visitor answers and unfinished drafts are cached for prefilling but do not reserve the game account. Duplicate-account errors mention the member holding the active link.
-
-Start/end selection happens sequentially on the message, allowing end choices to update immediately. End choices run from one to 24 hours after the start and label next-day times. Older cached single windows still display and convert to block lists when edited. Unfinished version-zero drafts do not trigger version resets during background repair, and actual resets retain the existing welcome message ID.
-
-The welcome embed includes a Need help? field with `Marvel Rivals: https://www.youtube.com/watch?v=TQXOmacHAYs`. Message content contains the applicant mention. Day selection does not send a separate private video link.
-
-Welcome and tryout panels are embeds with the MR game emoji. Applicant welcome messages mention the member in the message content above the embed, with explicit allowed mentions so new messages ping them. Existing panels are edited in place. Ticket names use the Discord username plus the last four digits of the member ID; the immutable topic/full ID and database mapping remain authoritative for ownership/recovery. These presentation changes do not change the form definition/version or force an unrelated reset.
-
-player_profiles is populated only after acceptance/restoration and removed during reset/rejection. Existing scrim tables share the private connection; collected offers use a separate private feed database. The collector needs a separate environment because discord.py-self conflicts with discord.py.
-
-The scrim opportunity publisher is composed in app.py and refreshed by the scrim cog every minute. It posts one read-only message per upcoming scrim start only when at least six eligible players are available for the full session. Each post shows the number of adverts found at that time, the start/end, opponent rank, source advert, and available players. Player names appear in embeds with Discord mentions disabled, so the list does not ping them. It attaches no signup controls and sends no automatic player/owner DMs. `/scrim_opportunities` remains a manager-only private preview. The saved `/scrim_rank` filter matches opponent ranges entirely within the selected ranks.
-
-Each scrim post is recovered by its stored message ID or stable footer after an interrupted send and is edited when its listing changes. Legacy combined board messages are removed after per-scrim posts are delivered. Existing legacy vote records remain stored for migration/cleanup; public listing refreshes do not expose or change player participation.
-
-Application messages contain the form embed and a separate Marvel Rivals player-data embed, without a text attachment. Publication first shows a loading placeholder so managers can review immediately after required identity verification. Tracked background tasks fetch optional stats outside member locks, then check pending status, channel/message identity, game/version, and unchanged answers before editing or caching. Cog unloading cancels tracked tasks. Successful provider results are cached against the selected account UID; lookup failures leave the submitted application available for review. Short identity searches/verifications use an independent three-request limit so full stats reads do not block them; SDK pacing and cooldowns still apply. Decisions confirm saved roles/state before notification and ticket deletion. Availability summaries in both the editor and application use Discord time-only timestamps (`<t:UNIX:t>`) calculated from the selected time zone and upcoming weekday, so Discord renders each viewer's local time.
-
-Player lookup uses rivals-api 5.0's canonical `player.stats.win_rate(season="current")`, `hero_win_rates(season="current")`, and `class_win_rates(season="current")`. All three embed fields are labeled Current Season. Mode is omitted, preserving the SDK default. The SDK verifies the global current season. Omitted method uses its normal summary calculation; `/lookup method:Precise` applies precise history verification to all three rates. Application stats use the default normal method. Failures remain retryable; no all-season fallback is substituted. Hero leaderboard placements remain separate metadata from `summary_heroes` for both modes, displayed after hero win rates when available. Cache versions refresh embeds without changing form versions, answers, or roles. Empty/partial results remain retryable.
-
-Scrim voice is now passive: one shared room supplies attendance, while the monitor records the selected starting lineup and detects Custom Room game starts/ends. Both legacy voice mapping fields refer to that room. Game/session transitions never transfer members or change voice mutes/overwrites. Match history and result publication remain independent of voice state.
+Do not introduce a second token, client, service or shared feature database for each server.

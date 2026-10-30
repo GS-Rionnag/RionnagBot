@@ -1,5 +1,14 @@
 # Change timeline
 
+## 2026-10-30 - one service with isolated server modules
+
+- Load Rionnag eSports and The Third Eye from an explicit server registry through the existing bot service.
+- Register commands directly to each guild, disable global fallback and reject cross-server command objects.
+- Move Third Eye's uwu toggle, URL-only bypass, webhook handling and private lock storage into this checkout.
+- Preserve saved uwu locks with a one-time SQLite migration and retire the standalone client.
+- Separate shared docs/agent instructions from Rionnag-only roles, forms, onboarding and scrim policies;
+  document how to add another server without another process or copied organization rules.
+
 ## 2026-10-29 - run The Third Eye independently
 
 - Remove trollbot from this environment and stop loading external guild extensions.

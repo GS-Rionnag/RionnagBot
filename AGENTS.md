@@ -1,13 +1,38 @@
-# Agent instructions
+# Shared bot agent instructions
 
-Use the shared per-user supervisor in this canonical checkout for runtime control: `rtk proxy .venv\Scripts\python.exe -m rionnag.service status|restart|stop|start` (choose one action). Do not launch a bot per chat/worktree or kill Python processes by name. Read docs/operations.md for startup and recovery details.
+This checkout is a multi-purpose Discord bot serving explicitly configured servers.
+Do not apply RIONNAG eSports' organization rules to another server.
 
-Read `C:\Users\giris\.codex\RTK.md` and prefix shell commands with `rtk`.
+Read `C:\Users\giris\.codex\RTK.md`; prefix shell commands with `rtk`.
+Read README.md and docs/architecture.md, docs/operations.md and docs/permissions.md
+before changing shared behavior. Use the canonical per-user Windows supervisor:
+`rtk proxy .venv\Scripts\python.exe -m rionnag.service status|restart|stop|start`.
+Do not start a second bot connection, worktree bot or standalone trollbot process.
+Never kill Python processes by name.
 
-Read README.md, docs/architecture.md, docs/permissions.md, and docs/operations.md before modifying behavior. This is the Rionnag owner's private server bot. Discord connector tools act as the owner account; prefer them for server inspection and the bot for ongoing workflows. Initial data deletion and membership rework were explicitly authorized. Do not infer authorization for future wipes.
+## Scope and ownership
 
-Keep composition in app.py, commands/events in cogs, workflows in services, UI in ui, persistence in storage.py. Forms live in config/forms.json. Preserve stable question keys; increment versions whenever definitions change. Enforce selected-manager review with the explicit server-owner override: the owner can accept/reject anyone including themselves. Never bypass completion or role restoration. Rionnag is the only non-managed role exempt from resets, including for the owner. Discord owners/admins necessarily bypass private-channel overwrites.
+- `rionnag/servers/registry.py` declares the configured servers and their setup modules.
+- `rionnag/servers/rionnag/` and `docs/servers/rionnag/` concern **RIONNAG eSports only**.
+  Read its scoped AGENTS.md before changing organization behavior. The legacy root
+  `rionnag/cogs`, `services`, `ui`, `scrims`, `storage.py`, `config.py` and `config/forms.json`
+  are also Rionnag-only domain code, retained at stable import/data paths for compatibility.
+- `rionnag/servers/third_eye/` and `docs/servers/third_eye/` concern **The Third Eye only**.
+- New server features belong in their own `rionnag/servers/<key>/` package, with their own
+  config, cogs/services/storage and scoped docs/agent instructions. Do not reuse Rionnag role IDs,
+  forms, membership policies or databases as generic defaults.
+- Shared composition, command routing and process control belong in app.py and service.py.
+  Commands must register directly to their server; never publish global feature commands.
+  Event listeners must check their server before reading or mutating member/message state.
 
-Preserve scrim behavior when changing onboarding. Run meaningful affected regression tests. Test data belongs in temporary directories. Never expose secrets or private answers in output or public commits.
+Keep private state under ignored data/servers/<key>/ for new server modules. Existing
+Rionnag databases stay at their established paths. Do not read/write another server's
+private data as part of a feature. Never expose credentials, webhook URLs, member answers,
+logs or databases in output or public commits. Prior wipe authorization was limited to the
+historical Rionnag rebuild; it grants no permission for future wipes in any server.
 
-Commit **every coherent minor or major change**, after appropriate checks, with a descriptive message. Related code/tests/docs may share a commit; follow-up repairs must be separate commits. Maintain CHANGELOG.md for behavior/operational changes. Push completed changes to the configured public remote unless instructed otherwise. Inspect staged paths/diffs for private data before pushing. Do not rewrite unrelated user changes.
+Run meaningful affected regressions and server-isolation tests. Use temporary test data.
+Commit every coherent change after checks, maintain CHANGELOG.md and push completed changes
+to the configured public remote. Inspect staged paths/diffs for private data before pushing.
+Do not rewrite unrelated user changes. Discord connector actions use the connected user's
+account; do not infer that it has access to every configured server.

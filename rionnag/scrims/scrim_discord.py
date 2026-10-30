@@ -1110,5 +1110,5 @@ class ScrimController:
             except ValueError as exc:
                 await interaction.followup.send(str(exc), ephemeral=True)
 
-        self.bot.tree.add_command(group)
+        self.bot.tree.add_command(group, guild=discord.Object(id=config.GUILD_ID))
         self.bot.add_listener(self.voice_update, "on_voice_state_update")
